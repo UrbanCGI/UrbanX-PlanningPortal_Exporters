@@ -1,19 +1,26 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace BabylonJS_Installer
 {
     class Downloader
     {
-        private static readonly string Url_github = "github.com";
-        private static readonly string Api_url_github = $"api.{Url_github}";
-        private static readonly string Url_download = $"https://{Url_github}/BabylonJS/Exporters/releases/download";
-        private static readonly string Url_github_API_releases = $"https://{Api_url_github}/repos/BabylonJS/Exporters/releases";
-        
+        // UrbanCGI fork: packages come from the fork's GitHub Releases, never from upstream, whose DLLs lack the
+        // texture content check and the Planner naming check. The CD workflow publishes Max_<year>.zip assets.
+        public const string Repository = "UrbanCGI/UrbanX-PlanningPortal_Exporters";
+        public static readonly string Url_releases_page = $"https://github.com/{Repository}/releases";
+        private static readonly string Url_download = $"https://github.com/{Repository}/releases/download";
+        private static readonly string Url_github_API_releases = $"https://api.github.com/repos/{Repository}/releases";
+
+        private static readonly Regex TagNamePattern = new Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"", RegexOptions.CultureInvariant);
+        private static readonly Regex PrereleasePattern = new Regex("\"prerelease\"\\s*:\\s*(true|false)", RegexOptions.CultureInvariant);
+
         private string software = "";
         private string version = "";
         private string installDir = "";
@@ -44,150 +51,186 @@ namespace BabylonJS_Installer
                 }
             };
 
-            string downloadedFileName = null;
+            string packagePath;
+            bool deleteAfterInstall;
 
-            try
+            // Offline route: a package next to this program wins over GitHub, so a build can be tested or handed
+            // out on a share before any release exists, and machines without GitHub access can still install.
+            string localPackage = LocalPackagePath();
+            if (File.Exists(localPackage))
             {
-                if (this.latestRelease == "")
+                this.form.log("Local package found, skipping the download:\n" + localPackage);
+                packagePath = localPackage;
+                deleteAfterInstall = false;
+            }
+            else
+            {
+                try
                 {
-                    this.form.log("Trying to get the last version.");
-                    try
+                    if (this.latestRelease == "")
                     {
                         if (!await TryRetreiveLatestReleaseAsync())
                         {
-                            this.form.error("Error : Can't find the last release package.");
-                            return;
+                            return; // the reason has been logged
                         }
                     }
-                    catch
-                    {
-                        this.form.warn("Unable to retreive the last version.\n"
-                                        + "Please, try in 1 hour. (The API limitation is 60 queries / hour)");
-                        throw;
-                    }
+
+                    this.form.log("Downloading files : \n" + Url_download + "/" + this.latestRelease + "/" + PackageFileName());
+                    packagePath = this.DownloadFile(this.latestRelease);
+                    deleteAfterInstall = true;
                 }
-
-                this.form.log( "Downloading files : \n"
-                               + Url_download + this.latestRelease);
-                downloadedFileName = this.DownloadFile(this.latestRelease);
-            }
-            catch (Exception ex)
-            {
-                this.form.warn( "Unable to download the files.\n"
-                                + "Error message : \n"
-                                + "\"" + ex.Message + "\"");
-                return;
+                catch (Exception ex)
+                {
+                    this.form.warn("Unable to download the files.\n"
+                                    + "Error message : \n"
+                                    + "\"" + ex.Message + "\"\n"
+                                    + "To install offline, place " + PackageFileName() + " next to this program and try again.");
+                    return;
+                }
+                this.form.log("Download complete.");
             }
 
-            this.form.log( "Download complete.\n"
-                         + "Extracting files ...");
-
-            if (!tryInstallDownloaded(downloadedFileName))
+            this.form.log("Extracting files ...");
+            if (!TryInstallPackage(packagePath, deleteAfterInstall))
             {
                 // catch and log are processed into the function.
                 return;
             }
 
-            this.form.log("\n----- " + this.software + " " + downloadedFileName + " EXPORTER UP TO DATE ----- \n");
+            this.form.log("\n----- " + this.software + " " + this.version + " EXPORTER UP TO DATE ----- \n");
 
             this.form.displayInstall(this.software, this.version);
 
             logPostInstall();
         }
 
-        private async Task<bool> TryRetreiveLatestReleaseAsync()
-        {
-            this.form.log("Trying to get the last version ...");
-
-            // TO DO - Parse the JSON in a more beautiful way...
-            String responseBody = await this.GetJSONBodyRequest(Url_github_API_releases);
-            String lastestReleaseInfos = responseBody.Substring(responseBody.IndexOf("\"prerelease\":") + "\"prerelease\":".Length);
-            //Ensure we are on release version
-            if (lastestReleaseInfos.StartsWith("false"))
-            {
-                //We parse the array to find the dowload URL
-                this.latestRelease = lastestReleaseInfos.Substring(lastestReleaseInfos.IndexOf("\"browser_download_url\":") + "\"browser_download_url\": ".Length);
-
-                // We split, remove & substrings to get only the URL starting with https://github.com and lasting with preRelease version
-                this.latestRelease = this.latestRelease.Split('"')[0];
-                this.latestRelease = this.latestRelease.Remove(this.latestRelease.LastIndexOf("/"));
-                this.latestRelease = this.latestRelease.Substring(this.latestRelease.LastIndexOf("/"));
-                return true;
-            }
-            return false;
-        }
-
-        private string DownloadFile(string releaseName)
+        /// <summary>The release asset for the current software/version, e.g. Max_2024.zip.</summary>
+        private string PackageFileName()
         {
             var downloadVersion = this.version;
             if (this.software.Equals("Maya") && (this.version.Equals("2017") || this.version.Equals("2018")))
             {
-                this.form.warn("Maya 2017 and 2018 have the same archive, changing version for proper download");
-                downloadVersion = "2017-2018";
+                downloadVersion = "2017-2018"; // Maya 2017 and 2018 share one archive
+            }
+            return this.software + "_" + downloadVersion + ".zip";
+        }
+
+        private string LocalPackagePath()
+        {
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, PackageFileName());
+        }
+
+        private async Task<bool> TryRetreiveLatestReleaseAsync()
+        {
+            this.form.log("Trying to get the last version ...");
+
+            string responseBody = await this.GetJSONBodyRequest(Url_github_API_releases);
+            if (string.IsNullOrEmpty(responseBody))
+            {
+                this.form.warn("Unable to reach " + Url_github_API_releases + ".\n"
+                               + "Check the connection, or wait an hour if the GitHub API limit (60 queries per hour) was hit.\n"
+                               + "To install offline, place " + PackageFileName() + " next to this program.");
+                return false;
             }
 
-            // Download the zip
-            var srcUrl = Url_download + releaseName + "/" + this.software + "_" + downloadVersion + ".zip";
-            var targetFileName = this.software + "_" + downloadVersion + ".zip";
+            // The API lists releases newest first; the first tag_name / prerelease pair describes the latest one.
+            // A repository without any release answers "[]", which upstream's parser turned into a crash.
+            var tag = TagNamePattern.Match(responseBody);
+            var prerelease = PrereleasePattern.Match(responseBody);
+            if (!tag.Success || !prerelease.Success)
+            {
+                this.form.error("No release has been published yet at " + Url_releases_page + ".\n"
+                                + "To install offline, place " + PackageFileName() + " next to this program.");
+                return false;
+            }
+            if (prerelease.Groups[1].Value != "false")
+            {
+                this.form.error("The latest release at " + Url_releases_page + " is marked as a pre-release; nothing to install.");
+                return false;
+            }
+
+            this.latestRelease = tag.Groups[1].Value;
+            this.form.log("Latest release: " + this.latestRelease);
+            return true;
+        }
+
+        private string DownloadFile(string releaseTag)
+        {
+            var fileName = PackageFileName();
+            var srcUrl = Url_download + "/" + releaseTag + "/" + fileName;
+            // The temp folder is always writable; the working directory of an elevated program often is not.
+            var target = Path.Combine(Path.GetTempPath(), fileName);
             using (var client = new WebClient())
             {
-               client.DownloadFile(srcUrl,targetFileName);
+                client.Headers.Add("User-Agent", "UrbanCGI-Exporter-Installer");
+                client.DownloadFile(srcUrl, target);
             }
-            return targetFileName;
-         }
+            return target;
+        }
 
-        private bool tryInstallDownloaded(string downloadVersion)
+        private bool TryInstallPackage(string zipPath, bool deleteAfterInstall)
         {
-
+            var installedFiles = new List<string>();
             try
             {
-                using (ZipArchive myZip = ZipFile.OpenRead(downloadVersion))
+                using (ZipArchive myZip = ZipFile.OpenRead(zipPath))
                 {
                     foreach (ZipArchiveEntry entry in myZip.Entries)
                     {
                         if (entry.IsDirectory()) continue;
-                        if (entry.Name.Substring(0, 9) == "AEbabylon") entry.ExtractToFile(this.installDir + "scripts\\AETemplates" + "/" + entry.Name, true);
-                        else if (entry.Name.Substring(0, 9) == "NEbabylon") entry.ExtractToFile(this.installDir + "scripts\\NETemplates" + "/" + entry.Name, true);
-                        else if (entry.Name == "Maya2Babylon.dll") entry.ExtractToFile(this.installDir + this.installLibSubDir + "/Maya2Babylon.nll.dll", true); // force renaming the dll in case of maya plug-in
-                        else entry.ExtractToFile(this.installDir + this.installLibSubDir + "/" + entry.Name, true);
+                        string target;
+                        if (entry.Name.StartsWith("AEbabylon", StringComparison.Ordinal)) target = Path.Combine(this.installDir, "scripts\\AETemplates", entry.Name);
+                        else if (entry.Name.StartsWith("NEbabylon", StringComparison.Ordinal)) target = Path.Combine(this.installDir, "scripts\\NETemplates", entry.Name);
+                        else if (entry.Name == "Maya2Babylon.dll") target = Path.Combine(this.installDir, this.installLibSubDir, "Maya2Babylon.nll.dll"); // force renaming the dll in case of maya plug-in
+                        else target = Path.Combine(this.installDir, this.installLibSubDir, entry.Name);
+                        entry.ExtractToFile(target, true);
+                        installedFiles.Add(target);
                     }
                 }
-            }
-            catch(Exception ex)
-            {
-                this.form.error(
-                    "Can't extract the files.\n"
-                    + "If you're not, please try to run this tool in ADMINISTRATOR MODE. It's necessary to extract the files in \"Program Files\" folder (or other protected folders).\n"
-                    + "Error message : \n"
-                    + "\"" + ex.Message + "\""
-                    );
-                return false;
-            }
-
-            this.form.log(
-                "Extraction complete.\n"
-                + "Deleting temporary files ..."
-                );
-
-            try
-            {
-                File.Delete(this.software + "_" + downloadVersion + ".zip");
             }
             catch (Exception ex)
             {
                 this.form.error(
-                    "Can't delete temporary files.\n"
+                    "Can't extract the files.\n"
+                    + "If you're not, please try to run this tool in ADMINISTRATOR MODE. It's necessary to extract the files in \"Program Files\" folder (or other protected folders).\n"
+                    + "Close 3ds Max / Maya first: a loaded exporter cannot be overwritten.\n"
                     + "Error message : \n"
                     + "\"" + ex.Message + "\""
                     );
                 return false;
             }
 
+            // Stamp the files with the install time. The up-to-date check compares them with the release date, and
+            // the timestamps inside the zip are the build time, which always predates the release.
+            var installTime = DateTime.UtcNow;
+            foreach (var file in installedFiles)
+            {
+                try { File.SetLastWriteTimeUtc(file, installTime); } catch (Exception) { }
+            }
+
+            this.form.log("Extraction complete (" + installedFiles.Count + " files).");
+
+            if (deleteAfterInstall)
+            {
+                try
+                {
+                    File.Delete(zipPath);
+                }
+                catch (Exception ex)
+                {
+                    // A leftover temp file is not a failed install.
+                    this.form.warn("Can't delete the temporary file " + zipPath + ": " + ex.Message);
+                }
+            }
+
             try
             {
-                string uninstallScriptPath = this.installDir + "scripts\\Startup\\BabylonCleanUp.ms";
-                this.form.log("\nRemoving " + uninstallScriptPath + ".\n");
-                File.Delete(uninstallScriptPath);
+                string uninstallScriptPath = Path.Combine(this.installDir, "scripts\\Startup\\BabylonCleanUp.ms");
+                if (File.Exists(uninstallScriptPath))
+                {
+                    this.form.log("\nRemoving " + uninstallScriptPath + ".\n");
+                    File.Delete(uninstallScriptPath);
+                }
             }
             catch (Exception ex)
             {
@@ -204,7 +247,7 @@ namespace BabylonJS_Installer
         public async Task<string> GetJSONBodyRequest(string requestURI)
         {
             HttpClient client = new HttpClient();
-            client.DefaultRequestHeaders.Add("User-Agent", "BJS_Installer");
+            client.DefaultRequestHeaders.Add("User-Agent", "UrbanCGI-Exporter-Installer");
             try
             {
                 HttpResponseMessage response = await client.GetAsync(requestURI);

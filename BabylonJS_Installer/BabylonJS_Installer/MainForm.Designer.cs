@@ -901,7 +901,7 @@ namespace BabylonJS_Installer
 			this.title.Name = "title";
 			this.title.Size = new System.Drawing.Size(409, 46);
 			this.title.TabIndex = 2;
-			this.title.Text = "Babylon.js Exporters";
+			this.title.Text = "UrbanCGI Exporters";
 			// 
 			// soft_version
 			// 
@@ -911,7 +911,7 @@ namespace BabylonJS_Installer
 			this.soft_version.Name = "soft_version";
 			this.soft_version.Size = new System.Drawing.Size(98, 20);
 			this.soft_version.TabIndex = 3;
-			this.soft_version.Text = "  v1.7.2";
+			this.soft_version.Text = "  v1.8.0";
 			this.soft_version.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 			// 
 			// button_All_Update
@@ -954,7 +954,7 @@ namespace BabylonJS_Installer
 			this.MinimumSize = new System.Drawing.Size(552, 468);
 			this.Name = "MainForm";
 			this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-			this.Text = "Babylon.js Exporters";
+			this.Text = "Babylon.js Exporters (UrbanCGI Planner build)";
 			this.mainTabControl.ResumeLayout(false);
 			this.tabPage1.ResumeLayout(false);
 			this.panel1.ResumeLayout(false);

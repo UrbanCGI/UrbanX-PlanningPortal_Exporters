@@ -188,30 +188,36 @@ namespace BabylonJS_Installer
         {
             Downloader downloader = new Downloader();
             Task<string> jsonRequest = Task.Run(async () => { return await downloader.GetJSONBodyRequest(downloader.GetURLGitHubAPI()); });
-            //TO DO Find a better way to parse JSON aswell
             string json = jsonRequest.Result;
-            if(string.IsNullOrEmpty(json) ) {
-                this.latestVersionDate = DateTime.Now.ToLongTimeString();
-                return;
+            // The first "created_at" belongs to the newest release. An empty list (no release yet) or an
+            // unreachable GitHub leaves nothing to compare with; upstream's parser crashed on the empty list.
+            var match = string.IsNullOrEmpty(json)
+                ? null
+                : System.Text.RegularExpressions.Regex.Match(json, "\"created_at\"\\s*:\\s*\"([^\"]+)\"");
+            this.latestVersionDate = match != null && match.Success ? match.Groups[1].Value : null;
+            if (this.latestVersionDate == null)
+            {
+                this.form.warn("No release found at " + Downloader.Url_releases_page + " (or GitHub is unreachable), so installed exporters cannot be compared with the latest release. Install stays available.\n");
             }
-
-            string created_at = json.Substring(json.IndexOf("\"created_at\":"));
-            created_at = created_at.Remove(created_at.IndexOf("\","));
-            this.latestVersionDate = created_at.Remove(0, "\"created_at\":\"".Length);
         }
 
         public bool isLatestVersionInstalled(string soft, string version, string location)
         {// To ensure latest version, we compare between last modified time of files and the publish date of github release
+            if (string.IsNullOrEmpty(this.latestVersionDate))
+            {
+                return false; // nothing published yet: leave Install / Update enabled
+            }
+            // Both sides in UTC; the installer stamps the files with the install time when it extracts them.
             var latest = DateTime.Parse(this.latestVersionDate, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
             var isLatestversion = false;
             switch (soft)
             {
                 case "Max":
-                    if (latest <= File.GetLastWriteTime(location + "bin\\assemblies\\Max2Babylon.dll")) isLatestversion = true;
+                    if (latest <= File.GetLastWriteTimeUtc(location + "bin\\assemblies\\Max2Babylon.dll")) isLatestversion = true;
                     break;
 
                 case "Maya":
-                    if (latest <= File.GetLastWriteTime(location + "bin\\plug-ins\\Maya2Babylon.nll.dll")) isLatestversion = true;
+                    if (latest <= File.GetLastWriteTimeUtc(location + "bin\\plug-ins\\Maya2Babylon.nll.dll")) isLatestversion = true;
                     break;
 
                 default:
@@ -230,7 +236,8 @@ namespace BabylonJS_Installer
 
         public void checkNewInstallerVersion()
         {
-            string url_versionFile = "https://raw.githubusercontent.com/BabylonJS/Exporters/master/BabylonJS_Installer/BabylonJS_Installer/BabylonJS_Installer.csproj";
+            // UrbanCGI fork: compare with the fork's master, not upstream's.
+            string url_versionFile = "https://raw.githubusercontent.com/" + Downloader.Repository + "/master/BabylonJS_Installer/BabylonJS_Installer/BabylonJS_Installer.csproj";
 
             string assemblyVersion = Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
@@ -262,7 +269,7 @@ namespace BabylonJS_Installer
                 if (isUpToDate) this.form.log("Application up to date !\n\n");
                 else
                 {
-                    this.form.warn("A new version is available here : https://github.com/BabylonJS/Exporters/releases \n\n");
+                    this.form.warn("A new version of this installer is available here : " + Downloader.Url_releases_page + " \n\n");
                     this.form.goTab("Logs");
                 }
             }

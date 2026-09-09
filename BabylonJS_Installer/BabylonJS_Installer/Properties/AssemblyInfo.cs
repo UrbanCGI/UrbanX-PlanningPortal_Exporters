@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // l'ensemble d'attributs suivant. Changez les valeurs de ces attributs pour modifier les informations
 // associées à un assembly.
 [assembly: AssemblyTitle("BabylonJS_Exporters")]
-[assembly: AssemblyDescription("An app to download and install the Babylon.js exporters from GitHub to your 3D softwares installation directories.")]
+[assembly: AssemblyDescription("Installs the UrbanCGI Planner build of the Babylon.js exporters (from the UrbanCGI fork's GitHub releases, or a package next to the program) into 3ds Max and Maya.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Babylon.js")]
 [assembly: AssemblyProduct("Babylon.js_Exporters")]
@@ -32,5 +32,5 @@ using System.Runtime.InteropServices;
 // Vous pouvez spécifier toutes les valeurs ou indiquer les numéros de build et de révision par défaut
 // en utilisant '*', comme indiqué ci-dessous :
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.7.2.0")]
-[assembly: AssemblyFileVersion("1.7.2.0")]
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]

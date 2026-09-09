@@ -91,14 +91,35 @@ msbuild Max2Babylon.sln -restore -t:Build -p:Configuration=Release_MAX2024 -p:Pl
 `BuildAll.cmd` builds every version. Output lands in `3ds Max/Max2Babylon/bin/Release/<year>/`.
 The Max-side code targets C# 7.3 (net48), so no newer language features.
 
+## Releasing
+
+Every push to the fork's `master` runs the "CD Release" workflow (`.github/workflows/cd.yml`, GitHub
+Actions must be enabled on the fork). It builds every Max version, Maya and the installer, and publishes a
+GitHub Release at https://github.com/UrbanCGI/UrbanX-PlanningPortal_Exporters/releases with the assets
+`Max_<year>.zip`, `Maya_<year>.zip` and `Installer.zip`. The installer looks for exactly these names, so
+keep the packaging step as it is. The workflow can also be started by hand from the Actions tab.
+
 ## Installing on a modeller's machine
 
-With 3ds Max closed, copy the DLLs listed in `Max2Babylon/OnPostBuild.bat` (Max2Babylon, Newtonsoft.Json,
-SharpDX, SharpDX.Mathematics, GDImageLibrary, TargaImage, TQ.Texture, the three Microsoft.WindowsAPICodePack
-assemblies) from `bin/Release/<year>/` into `C:\Program Files\Autodesk\3ds Max <year>\bin\assemblies`.
-On a machine where Max is installed the post-build event does this automatically (it reads the
-`ADSK_3DSMAX_x64_<year>` environment variable Max sets up). The build must be repeated for each Max
-version in use, and reinstalled after every change.
+**With the installer (preferred).** Download `Installer.zip` from the latest fork release, unzip it, and
+run `BabylonJS_Exporters.exe` as administrator with 3ds Max closed. It finds each installed Max version
+through the registry, shows whether the installed exporter is current, and Install / Update pulls
+`Max_<year>.zip` from the fork's latest release into that Max's `bin\assemblies`. Uninstall removes it
+again. This is the fork's own build of the installer (window title "UrbanCGI Planner build", version
+1.8.0): the stock Babylon.js installer points at upstream and would replace the Planner build with the
+stock exporter, so do not mix them.
+
+**Offline.** A `Max_<year>.zip` placed next to `BabylonJS_Exporters.exe` is installed instead of anything
+on GitHub. That is how to test a local build before a release exists (`Compress-Archive` the contents of
+`3ds Max/Max2Babylon/bin/Release/<year>/*.dll`, any folder structure inside the zip is fine), and how to
+install on machines without GitHub access.
+
+**By hand.** With 3ds Max closed, copy the DLLs listed in `Max2Babylon/OnPostBuild.bat` (Max2Babylon,
+Newtonsoft.Json, SharpDX, SharpDX.Mathematics, GDImageLibrary, TargaImage, TQ.Texture, the three
+Microsoft.WindowsAPICodePack assemblies) from `bin/Release/<year>/` into
+`C:\Program Files\Autodesk\3ds Max <year>\bin\assemblies`. On a machine where Max is installed the
+post-build event does this automatically (it reads the `ADSK_3DSMAX_x64_<year>` environment variable Max
+sets up).
 
 To confirm the install: the exporter log shows "Checking Planner naming convention" at the start of an
 export, and the GLB's generator string ends in `v1.0-urbancgi`.
