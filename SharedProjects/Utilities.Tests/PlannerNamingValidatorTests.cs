@@ -57,7 +57,7 @@ namespace Utilities.Tests
                 Mesh("Ph1_St01_IN_RC_Hrd_Ph1_S03_RM", Piling),                // malformed trail -> error
                 Mesh("Ph2_St34_IN_TR_Sidewalk_B"),                            // root level -> unfiled warning
                 Mesh("Ph1_St00_IN_Fway", PlainGroup),                         // undated group -> unfiled warning with hint
-                Mesh("Ph1_St01_RM_RC_Hrd_", Piling),                          // trailing underscore -> warning
+                Mesh("Ph1_St01_RM_RC_Hrd_", Piling),                          // trailing underscore: trimmed by the Planner, not reported
                 Mesh("Ph1_St1_IN_Kerb", Piling),                              // zero padding -> note
                 Mesh("EUS_Con_HRB_Kerb_001"),                                 // untagged context at root -> nothing
                 Mesh("St1_Kerb_003", Piling),                                 // untagged inside dated group -> note
@@ -88,11 +88,11 @@ namespace Utilities.Tests
             Assert.Equal(7, report.DatedGroups);
             Assert.Equal(3, report.UnfiledObjects);
             Assert.Equal(4, report.Errors);
-            Assert.Equal(8, report.Warnings);
+            Assert.Equal(7, report.Warnings);
             Assert.Equal(3, report.Notes);
             Assert.Equal(NamingSeverity.Error, report.Issues.First().Severity);
             Assert.Equal(NamingSeverity.Note, report.Issues.Last().Severity);
-            Assert.Contains("4 error(s), 8 warning(s), 3 note(s)", report.Summary());
+            Assert.Contains("4 error(s), 7 warning(s), 3 note(s)", report.Summary());
         }
 
         [Fact]
@@ -114,7 +114,7 @@ namespace Utilities.Tests
             Assert.Contains(warnings, w => w.Subject == "Ph0_St00_IN_Hoarding_B" && w.Message.Contains("(St06)"));
             Assert.Contains(warnings, w => w.Subject == "Ph2_St34_IN_TR_Sidewalk_B" && w.Message.Contains("unfiled") && w.Message.Contains("Group it under a node named"));
             Assert.Contains(warnings, w => w.Subject == "Ph1_St00_IN_Fway" && w.Message.Contains("Its group 'Context' needs an order number and dates"));
-            Assert.Contains(warnings, w => w.Subject == "Ph1_St01_RM_RC_Hrd_" && w.Message.Contains("stray underscore"));
+            Assert.DoesNotContain(warnings, w => w.Subject == "Ph1_St01_RM_RC_Hrd_"); // edge underscores are the Planner's to trim
             Assert.Contains(warnings, w => w.Subject == "Ph1_St01_IN" && w.Message.Contains("no description"));
             Assert.Contains(warnings, w => w.Subject == "Ph3_St03_IN_Pile" && w.Message.Contains("3ds Max layer '03_Sheet_Piling_DS2_18-09-26_23-10-26'"));
         }

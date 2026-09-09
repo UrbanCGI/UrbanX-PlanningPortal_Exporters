@@ -77,7 +77,8 @@ namespace Utilities.Planner
     /// Severity guide:
     ///   Error   - the Planner cannot read the name at all, or two exported objects share a name.
     ///   Warning - the name reads, but the Planner will schedule it differently from what was meant
-    ///             (unfiled, undated, stage mismatch, empty description, case-only twins).
+    ///             (unfiled, undated, stage mismatch, empty description, case-only twins). Stray
+    ///             underscores at the edge of a description are trimmed by the Planner and not reported.
     ///   Note    - cosmetic or advisory (zero padding, untagged object inside a dated group, odd years).
     /// </summary>
     public static class PlannerNamingValidator
@@ -180,15 +181,12 @@ namespace Utilities.Planner
                     "'{0}': the text after the description looks like a second Ph/St tag but does not read as one. A trailing tag must be _Ph<n>_St<nn>_IN|RM at the very end of the name (notes go after a space).", name));
             }
 
+            // A stray underscore at the description's edge ("..._C_") is trimmed by the Planner and is deliberately
+            // not reported: on real models it drowned the log (Arjun, 2026-09-09).
             if (parsed.Description.Length == 0)
             {
                 Add(report, NamingSeverity.Warning, name, string.Format(
                     "'{0}': no description after the tag, so the Planner has to name the activity after its group.", name));
-            }
-            else if (parsed.Description.StartsWith("_", StringComparison.Ordinal) || parsed.Description.EndsWith("_", StringComparison.Ordinal))
-            {
-                Add(report, NamingSeverity.Warning, name, string.Format(
-                    "'{0}': the description '{1}' has a stray underscore at its edge.", name, parsed.Description));
             }
 
             if (NeedsPadding(parsed.Lead) || NeedsPadding(parsed.Trail))
