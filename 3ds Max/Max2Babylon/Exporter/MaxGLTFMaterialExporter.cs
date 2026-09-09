@@ -77,7 +77,7 @@ internal class MaxGLTFMaterialExporter : IGLTFMaterialExporter
             return null;
         }
 
-        var validImageFormat = TextureUtilities.GetValidImageFormat(Path.GetExtension(sourcePath));
+        var validImageFormat = TextureUtilities.GetValidImageFormatForFile(sourcePath, logger);
 
         if (validImageFormat == null)
         {

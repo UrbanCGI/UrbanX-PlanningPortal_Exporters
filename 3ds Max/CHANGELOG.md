@@ -229,3 +229,14 @@ not exported correctly using glTF
 - Fix _getSpecialTexmap null reference exception (https://github.com/BabylonJS/Exporters/pull/539)
 
 - Fix #472 : add NormalBumpTex support (https://github.com/BabylonJS/Exporters/pull/538)
+
+## v1.0-urbancgi (UrbanCGI fork)
+### (2026-09-09)
+**Implemented changes**
+- Textures are exported by content, not by file extension: a TGA (or DDS, BMP, TIFF, GIF) hiding behind a .png/.jpg name is decoded and re-encoded instead of being embedded verbatim, a JPEG behind a .png name is declared image/jpeg, and every mismatch is logged with a summary at the end of the export. See PLANNER.md.
+- Planner naming check: a pre-flight pass over the nodes about to be exported reports objects and groups that the UrbanCGI Planner cannot read or would schedule differently (malformed Ph/St tags, unfiled objects, undated groups, stage mismatches, duplicates, case-only twin groups). Two new options: "Check Planner naming" (on) and "Stop export on naming errors" (off).
+- The generator string now ends in v1.0-urbancgi so fork exports are recognisable.
+- Unit tests for the shared, Max-free code in SharedProjects/Utilities.Tests.
+
+**Fixed bugs**
+- .jpg sources with texture operations, and .jpeg sources in general, fell through the format switches (unsupported-format warning / image/ mime type); both are now normalised to jpg.

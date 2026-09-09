@@ -15,6 +15,192 @@ namespace Utilities
         public static List<string> invalidGltfFormats = new List<string>(new string[] { "dds", "tga", "tif", "tiff", "bmp", "gif" });
         public static readonly IEnumerable<TextureOperation> NoTransforms = Enumerable.Empty<TextureOperation>();
 
+        // ------------------------------------------------------------------------------------------
+        // Content-based format detection (UrbanCGI fork)
+        //
+        // Upstream trusted the file extension: png/jpg sources were copied byte-for-byte and declared
+        // as image/png|jpeg, so a TGA renamed ".png" (which 3ds Max decodes happily) reached the GLB
+        // verbatim and Babylon.js aborted the whole model load on the one undecodable image. Every
+        // entry point in this class now asks for the file's REAL format and treats the extension as a
+        // fallback that only matters when the bytes are not recognised.
+        // ------------------------------------------------------------------------------------------
+
+        /// <summary>One texture whose bytes disagreed with its extension during the current export.</summary>
+        public sealed class TextureCorrection
+        {
+            public string SourcePath;
+            /// <summary>Format token implied by the extension, e.g. "png".</summary>
+            public string DeclaredFormat;
+            /// <summary>Format token read from the bytes, e.g. "tga".</summary>
+            public string ActualFormat;
+            /// <summary>Format the texture was exported as ("png" or "jpg"), or null when it could not be exported.</summary>
+            public string ExportedFormat;
+        }
+
+        private static readonly Dictionary<string, string> sniffCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> reportedMismatches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly List<TextureCorrection> corrections = new List<TextureCorrection>();
+
+        /// <summary>Textures corrected so far in the current export (reset by <see cref="BeginExport"/>).</summary>
+        public static IReadOnlyList<TextureCorrection> Corrections { get { return corrections; } }
+
+        /// <summary>Call once at the start of an export: forgets cached sniff results and the correction log.</summary>
+        public static void BeginExport()
+        {
+            sniffCache.Clear();
+            reportedMismatches.Clear();
+            corrections.Clear();
+        }
+
+        /// <summary>The path's extension as a normalised format token ("jpg", "tif", ...), or "" when it has none.</summary>
+        public static string ExtensionToken(string path)
+        {
+            var extension = Path.GetExtension(path ?? string.Empty);
+            return string.IsNullOrEmpty(extension) ? string.Empty : ImageFormatSniffer.NormaliseToken(extension);
+        }
+
+        /// <summary>True when the two tokens / extensions name the same format ("jpeg" and ".jpg" do).</summary>
+        public static bool SameFormat(string a, string b)
+        {
+            return string.Equals(ImageFormatSniffer.NormaliseToken(a), ImageFormatSniffer.NormaliseToken(b), StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// The file's real format token as read from its bytes ("png", "jpg", "tga", "dds", ...). Falls back to the
+        /// extension token when the file is missing or its content is not recognised.
+        /// </summary>
+        public static string GetSourceImageFormat(string sourcePath)
+        {
+            string declared, actual;
+            HasFormatMismatch(sourcePath, out declared, out actual);
+            return actual ?? declared;
+        }
+
+        /// <summary>
+        /// True when the bytes of <paramref name="sourcePath"/> are a recognised image format that differs from its
+        /// extension. <paramref name="declared"/> is the extension token; <paramref name="actual"/> the sniffed token,
+        /// or null when the content was not recognised or the file does not exist.
+        /// </summary>
+        public static bool HasFormatMismatch(string sourcePath, out string declared, out string actual)
+        {
+            declared = ExtensionToken(sourcePath);
+            actual = null;
+            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
+            {
+                return false;
+            }
+
+            // Keyed on size + modification time so a file fixed between two exports is sniffed again.
+            string key;
+            try
+            {
+                var info = new FileInfo(sourcePath);
+                key = sourcePath + "|" + info.Length + "|" + info.LastWriteTimeUtc.Ticks;
+            }
+            catch (Exception)
+            {
+                key = sourcePath;
+            }
+            string sniffed;
+            if (!sniffCache.TryGetValue(key, out sniffed))
+            {
+                sniffed = ImageFormatSniffer.Detect(sourcePath);
+                sniffCache[key] = sniffed;
+            }
+            actual = sniffed;
+            return sniffed != null && !string.Equals(sniffed, declared, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// The glTF-safe format ("png" or "jpg") a texture is exported as, decided from the file's real content rather
+        /// than its extension. Logs one warning per file when the two disagree. Null when the format is unsupported.
+        /// Use this instead of GetValidImageFormat(Path.GetExtension(path)).
+        /// </summary>
+        public static string GetValidImageFormatForFile(string sourcePath, ILoggingProvider logger)
+        {
+            return GetValidImageFormatForFile(sourcePath, logger, null);
+        }
+
+        /// <param name="context">Extra words for the warning, e.g. " (map 'Weldlock_DIFFUSE.png')".</param>
+        public static string GetValidImageFormatForFile(string sourcePath, ILoggingProvider logger, string context)
+        {
+            string declared, actual;
+            bool mismatch = HasFormatMismatch(sourcePath, out declared, out actual);
+            var token = mismatch ? actual : declared;
+            var target = string.IsNullOrEmpty(token) ? null : _getValidImageFormat("." + token, validGltfFormats, invalidGltfFormats);
+            if (mismatch)
+            {
+                ReportMismatch(sourcePath, declared, actual, target, logger, context);
+            }
+            return target;
+        }
+
+        private static void ReportMismatch(string sourcePath, string declared, string actual, string exportedAs, ILoggingProvider logger, string context)
+        {
+            if (!reportedMismatches.Add(sourcePath))
+            {
+                return;
+            }
+            corrections.Add(new TextureCorrection { SourcePath = sourcePath, DeclaredFormat = declared, ActualFormat = actual, ExportedFormat = exportedAs });
+            if (logger == null)
+            {
+                return;
+            }
+            var outcome = exportedAs != null
+                ? string.Format("It is exported as {0} this time", exportedAs.ToUpperInvariant())
+                : "It cannot be exported";
+            logger.RaiseWarning(string.Format(
+                "Texture '{0}'{1} has a .{2} extension but its content is {3}. {4}. Fix the source file (re-save it as a real .{2}, or rename it .{5}) so the model stops depending on this correction. Path: {6}",
+                Path.GetFileName(sourcePath), context ?? string.Empty, declared, actual.ToUpperInvariant(), outcome, actual, sourcePath), 3);
+        }
+
+        /// <summary>
+        /// The bytes of <paramref name="sourcePath"/> ready to be embedded as <paramref name="targetFormat"/> ("png" or
+        /// "jpeg"). When the file's real content already is that format the bytes are returned verbatim; otherwise (a
+        /// TGA behind a .png name, a DDS, ...) the image is decoded with the right decoder and re-encoded. Only when the
+        /// content cannot be decoded at all are the raw bytes returned, with an error logged.
+        /// </summary>
+        public static byte[] ReadImageBytes(string sourcePath, string targetFormat, long imageQuality, ILoggingProvider logger)
+        {
+            var real = GetSourceImageFormat(sourcePath);
+            var target = ImageFormatSniffer.NormaliseToken(string.IsNullOrEmpty(targetFormat) ? "png" : targetFormat);
+            if (string.Equals(real, target, StringComparison.Ordinal))
+            {
+                return File.ReadAllBytes(sourcePath);
+            }
+
+            Bitmap bitmap = null;
+            try
+            {
+                bitmap = _convertToBitmap(sourcePath, NoTransforms, real, logger);
+            }
+            catch (Exception e)
+            {
+                logger.RaiseError(string.Format("Failed to decode texture {0} as {1}: {2}", Path.GetFileName(sourcePath), real.ToUpperInvariant(), e.Message), 3);
+            }
+            if (bitmap == null)
+            {
+                logger.RaiseError(string.Format("Texture {0} is embedded as-is; viewers may fail to load the model.", Path.GetFileName(sourcePath)), 3);
+                return File.ReadAllBytes(sourcePath);
+            }
+            using (bitmap)
+            using (var memory = new MemoryStream())
+            {
+                SaveBitmap(memory, bitmap, target == "jpg" ? ImageFormat.Jpeg : ImageFormat.Png, imageQuality);
+                return memory.ToArray();
+            }
+        }
+
+#if !DONT_USE_PALOMA_TARGAIMAGE
+        private static Bitmap LoadTarga(string path)
+        {
+            // The Stream overload ignores the file name, so a TGA hiding behind a ".png" extension decodes too.
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                return Paloma.TargaImage.LoadTargaImage(stream);
+            }
+        }
+#endif
 
         public static string EncodeName(this IEnumerable<TextureOperation> operations)
         {
@@ -96,7 +282,8 @@ namespace Utilities
             {
                 try
                 {
-                    switch (Path.GetExtension(absolutePath).ToLower())
+                    // Decided from the bytes; the extension is only a fallback when the content is not recognised.
+                    switch ("." + GetSourceImageFormat(absolutePath))
                     {
 #if !DONT_USE_GDIMAGE_LIBRARY
                         case ".dds":
@@ -106,7 +293,7 @@ namespace Utilities
 #if !DONT_USE_PALOMA_TARGAIMAGE
                         case ".tga":
                             // External library TargaImage.dll
-                            return Paloma.TargaImage.LoadTargaImage(absolutePath);
+                            return LoadTarga(absolutePath);
 #endif
                         case ".bmp":
                         case ".gif":
@@ -176,7 +363,7 @@ namespace Utilities
 
         public static Bitmap GetBitmap(string sourcePath, IEnumerable<TextureOperation> transforms, ILoggingProvider logger)
         {
-            string imageFormat = Path.GetExtension(sourcePath).Substring(1).ToLower(); // remove the dot
+            string imageFormat = GetSourceImageFormat(sourcePath); // the real content format, not the extension
             return _convertToBitmap(sourcePath, transforms, imageFormat, logger);
         }
 
@@ -304,11 +491,14 @@ namespace Utilities
             {
                 if (File.Exists(sourcePath))
                 {
-                    string imageFormat = Path.GetExtension(sourcePath).Substring(1).ToLower(); // remove the dot
+                    // The REAL format of the bytes; the extension is only a fallback when the content is not recognised.
+                    string imageFormat = GetSourceImageFormat(sourcePath);
+                    // The format the destination name promises (png or jpg); callers derive it from the real format too.
+                    string destFormat = ExtensionToken(destPath);
 
                     if (validFormats.Contains(imageFormat))
                     {
-                        if (transforms.Count() == 0)
+                        if (transforms.Count() == 0 && SameFormat(imageFormat, destFormat))
                         {
                             if (sourcePath != destPath)
                             {
@@ -317,6 +507,8 @@ namespace Utilities
                         }
                         else
                         {
+                            // Either a texture operation applies, or the bytes are not what the destination name says
+                            // (e.g. a JPEG behind a .png name): decode with the right decoder and re-encode.
                             _convertToBitmapAndSave(sourcePath, transforms, destPath, imageFormat, imageQuality, logger);
                         }
                     }
@@ -349,90 +541,27 @@ namespace Utilities
         /// <param name="imageFormat"></param>
         private static void _convertToBitmapAndSave(string sourcePath, IEnumerable<TextureOperation> transforms, string destPath, string imageFormat, long imageQuality, ILoggingProvider logger)
         {
-            Bitmap bitmap;
-            switch (imageFormat)
+            try
             {
-#if !DONT_USE_GDIMAGE_LIBRARY
-            case "dds":
-                    // External libraries GDImageLibrary.dll + TQ.Texture.dll
-                    try
-                    {
-                        bitmap = GDImageLibrary._DDS.LoadImage(sourcePath);
-
-                        SaveBitmap(bitmap, destPath, ImageFormat.Png, imageQuality, logger);
-                    }
-                    catch (Exception e)
-                    {
-                        logger.RaiseError(string.Format("Failed to convert texture {0} to png: {1}", Path.GetFileName(sourcePath), e.Message), 3);
-                    }
-                    break;
-#endif
-#if !DONT_USE_PALOMA_TARGAIMAGE
-                case "tga":
-                    {
-                        // External library TargaImage.dll
-                        try
-                        {
-                            bitmap = Paloma.TargaImage.LoadTargaImage(sourcePath);
-                            if (transforms.Count() != 0) bitmap.TransformTextureInPlace(transforms);
-                            SaveBitmap(bitmap, destPath, ImageFormat.Png, imageQuality, logger);
-                        }
-                        catch (Exception e)
-                        {
-                            logger.RaiseError(string.Format("Failed to convert texture {0} to png: {1}", Path.GetFileName(sourcePath), e.Message), 3);
-                        }
-                        break;
-                    }
-#endif
-                case "bmp":
-                    {
-                        bitmap = new Bitmap(sourcePath);
-                        if (transforms.Count() != 0) bitmap.TransformTextureInPlace(transforms);
-                        SaveBitmap(bitmap, destPath, ImageFormat.Jpeg, imageQuality, logger); // no alpha
-                        break;
-                    }
-                case "jpeg":
-                    {
-                        if (transforms.Count() == 0)
-                        {
-                            File.Copy(sourcePath, destPath, true);
-                            break;
-                        }
-                        bitmap = new Bitmap(sourcePath);
-                        if (transforms.Count() != 0) bitmap.TransformTextureInPlace(transforms);
-                        SaveBitmap(bitmap, destPath, ImageFormat.Jpeg, imageQuality, logger);
-                        break;
-                    }
-                case "png":
-                    {
-                        if (transforms.Count() == 0)
-                        {
-                            File.Copy(sourcePath, destPath, true);
-                            break;
-                        }
-                        bitmap = new Bitmap(sourcePath);
-                        if (transforms.Count() != 0) bitmap.TransformTextureInPlace(transforms);
-                        SaveBitmap(bitmap, destPath, ImageFormat.Png, imageQuality, logger);
-                        break;
-                    }
-                case "tif":
-                case "tiff":
-                case "gif":
-                    {
-                        bitmap = new Bitmap(sourcePath);
-                        if (transforms.Count() != 0) bitmap.TransformTextureInPlace(transforms);
-                        SaveBitmap(bitmap, destPath, ImageFormat.Png, imageQuality, logger);
-                        break;
-                    }
-                default:
-                    logger.RaiseWarning(string.Format("Format of texture {0} is not supported by the exporter. Consider using a standard image format like jpg or png.", Path.GetFileName(sourcePath)), 3);
-                    break;
+                Bitmap bitmap = _convertToBitmap(sourcePath, transforms, imageFormat, logger);
+                if (bitmap == null)
+                {
+                    return; // already reported by _convertToBitmap
+                }
+                // Save in the format the destination name promises (png or jpg). Callers derive that name from the
+                // source's real format, so a TGA behind a .png name ends up as a genuine PNG; a BMP still becomes a JPG.
+                var outputFormat = SameFormat(ExtensionToken(destPath), "jpg") ? ImageFormat.Jpeg : ImageFormat.Png;
+                SaveBitmap(bitmap, destPath, outputFormat, imageQuality, logger);
+            }
+            catch (Exception e)
+            {
+                logger.RaiseError(string.Format("Failed to convert texture {0}: {1}", Path.GetFileName(sourcePath), e.Message), 3);
             }
         }
 
         public static Bitmap _convertToBitmap(string sourcePath, IEnumerable<TextureOperation> transforms, string imageFormat, ILoggingProvider logger)
         {
-            switch (imageFormat)
+            switch (ImageFormatSniffer.NormaliseToken(imageFormat))
             {
 #if !DONT_USE_GDIMAGE_LIBRARY
                 case "dds":
@@ -453,7 +582,7 @@ namespace Utilities
                         // External library TargaImage.dll
                         try
                         {
-                            return Paloma.TargaImage.LoadTargaImage(sourcePath).TransformTextureInPlace(transforms);
+                            return LoadTarga(sourcePath).TransformTextureInPlace(transforms);
                         }
                         catch (Exception e)
                         {
@@ -463,12 +592,14 @@ namespace Utilities
                     }
 #endif
                 case "bmp":
+                case "jpg":
                 case "jpeg":
                 case "png":
                 case "tif":
                 case "tiff":
                 case "gif":
                     {
+                        // GDI+ identifies these by content, so a mislabelled file decodes correctly here.
                         return new Bitmap(sourcePath).TransformTextureInPlace(transforms);
                     }
                 default:

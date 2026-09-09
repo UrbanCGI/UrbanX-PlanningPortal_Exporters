@@ -120,6 +120,9 @@ namespace Max2Babylon
             exportParameters.flattenScene = Loader.Core.RootNode.GetBoolProperty("babylonjs_flattenScene");
             exportParameters.mergeContainersAndXRef = Loader.Core.RootNode.GetBoolProperty("babylonjs_mergecontainersandxref");
             exportParameters.bakeAnimationType = (BakeAnimationType) Loader.Core.RootNode.GetFloatProperty("babylonjs_bakeAnimationsType", 0);
+            // UrbanCGI fork: Planner naming check is on by default, strict (stop on errors) off by default.
+            exportParameters.plannerNamingCheck = Loader.Core.RootNode.GetBoolProperty(MaxExportParameters.PlannerNamingCheckProperty, 1);
+            exportParameters.plannerNamingStrict = Loader.Core.RootNode.GetBoolProperty(MaxExportParameters.PlannerNamingStrictProperty, 0);
 
             exportParameters.pbrFull = Loader.Core.RootNode.GetBoolProperty(ExportParameters.PBRFullPropertyName);
             exportParameters.pbrNoLight = Loader.Core.RootNode.GetBoolProperty(ExportParameters.PBRNoLightPropertyName);

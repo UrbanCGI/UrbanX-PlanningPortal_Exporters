@@ -98,7 +98,8 @@ namespace Babylon2GLTF
                     return null;
                 }
 
-                var validImageFormat = TextureUtilities.GetValidImageFormat(Path.GetExtension(sourcePath));
+                // Decided from the file's real content, not its extension (a TGA renamed .png used to be embedded verbatim).
+                var validImageFormat = TextureUtilities.GetValidImageFormatForFile(sourcePath, logger);
 
                 if (validImageFormat == null)
                 {
@@ -522,7 +523,8 @@ namespace Babylon2GLTF
             }
             else
             {
-                imageBytes = File.ReadAllBytes(imageSourcePath);
+                // Verbatim when the bytes already are the declared format; re-encoded when they are not.
+                imageBytes = TextureUtilities.ReadImageBytes(imageSourcePath, gltfImage.FileExtension, textureQuality, logger);
             }
 
             // Chunk must be padded with trailing zeros (0x00) to satisfy alignment requirements

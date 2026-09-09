@@ -28,7 +28,8 @@ namespace Max2Babylon
 
         private bool isBabylonExported, isGltfExported;
 
-        public static string exporterVersion = "Custom.Build.Version";
+        // UrbanCGI fork: shows up in the GLB's asset.generator so a file's origin is clear during triage.
+        public static string exporterVersion = "1.0-urbancgi";
         public float scaleFactorToMeters = 1.0f;
 
         public const int MaxSceneTicksPerSecond = 4800; //https://knowledge.autodesk.com/search-result/caas/CloudHelp/cloudhelp/2016/ENU/MAXScript-Help/files/GUID-141213A1-B5A8-457B-8838-E602022C8798-htm.html
@@ -228,6 +229,7 @@ namespace Max2Babylon
             watch.Start();
 
             this.exportParameters = exportParameters;
+            TextureUtilities.BeginExport(); // forget sniff results and the correction log of the previous export
             IINode exportNode = null;
             double flattenTime = 0;
             if (exportParameters is MaxExportParameters)
@@ -308,6 +310,14 @@ namespace Max2Babylon
 
             
             ReportProgressChanged(0);
+
+            // UrbanCGI fork: check the Planner naming convention over the nodes about to be exported, before anything is written.
+            if (!RunPlannerNamingCheck(gameScene, exportParameters))
+            {
+                ReportProgressChanged(100);
+                ScriptsUtilities.ExecuteMaxScriptCommand(@"global BabylonExporterStatus = ""Available""");
+                return;
+            }
 
             string tempOutputDirectory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
             string outputDirectory = Path.GetDirectoryName(exportParameters.outputPath);
@@ -893,6 +903,7 @@ namespace Max2Babylon
             Directory.Delete(tempOutputDirectory, true);
             watch.Stop();
 
+            ReportTextureCorrections();
             RaiseMessage(string.Format("Exportation done in {0:0.00}s: {1}", watch.ElapsedMilliseconds / 1000.0, fileExportString), Color.Blue);
             IUTF8Str max_notification = Autodesk.Max.GlobalInterface.Instance.UTF8Str.Create("BabylonExportComplete");
             Loader.Global.BroadcastNotification(SystemNotificationCode.PostExport, max_notification);

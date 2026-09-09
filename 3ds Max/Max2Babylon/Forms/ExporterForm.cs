@@ -125,6 +125,8 @@ namespace Max2Babylon
             Tools.PrepareCheckBox(chkTryReuseTexture, Loader.Core.RootNode, "babylonjs_tryReuseTexture", 0);
 
             Tools.PrepareCheckBox(chkUseClone, Loader.Core.RootNode, "babylonjs_useClone", 0);
+            Tools.PrepareCheckBox(chkPlannerNaming, Loader.Core.RootNode, MaxExportParameters.PlannerNamingCheckProperty, 1);
+            Tools.PrepareCheckBox(chkPlannerNamingStrict, Loader.Core.RootNode, MaxExportParameters.PlannerNamingStrictProperty, 0);
 
 
             #region prepare draco            
@@ -350,6 +352,8 @@ namespace Max2Babylon
             Tools.UpdateCheckBox(chkFlatten, Loader.Core.RootNode, "babylonjs_flattenScene");
             Tools.UpdateCheckBox(chkMrgContainersAndXref, Loader.Core.RootNode, "babylonjs_mergecontainersandxref");
             Tools.UpdateCheckBox(chkTryReuseTexture, Loader.Core.RootNode, "babylonjs_tryReuseTexture");
+            Tools.UpdateCheckBox(chkPlannerNaming, Loader.Core.RootNode, MaxExportParameters.PlannerNamingCheckProperty);
+            Tools.UpdateCheckBox(chkPlannerNamingStrict, Loader.Core.RootNode, MaxExportParameters.PlannerNamingStrictProperty);
 
             SaveDracoOptions();
         }
@@ -503,7 +507,9 @@ namespace Max2Babylon
                     mergeContainersAndXRef = chkMrgContainersAndXref.Checked,
                     useMultiExporter = multiExport,
                     tryToReuseOpaqueAndBlendTexture = chkTryReuseTexture.Checked,
-                    useClone = chkUseClone.Checked
+                    useClone = chkUseClone.Checked,
+                    plannerNamingCheck = chkPlannerNaming.Checked,
+                    plannerNamingStrict = chkPlannerNamingStrict.Checked
                 };
 
                 if (exportParameters.dracoCompression)

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Unit tests for the shared, 3ds Max-free parts of the exporter (UrbanCGI fork): the byte-level image format
+    sniffer, the texture correction path and the Planner naming checks. The shared sources are compiled straight
+    into this assembly, exactly as Max2Babylon does, so internal types are reachable and no Max install is needed.
+
+      dotnet test SharedProjects/Utilities.Tests/Utilities.Tests.csproj
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Utilities.Tests</RootNamespace>
+    <AssemblyName>Utilities.Tests</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS1591;CS0162;CS0219;CS1998;WFO1000;NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Web" />
+    <Reference Include="GDImageLibrary">
+      <HintPath>..\..\3ds Max\Refs\GDImageLibrary.dll</HintPath>
+    </Reference>
+    <Reference Include="TargaImage">
+      <HintPath>..\..\3ds Max\Refs\TargaImage.dll</HintPath>
+    </Reference>
+    <Reference Include="TQ.Texture">
+      <HintPath>..\..\3ds Max\Refs\TQ.Texture.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- The same shared set Max2Babylon compiles; the entities reference each other across these folders. -->
+  <Import Project="..\Utilities\Extensions.projitems" Label="Shared" />
+  <Import Project="..\BabylonExport.Entities\BabylonExport.Entities.projitems" Label="Shared" />
+  <Import Project="..\BabylonFileConverter\BabylonFileConverter.projitems" Label="Shared" />
+  <Import Project="..\GltfExport.Entities\GltfExport.Entities.projitems" Label="Shared" />
+  <Import Project="..\Babylon2GLTF\Babylon2GLTF.projitems" Label="Shared" />
+</Project>

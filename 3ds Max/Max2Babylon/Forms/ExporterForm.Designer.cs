@@ -94,6 +94,8 @@ namespace Max2Babylon
 			this.chkExportMorphNames = new System.Windows.Forms.CheckBox();
 			this.chkUseClone = new System.Windows.Forms.CheckBox();
 			this.chkTryReuseTexture = new System.Windows.Forms.CheckBox();
+			this.chkPlannerNaming = new System.Windows.Forms.CheckBox();
+			this.chkPlannerNamingStrict = new System.Windows.Forms.CheckBox();
 			this.advancedTabPage = new System.Windows.Forms.TabPage();
 			this.dracoGroupBox = new System.Windows.Forms.GroupBox();
 			this.dracoUserControl = new Utilities.DracoUserControl();
@@ -853,6 +855,8 @@ namespace Max2Babylon
 			this.exportOptionsScrollPanel.Controls.Add(this.comboOutputFormat);
 			this.exportOptionsScrollPanel.Controls.Add(this.chkUseClone);
 			this.exportOptionsScrollPanel.Controls.Add(this.chkTryReuseTexture);
+			this.exportOptionsScrollPanel.Controls.Add(this.chkPlannerNaming);
+			this.exportOptionsScrollPanel.Controls.Add(this.chkPlannerNamingStrict);
 			this.exportOptionsScrollPanel.Controls.Add(this.chkExportAnimationsOnly);
 			this.exportOptionsScrollPanel.Controls.Add(this.chkExportTextures);
 			this.exportOptionsScrollPanel.Controls.Add(this.label3);
@@ -942,6 +946,34 @@ namespace Max2Babylon
 			this.chkTryReuseTexture.TabIndex = 44;
 			this.chkTryReuseTexture.Text = "Try reuse texture";
 			this.chkTryReuseTexture.UseVisualStyleBackColor = true;
+			//
+			// chkPlannerNaming
+			//
+			this.chkPlannerNaming.AutoSize = true;
+			this.chkPlannerNaming.Checked = true;
+			this.chkPlannerNaming.CheckState = System.Windows.Forms.CheckState.Checked;
+			this.chkPlannerNaming.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+			this.chkPlannerNaming.Location = new System.Drawing.Point(457, 180);
+			this.chkPlannerNaming.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+			this.chkPlannerNaming.Name = "chkPlannerNaming";
+			this.chkPlannerNaming.Size = new System.Drawing.Size(134, 17);
+			this.chkPlannerNaming.TabIndex = 46;
+			this.chkPlannerNaming.Text = "Check Planner naming";
+			this.chkPlannerNaming.UseVisualStyleBackColor = true;
+			this.chkPlannerNaming.KeyDown += new System.Windows.Forms.KeyEventHandler(this.ExporterForm_KeyDown);
+			//
+			// chkPlannerNamingStrict
+			//
+			this.chkPlannerNamingStrict.AutoSize = true;
+			this.chkPlannerNamingStrict.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+			this.chkPlannerNamingStrict.Location = new System.Drawing.Point(457, 204);
+			this.chkPlannerNamingStrict.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+			this.chkPlannerNamingStrict.Name = "chkPlannerNamingStrict";
+			this.chkPlannerNamingStrict.Size = new System.Drawing.Size(166, 17);
+			this.chkPlannerNamingStrict.TabIndex = 47;
+			this.chkPlannerNamingStrict.Text = "Stop export on naming errors";
+			this.chkPlannerNamingStrict.UseVisualStyleBackColor = true;
+			this.chkPlannerNamingStrict.KeyDown += new System.Windows.Forms.KeyEventHandler(this.ExporterForm_KeyDown);
 			// 
 			// advancedTabPage
 			// 
@@ -1102,6 +1134,8 @@ namespace Max2Babylon
         private System.Windows.Forms.PictureBox pictureBox1;
         private System.Windows.Forms.Panel exportOptionsScrollPanel;
         private System.Windows.Forms.CheckBox chkTryReuseTexture;
+        private System.Windows.Forms.CheckBox chkPlannerNaming;
+        private System.Windows.Forms.CheckBox chkPlannerNamingStrict;
 
         private System.Windows.Forms.CheckBox chkUseClone;
 

@@ -1041,7 +1041,9 @@ namespace Max2Babylon
 
             RaiseMessage("Export texture named: " + Path.GetFileName(sourcePath), 2);
 
-            var validImageFormat = TextureUtilities.GetValidImageFormat(Path.GetExtension(sourcePath));
+            // The export format follows the file's real content, not its extension: a TGA renamed .png used to be
+            // embedded verbatim as image/png and made Babylon.js abort the whole model load.
+            var validImageFormat = TextureUtilities.GetValidImageFormatForFile(sourcePath, this, string.Format(" (map '{0}')", texture.MapName));
             if (validImageFormat == null)
             {
                 // Image format is not supported by the exporter

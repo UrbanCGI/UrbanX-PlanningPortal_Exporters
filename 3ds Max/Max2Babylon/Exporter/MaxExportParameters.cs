@@ -31,5 +31,12 @@ namespace Max2Babylon
         public BakeAnimationType bakeAnimationType = BakeAnimationType.DoNotBakeAnimation;
         // export as clone when node's material are not identical
         public bool useClone = false;
+
+        // UrbanCGI fork: pre-flight check of the Planner naming convention (see BabylonExporter.PlannerChecks.cs).
+        public const string PlannerNamingCheckProperty = "babylonjs_plannerNamingCheck";
+        public const string PlannerNamingStrictProperty = "babylonjs_plannerNamingStrict";
+        public bool plannerNamingCheck = true;
+        // stop the export (nothing is written) when the check finds at least one error
+        public bool plannerNamingStrict = false;
     }
 }
