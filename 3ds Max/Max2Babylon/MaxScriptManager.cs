@@ -56,6 +56,14 @@ namespace Max2Babylon
 
             BabylonExporter exporter = new BabylonExporter();
 
+            // UrbanCGI fork: the log is always kept as <model>.export-log.txt next to the exported file.
+            var logLines = new System.Text.StringBuilder();
+            Action<int, string> capture = (rank, text) => logLines.Append(new string('\t', Math.Max(0, rank))).Append(text).Append("\r\n");
+            exporter.OnWarning += (warning, rank) => capture(rank, warning);
+            exporter.OnError += (error, rank) => capture(rank, error);
+            exporter.OnMessage += (message, color, rank, emphasis) => capture(rank, message);
+            exporter.OnVerbose += (message, color, rank, emphasis) => capture(rank, message);
+
             if (logInListener)
             {
                 // Init log system
@@ -79,6 +87,14 @@ namespace Max2Babylon
 
             // Start export
             exporter.Export(exportParameters);
+
+            string logError;
+            var logPath = ExportLog.Write(exportParameters.outputPath, logLines.ToString(), out logError);
+            if (logInListener)
+            {
+                Autodesk.Max.GlobalInterface.Instance.TheListener.EditStream.Printf(
+                    logPath != null ? "Log saved to " + logPath + "\n" : "Could not save the export log: " + logError + "\n");
+            }
         }
 
 

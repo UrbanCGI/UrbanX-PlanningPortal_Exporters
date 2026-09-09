@@ -237,6 +237,8 @@ not exported correctly using glTF
 - Planner naming check: a pre-flight pass over the nodes about to be exported reports objects and groups that the UrbanCGI Planner cannot read or would schedule differently (malformed Ph/St tags, unfiled objects, undated groups, stage mismatches, duplicates, case-only twin groups). Two new options: "Check Planner naming" (on) and "Stop export on naming errors" (off).
 - The generator string now ends in v1.0-urbancgi so fork exports are recognisable.
 - Unit tests for the shared, Max-free code in SharedProjects/Utilities.Tests.
+- Every export writes its log as `<model>.export-log.txt` next to the exported file (dialog and MAXScript exports alike); the Log tab's copy button, which upstream had parked off-screen, is docked at the bottom of the tab and copies the whole tree.
+- The naming check no longer reports stray underscores at the edge of a description (the Planner trims them).
 - Installer (v1.8.0): pulls packages from the fork's GitHub Releases instead of upstream's, installs a `Max_<year>.zip` placed next to the program without going online, downloads to the temp folder, stamps installed files with the install time so "up to date" is reported correctly, and no longer crashes when the repository has no release yet.
 
 **Fixed bugs**

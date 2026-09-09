@@ -12,7 +12,7 @@ namespace Utilities
             string result = "";
             foreach (TreeNode node in tree.Nodes)
             {
-                result += node.ToPrettyString();
+                result += node.ToPrettyString(ignoreHiddenNodes);
                 result += "\r\n";
             }
             return result;
@@ -33,7 +33,7 @@ namespace Utilities
             result += node.Text;
             foreach (TreeNode childNode in node.Nodes)
             {
-                var childString = childNode.ToPrettyString();
+                var childString = childNode.ToPrettyString(ignoreHiddenNodes); // pass the flag down, or collapsed branches vanish from a full dump
                 if (childString != string.Empty)
                 {
                     result += "\r\n";

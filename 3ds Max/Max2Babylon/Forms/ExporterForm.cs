@@ -443,9 +443,11 @@ namespace Max2Babylon
             exporterTabControl.SelectTab(logTabPage.Name);
 
             bool success = true;
+            string logOutputPath = null;
             try
             {
                 string modelAbsolutePath = multiExport ? exportItem.ExportFilePathAbsolute : txtModelPath.Text;
+                logOutputPath = modelAbsolutePath;
                 string textureExportPath = multiExport ? exportItem.ExportTexturesesFolderAbsolute : txtTexturesPath.Text;
 
                 var scaleFactorParsed = 1.0f;
@@ -549,6 +551,8 @@ namespace Max2Babylon
                 success = false;
                 ScriptsUtilities.ExecuteMaxScriptCommand(@"global BabylonExporterStatus = Available");
             }
+
+            SaveExportLog(logOutputPath);
 
             butCancel.Enabled = false;
             butExport.Enabled = true;
@@ -684,10 +688,30 @@ namespace Max2Babylon
 
         private void butCopyToClipboard_Click(object sender, EventArgs e)
         {
-            var textString = logTreeView.ToPrettyString();
+            // The whole log, collapsed branches included.
+            var textString = logTreeView.ToPrettyString(false);
             if (textString != string.Empty)
             {
                 System.Windows.Forms.Clipboard.SetText(textString);
+            }
+        }
+
+        /// <summary>UrbanCGI fork: keeps the Log tab as a text file next to the exported model, so it can be shared.</summary>
+        private void SaveExportLog(string outputPath)
+        {
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                return;
+            }
+            string error;
+            var logPath = ExportLog.Write(outputPath, logTreeView.ToPrettyString(false), out error);
+            if (logPath != null)
+            {
+                currentNode = CreateTreeNode(0, "Log saved to " + logPath, Color.Gray);
+            }
+            else
+            {
+                currentNode = CreateTreeNode(0, "Could not save the log next to the export: " + error, Color.DarkOrange);
             }
         }
 

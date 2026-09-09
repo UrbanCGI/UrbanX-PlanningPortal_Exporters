@@ -124,6 +124,13 @@ sets up).
 To confirm the install: the exporter log shows "Checking Planner naming convention" at the start of an
 export, and the GLB's generator string ends in `v1.0-urbancgi`.
 
+## Reading and sharing the log
+
+Every export writes the complete log as `<model>.export-log.txt` next to the exported file (also for
+MAXScript exports), so it can be sent along with the GLB. The Log tab of the dialog has a "Copy log to
+clipboard" button at its bottom; upstream had placed it off-screen. Errors come first, then warnings,
+then notes, and the line starting "Planner naming check:" sums them up.
+
 ## Tests
 
 ```bat

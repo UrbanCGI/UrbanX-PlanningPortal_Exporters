@@ -811,14 +811,13 @@ namespace Max2Babylon
 			// 
 			// butCopyToClipboard
 			// 
-			this.butCopyToClipboard.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+			this.butCopyToClipboard.Dock = System.Windows.Forms.DockStyle.Bottom;
 			this.butCopyToClipboard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-			this.butCopyToClipboard.Location = new System.Drawing.Point(4, -3440);
 			this.butCopyToClipboard.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
 			this.butCopyToClipboard.Name = "butCopyToClipboard";
 			this.butCopyToClipboard.Size = new System.Drawing.Size(111, 23);
 			this.butCopyToClipboard.TabIndex = 105;
-			this.butCopyToClipboard.Text = "Copy To Clipboard";
+			this.butCopyToClipboard.Text = "Copy log to clipboard";
 			this.butCopyToClipboard.UseVisualStyleBackColor = true;
 			this.butCopyToClipboard.Click += new System.EventHandler(this.butCopyToClipboard_Click);
 			this.butCopyToClipboard.KeyDown += new System.Windows.Forms.KeyEventHandler(this.ExporterForm_KeyDown);
