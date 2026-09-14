@@ -77,8 +77,10 @@ namespace Utilities.Planner
     /// Severity guide:
     ///   Error   - the Planner cannot read the name at all, or two exported objects share a name.
     ///   Warning - the name reads, but the Planner will schedule it differently from what was meant
-    ///             (unfiled, undated, stage mismatch, empty description, case-only twins). Stray
-    ///             underscores at the edge of a description are trimmed by the Planner and not reported.
+    ///             (unfiled, undated, stage mismatch, empty description, case-only twins), or the name
+    ///             breaks the convention although it reads (a space anywhere in a tagged object's or a
+    ///             dated group's name). Stray underscores at the edge of a description are trimmed by
+    ///             the Planner and not reported.
     ///   Note    - cosmetic or advisory (zero padding, untagged object inside a dated group, odd years).
     /// </summary>
     public static class PlannerNamingValidator
@@ -175,6 +177,14 @@ namespace Utilities.Planner
 
             report.TaggedObjects++;
 
+            // The convention allows no spaces at all, even though the parser tolerates them (a space after the order
+            // number, spaces in a name, a note after the trailing tag) so that real slips still read.
+            if (ContainsWhitespace(name))
+            {
+                Add(report, NamingSeverity.Warning, name, string.Format(
+                    "'{0}' contains a space. Names must not contain spaces: use underscores, and keep notes out of the name.", name));
+            }
+
             if (parsed.Trail == null && StrayTrail.IsMatch(parsed.Description))
             {
                 Add(report, NamingSeverity.Error, name, string.Format(
@@ -232,6 +242,11 @@ namespace Utilities.Planner
             {
                 var name = entry.Key;
                 var parsed = entry.Value;
+                if (ContainsWhitespace(name))
+                {
+                    Add(report, NamingSeverity.Warning, name, string.Format(
+                        "Group '{0}' contains a space. Group names must not contain spaces: write N_<Activity>_DD-MM-YY[_DD-MM-YY] with underscores only.", name));
+                }
                 foreach (var issue in parsed.Issues)
                 {
                     if (issue.StartsWith("unreadable date", StringComparison.Ordinal))
@@ -300,6 +315,11 @@ namespace Utilities.Planner
         private static bool NeedsPadding(PlannerMeshSegment segment)
         {
             return segment != null && segment.Stage < 10 && segment.StageToken.Length < 2;
+        }
+
+        private static bool ContainsWhitespace(string text)
+        {
+            return text.Any(char.IsWhiteSpace);
         }
 
         private static void Add(NamingReport report, NamingSeverity severity, string subject, string message)

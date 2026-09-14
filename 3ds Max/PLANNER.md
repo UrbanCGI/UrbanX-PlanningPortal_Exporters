@@ -71,6 +71,7 @@ The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 | Warning | group has neither dates nor TBC; group has an order number but no name |
 | Warning | groups whose labels differ only by letter case (`..._Inst` / `..._inst`) |
 | Warning | empty description (a stray underscore at the description's edge is trimmed by the Planner and not reported) |
+| Warning | a space anywhere in a tagged object's name or a dated group's name (names use underscores only, no notes) |
 | Warning | two groups share a name |
 | Note | single-digit stage (`St6`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
 

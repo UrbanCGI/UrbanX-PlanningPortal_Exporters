@@ -239,6 +239,7 @@ not exported correctly using glTF
 - Unit tests for the shared, Max-free code in SharedProjects/Utilities.Tests.
 - Every export writes its log as `<model>.export-log.txt` next to the exported file (dialog and MAXScript exports alike); the Log tab's copy button, which upstream had parked off-screen, is docked at the bottom of the tab and copies the whole tree.
 - The naming check no longer reports stray underscores at the edge of a description (the Planner trims them).
+- The naming check flags any space in a tagged object's name or a dated group's name (2026-09-14).
 - Installer (v1.8.0): pulls packages from the fork's GitHub Releases instead of upstream's, installs a `Max_<year>.zip` placed next to the program without going online, downloads to the temp folder, stamps installed files with the install time so "up to date" is reported correctly, and no longer crashes when the repository has no release yet.
 
 **Fixed bugs**

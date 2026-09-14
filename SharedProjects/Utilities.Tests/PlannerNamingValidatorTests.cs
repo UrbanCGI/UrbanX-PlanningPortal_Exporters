@@ -62,6 +62,7 @@ namespace Utilities.Tests
                 Mesh("EUS_Con_HRB_Kerb_001"),                                 // untagged context at root -> nothing
                 Mesh("St1_Kerb_003", Piling),                                 // untagged inside dated group -> note
                 Mesh("Ph1_St01_IN", Piling),                                  // empty description -> warning
+                Mesh("Ph1_St01_IN_Sheet Pile 2", Piling),                     // spaces in the name -> warning
                 Mesh("Ph3_St03_IN_Pile", null, "03_Sheet_Piling_DS2_18-09-26_23-10-26") // unfiled, layer hint
             };
         }
@@ -84,15 +85,15 @@ namespace Utilities.Tests
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             output.WriteLine(report.Summary());
 
-            Assert.Equal(11, report.TaggedObjects);
+            Assert.Equal(12, report.TaggedObjects);
             Assert.Equal(7, report.DatedGroups);
             Assert.Equal(3, report.UnfiledObjects);
             Assert.Equal(4, report.Errors);
-            Assert.Equal(7, report.Warnings);
+            Assert.Equal(10, report.Warnings); // includes the spaces in two group names and one object name
             Assert.Equal(3, report.Notes);
             Assert.Equal(NamingSeverity.Error, report.Issues.First().Severity);
             Assert.Equal(NamingSeverity.Note, report.Issues.Last().Severity);
-            Assert.Contains("4 error(s), 7 warning(s), 3 note(s)", report.Summary());
+            Assert.Contains("4 error(s), 10 warning(s), 3 note(s)", report.Summary());
         }
 
         [Fact]
@@ -115,6 +116,10 @@ namespace Utilities.Tests
             Assert.Contains(warnings, w => w.Subject == "Ph2_St34_IN_TR_Sidewalk_B" && w.Message.Contains("unfiled") && w.Message.Contains("Group it under a node named"));
             Assert.Contains(warnings, w => w.Subject == "Ph1_St00_IN_Fway" && w.Message.Contains("Its group 'Context' needs an order number and dates"));
             Assert.DoesNotContain(warnings, w => w.Subject == "Ph1_St01_RM_RC_Hrd_"); // edge underscores are the Planner's to trim
+            Assert.Contains(warnings, w => w.Subject == "Ph1_St01_IN_Sheet Pile 2" && w.Message.Contains("contains a space"));
+            Assert.Contains(warnings, w => w.Subject == HoardingRemoval && w.Message.Contains("Group") && w.Message.Contains("contains a space"));
+            Assert.Contains(warnings, w => w.Subject == Undated && w.Message.Contains("contains a space"));
+            Assert.DoesNotContain(warnings, w => w.Subject == Piling && w.Message.Contains("contains a space"));
             Assert.Contains(warnings, w => w.Subject == "Ph1_St01_IN" && w.Message.Contains("no description"));
             Assert.Contains(warnings, w => w.Subject == "Ph3_St03_IN_Pile" && w.Message.Contains("3ds Max layer '03_Sheet_Piling_DS2_18-09-26_23-10-26'"));
         }
@@ -138,7 +143,8 @@ namespace Utilities.Tests
                 Ancestors = new List<string> { "Sub assembly", HoardingRemoval, Piling }
             };
             var report = PlannerNamingValidator.Validate(new[] { nested }, Today);
-            Assert.Empty(report.Issues); // owned by the 06 group, not confused by the 01 group further up
+            Assert.DoesNotContain(report.Issues, i => i.Subject == nested.Name); // owned by the 06 group, not confused by the 01 group further up
+            Assert.All(report.Issues, i => Assert.Contains("contains a space", i.Message)); // only the spaces in the 06 group's own name are reported
             Assert.Equal(2, report.DatedGroups);
         }
 
