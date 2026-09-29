@@ -49,11 +49,15 @@ With strict mode on and at least one error the export stops with nothing written
 
 Objects carry one or two tags, `Ph<n>_St<nn>_IN|RM`: the leading tag starts the name, an optional
 trailing tag ends it, the free description sits between them
-(`Ph1_St01_IN_Sheet_Pile_1`, `Ph1_St00_IN_RC_Hoardings_Ph2_St06_RM`). Objects sit inside a group whose
-name carries the order number, activity name and dates: `N_<Activity>_DD-MM-YY[_DD-MM-YY]`, or
-`N_<Activity>_TBC` while dates are unknown (`01_Sheet_Piling_SA&DS3_17-08-26_18-09-26`,
-`35_Service_Road_Setback_TBC`). The group owns the segment whose `St` equals its order number. The
-Planner reads the exported node hierarchy, so it is the *group* that matters, not the 3ds Max layer.
+(`Ph1_St01_IN_Sheet_Pile_1`, `Ph1_St00_IN_RC_Hoardings_Ph2_St06_RM`). A stage may carry a sub-stage,
+`St<nn>.<m>` (`Ph2_St05.2_IN_TR_Subbase_280mm_C`): work inside stage 5 with its own place in the order,
+5 < 5.1 < 5.2 < 6. Objects sit inside a group whose name carries the order number, activity name and
+dates: `N_<Activity>_DD-MM-YY[_DD-MM-YY]`, or `N_<Activity>_TBC` while dates are unknown
+(`01_Sheet_Piling_SA&DS3_17-08-26_18-09-26`, `35_Service_Road_Setback_TBC`). The group owns the segment
+whose `St` equals its order number; a sub-numbered group (`05-1_…` or `05.1_…` — the dotted form needs the
+underscore, so `2.4 High Hoarding` stays an ordinary group) owns that sub-stage (`St05.1`) and, as
+before, plain `St05` objects; a plain group number (`05_…`) covers every sub-stage of its stage. The Planner reads the exported node hierarchy, so it is the *group* that matters, not the
+3ds Max layer.
 
 The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 `packages/domain/src/phasingNaming.ts`; its tests mirror `phasingNaming.test.ts`. Change both together.
@@ -67,13 +71,13 @@ The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 | Error | group date unreadable (`31-02-26`) or finish before start (`17-02-27_23-02-17`) |
 | Error | two exported objects share a name |
 | Warning | tagged object not inside a dated group (unfiled: the Planner cannot schedule it); names the offending group, or the dated 3ds Max layer if the object sits on one |
-| Warning | neither tag matches the group's stage (`Ph1_St06_RM_...` inside `00_...`) |
+| Warning | neither tag matches the group's stage (`Ph1_St06_RM_...` inside `00_...`, `Ph2_St05.2_IN_...` inside `05-1_...`) |
 | Warning | group has neither dates nor TBC; group has an order number but no name |
 | Warning | groups whose labels differ only by letter case (`..._Inst` / `..._inst`) |
 | Warning | empty description (a stray underscore at the description's edge is trimmed by the Planner and not reported) |
 | Warning | a space anywhere in a tagged object's name or a dated group's name (names use underscores only, no notes) |
 | Warning | two groups share a name |
-| Note | single-digit stage (`St6`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
+| Note | single-digit stage (`St6`, `St6.1`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
 
 Files: `SharedProjects/Utilities/Planner/PlannerNaming.cs`, `PlannerNamingValidator.cs` (rules, Max-free),
 `Max2Babylon/Exporter/BabylonExporter.PlannerChecks.cs` (collects the scene nodes, reports, stops).

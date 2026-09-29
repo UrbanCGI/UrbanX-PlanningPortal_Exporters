@@ -240,6 +240,7 @@ not exported correctly using glTF
 - Every export writes its log as `<model>.export-log.txt` next to the exported file (dialog and MAXScript exports alike); the Log tab's copy button, which upstream had parked off-screen, is docked at the bottom of the tab and copies the whole tree.
 - The naming check no longer reports stray underscores at the edge of a description (the Planner trims them).
 - The naming check flags any space in a tagged object's name or a dated group's name (2026-09-14).
+- The naming check reads the optional sub-stage in object tags (`St<nn>.<m>`, e.g. `Ph2_St05.2_IN_...`) and sub-numbered groups written with a dash or a dot (`05-1_...`, `05.1_...`; the dotted form needs the underscore, so `2.4 High Hoarding` is still an ordinary group) the way the Planner does: a sub-numbered group owns its sub-stage and plain `St<nn>` objects, a plain group number covers every sub-stage of its stage. Digits are ASCII only, as in the Planner (2026-09-29).
 - Installer (v1.8.0): pulls packages from the fork's GitHub Releases instead of upstream's, installs a `Max_<year>.zip` placed next to the program without going online, downloads to the temp folder, stamps installed files with the install time so "up to date" is reported correctly, and no longer crashes when the repository has no release yet.
 
 **Fixed bugs**

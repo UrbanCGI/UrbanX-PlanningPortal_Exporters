@@ -18,10 +18,13 @@ namespace Utilities.Planner
     {
         /// <summary>The phase digits as written (e.g. "1").</summary>
         public string PhaseToken;
-        /// <summary>The stage digits as written (e.g. "03"); the Planner keeps this spelling in activity names.</summary>
+        /// <summary>The stage as written (e.g. "03", or "03.2" with a sub-stage); the Planner keeps this spelling in activity names.</summary>
         public string StageToken;
         public int Phase;
+        /// <summary>The stage number ("03.2" gives 3).</summary>
         public int Stage;
+        /// <summary>The sub-stage ("03.2" gives 2), or null for a plain stage.</summary>
+        public int? SubStage;
         public PlannerTaskType Type;
 
         public string FolderName { get { return "PH" + PhaseToken; } }
@@ -43,8 +46,10 @@ namespace Utilities.Planner
     {
         /// <summary>The order token as written, e.g. "01" or "06-1".</summary>
         public string Order;
-        /// <summary>Stage number read off the order token ("06-1" gives 6): what an object's St&lt;n&gt; points at.</summary>
+        /// <summary>Stage number read off the order token ("06-1" and "06.1" give 6): what an object's St&lt;n&gt; points at.</summary>
         public int Stage;
+        /// <summary>The sub-stage read off a sub-numbered order token ("06-1" gives 1), or null: the group covers its whole stage.</summary>
+        public int? SubStage;
         /// <summary>The activity name with order, dates and TBC stripped.</summary>
         public string Name;
         /// <summary>"&lt;order&gt;_&lt;name&gt;": the stable label the Planner groups by.</summary>
@@ -63,11 +68,14 @@ namespace Utilities.Planner
     /// GLB is uploaded, so the exporter can tell the artist before the export what the Planner will see.
     ///
     /// Object names carry one or two tags <c>Ph&lt;n&gt;_St&lt;n&gt;_IN|RM</c>; the leading tag starts the name,
-    /// an optional trailing tag ends it, and the free-form description sits between them.
+    /// an optional trailing tag ends it, and the free-form description sits between them. A stage may carry
+    /// a sub-stage, <c>St&lt;n&gt;.&lt;m&gt;</c> ("St03.2"): work inside stage 3 with its own place in the order,
+    /// 3 &lt; 3.1 &lt; 3.2 &lt; 4.
     ///
     /// Group names carry the schedule: <c>N_&lt;Activity&gt;_DD-MM-YY[_DD-MM-YY]</c>, or <c>_TBC</c> while the dates
-    /// are unknown (optionally followed by provisional dates). Parsing is deliberately lenient about what
-    /// artists actually type (a space after N, spaces in the name, "06-1" sub-numbers, single-digit days,
+    /// are unknown (optionally followed by provisional dates). A sub-numbered N ("06-1" or "06.1") is the
+    /// sub-stage an object's "St06.1" points at; a plain N covers its whole stage. Parsing is deliberately
+    /// lenient about what artists actually type (a space after N, spaces in the name, single-digit days,
     /// text after the dates, the " (1)" suffix on duplicate names) but the dates must read DD-MM-YY.
     /// </summary>
     public static class PlannerNaming
@@ -75,15 +83,22 @@ namespace Utilities.Planner
         private const RegexOptions Options = RegexOptions.CultureInvariant;
         private const RegexOptions OptionsIgnoreCase = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
 
-        // Ph<n>_St<n>_<IN|RM> anchored at the start, with the type followed by "_" or the end of the name.
-        private static readonly Regex Lead = new Regex(@"^Ph(\d+)_St(\d+)_(IN|RM)(?:_|$)", OptionsIgnoreCase);
-        // ..._Ph<n>_St<n>_<IN|RM> pinned to the end, or followed only by a space-separated note.
-        private static readonly Regex Trail = new Regex(@"_Ph(\d+)_St(\d+)_(IN|RM)(?=$|\s)", OptionsIgnoreCase);
+        // [0-9] rather than \d throughout: .NET's \d matches every Unicode digit, the Planner's JavaScript \d
+        // only ASCII digits, and the port must read exactly what the Planner reads.
+        // Ph<n>_St<n>[.<m>]_<IN|RM> anchored at the start, with the type followed by "_" or the end of the name.
+        private static readonly Regex Lead = new Regex(@"^Ph([0-9]+)_St([0-9]+(?:\.[0-9]+)?)_(IN|RM)(?:_|$)", OptionsIgnoreCase);
+        // ..._Ph<n>_St<n>[.<m>]_<IN|RM> pinned to the end, or followed only by a space-separated note.
+        private static readonly Regex Trail = new Regex(@"_Ph([0-9]+)_St([0-9]+(?:\.[0-9]+)?)_(IN|RM)(?=$|\s)", OptionsIgnoreCase);
 
-        private static readonly Regex DuplicateSuffix = new Regex(@"\s*\(\d+\)\s*$", Options);
-        private static readonly Regex Order = new Regex(@"^(\d+(?:-\d+)?)(?:[_ ]+|$)", Options);
+        private static readonly Regex DuplicateSuffix = new Regex(@"\s*\([0-9]+\)\s*$", Options);
+        // "01" or a dashed sub-number "06-1", followed by an underscore or a space (or nothing at all); a dotted
+        // sub-number "06.1" only when an underscore follows, so a dimension-led group name that is not a layer
+        // ("2.4 High Hoarding", "1.8 x 2.4 Heras Panel") is never read as one.
+        private static readonly Regex Order = new Regex(@"^([0-9]+(?:-[0-9]+)?)(?:[_ ]+|$)|^([0-9]+\.[0-9]+)(?:_+|$)", Options);
+        // A stage token: the stage digits, then an optional sub-stage after "." (objects) or "-" / "." (groups).
+        private static readonly Regex StageNumber = new Regex(@"^([0-9]+)(?:[.-]([0-9]+))?", Options);
         // DD-MM-YY not glued to other digits or dashes (so "06-1" order tokens and "100mm" never match).
-        private static readonly Regex DateToken = new Regex(@"(^|[^\d-])(\d{1,2})-(\d{1,2})-(\d{2})(?![\d-])", Options);
+        private static readonly Regex DateToken = new Regex(@"(^|[^0-9-])([0-9]{1,2})-([0-9]{1,2})-([0-9]{2})(?![0-9-])", Options);
         private static readonly Regex TbcToken = new Regex(@"(^|[_ \-])TBC(?=$|[_ \-])", OptionsIgnoreCase);
         private static readonly Regex Underscores = new Regex(@"_+", Options);
         private static readonly Regex EdgeSeparators = new Regex(@"^[_ ]+|[_ ]+$", Options);
@@ -128,8 +143,10 @@ namespace Utilities.Planner
             {
                 return null;
             }
-            var order = orderMatch.Groups[1].Value;
-            int stage = LeadingInteger(order);
+            var order = orderMatch.Groups[1].Success ? orderMatch.Groups[1].Value : orderMatch.Groups[2].Value;
+            int stage;
+            int? subStage;
+            ParseStageNumber(order, out stage, out subStage);
             var rest = s.Substring(orderMatch.Length);
             var issues = new List<string>();
 
@@ -196,6 +213,7 @@ namespace Utilities.Planner
             {
                 Order = order,
                 Stage = stage,
+                SubStage = subStage,
                 Name = name,
                 Label = name.Length > 0 ? order + "_" + name : order,
                 Tbc = tbc || !start.HasValue || issues.Count > 0,
@@ -211,14 +229,49 @@ namespace Utilities.Planner
             return date.HasValue ? date.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null;
         }
 
+        /// <summary>"03" gives stage 3; "03.2" and "03-2" give stage 3, sub-stage 2 (the Planner's parseStageNumber).</summary>
+        public static void ParseStageNumber(string token, out int stage, out int? subStage)
+        {
+            var m = StageNumber.Match((token ?? string.Empty).Trim());
+            if (!m.Success)
+            {
+                stage = 0;
+                subStage = null;
+                return;
+            }
+            stage = ParseDigits(m.Groups[1].Value);
+            subStage = m.Groups[2].Success ? ParseDigits(m.Groups[2].Value) : (int?)null;
+        }
+
+        /// <summary>
+        /// Do two stage numbers name the same work? The stage must match; the sub-stages must agree unless one
+        /// side has none: a whole stage covers its sub-stages, and a sub-stage belongs to its stage (so "St06"
+        /// under group "06-1" still matches, as it always has). Mirrors the Planner's sameStage.
+        /// </summary>
+        public static bool SameStage(int stageA, int? subStageA, int stageB, int? subStageB)
+        {
+            return stageA == stageB && (!subStageA.HasValue || !subStageB.HasValue || subStageA.Value == subStageB.Value);
+        }
+
+        /// <summary>"St05", or "St05.1" - a stage as the convention writes it, with two digits.</summary>
+        public static string StageText(int stage, int? subStage)
+        {
+            var text = "St" + stage.ToString("00", CultureInfo.InvariantCulture);
+            return subStage.HasValue ? text + "." + subStage.Value.ToString(CultureInfo.InvariantCulture) : text;
+        }
+
         private static PlannerMeshSegment Segment(Match m)
         {
+            int stage;
+            int? subStage;
+            ParseStageNumber(m.Groups[2].Value, out stage, out subStage);
             return new PlannerMeshSegment
             {
                 PhaseToken = m.Groups[1].Value,
                 StageToken = m.Groups[2].Value,
                 Phase = ParseDigits(m.Groups[1].Value),
-                Stage = ParseDigits(m.Groups[2].Value),
+                Stage = stage,
+                SubStage = subStage,
                 Type = string.Equals(m.Groups[3].Value, "IN", StringComparison.OrdinalIgnoreCase) ? PlannerTaskType.Install : PlannerTaskType.Dismantle
             };
         }
@@ -237,17 +290,6 @@ namespace Utilities.Planner
                 return null; // e.g. 31-02-26
             }
             return new DateTime(year, month, day);
-        }
-
-        // parseInt semantics: the leading run of digits ("06-1" gives 6).
-        private static int LeadingInteger(string token)
-        {
-            int end = 0;
-            while (end < token.Length && char.IsDigit(token[end]))
-            {
-                end++;
-            }
-            return ParseDigits(token.Substring(0, end));
         }
 
         private static int ParseDigits(string digits)

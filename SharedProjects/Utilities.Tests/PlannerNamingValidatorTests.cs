@@ -112,7 +112,7 @@ namespace Utilities.Tests
             var warnings = PlannerNamingValidator.Validate(RepresentativeScene(), Today).Issues.Where(i => i.Severity == NamingSeverity.Warning).ToList();
             Assert.Contains(warnings, w => w.Subject == Undated && w.Message.Contains("neither dates nor TBC"));
             Assert.Contains(warnings, w => w.Message.Contains("differ only by letter case") && w.Message.Contains("'05_MainRd_Hoardings_Inst'") && w.Message.Contains("'05_MainRd_Hoardings_inst'"));
-            Assert.Contains(warnings, w => w.Subject == "Ph0_St00_IN_Hoarding_B" && w.Message.Contains("(St06)"));
+            Assert.Contains(warnings, w => w.Subject == "Ph0_St00_IN_Hoarding_B" && w.Message.Contains("(St06.2)")); // the group's sub-number is its sub-stage
             Assert.Contains(warnings, w => w.Subject == "Ph2_St34_IN_TR_Sidewalk_B" && w.Message.Contains("unfiled") && w.Message.Contains("Group it under a node named"));
             Assert.Contains(warnings, w => w.Subject == "Ph1_St00_IN_Fway" && w.Message.Contains("Its group 'Context' needs an order number and dates"));
             Assert.DoesNotContain(warnings, w => w.Subject == "Ph1_St01_RM_RC_Hrd_"); // edge underscores are the Planner's to trim
@@ -178,6 +178,36 @@ namespace Utilities.Tests
         /// Runs the rules over a real exported hierarchy when PLANNER_NODES_FIXTURE points at a JSON file of the form
         /// { "nodes": [ { "name": "...", "parent": "..." | null, "isMesh": true|false } ] } and prints the report.
         /// </summary>
+        [Fact]
+        public void SubStagesMatchTheirOwnGroupOrTheWholeStage()
+        {
+            const string subA = "05-1_Subbase_A_01-11-26_02-11-26";
+            const string subB = "05.2_Subbase_B_03-11-26_04-11-26";
+            const string whole = "05_Subbase_TBC";
+            var scene = new List<SceneNodeInfo>
+            {
+                Group(subA), Group(subB), Group(whole),
+                Mesh("Ph2_St05.1_IN_TR_Subbase_A", subA),  // the sub-stage in its own group -> clean
+                Mesh("Ph2_St05.2_IN_TR_Subbase_B", subB),  // a dotted group number reads the same -> clean
+                Mesh("Ph2_St05.2_IN_TR_Subbase_C", whole), // a plain group number covers its sub-stages -> clean
+                Mesh("Ph2_St05_IN_TR_Subbase_D", subA),    // a plain St under a sub-numbered group, as before -> clean
+                Mesh("Ph2_St05.2_IN_TR_Subbase_E", subA),  // the wrong sub-stage -> warning naming St05.1
+                Mesh("Ph2_St5.2_IN_TR_Subbase_F", subB)    // unpadded stage digits -> note
+            };
+            var report = PlannerNamingValidator.Validate(scene, Today);
+            Assert.Equal(0, report.Errors);
+            Assert.Equal(6, report.TaggedObjects);
+            Assert.Equal(3, report.DatedGroups);
+            Assert.Equal(0, report.UnfiledObjects);
+            var warnings = report.Issues.Where(i => i.Severity == NamingSeverity.Warning).ToList();
+            Assert.Single(warnings);
+            Assert.Equal("Ph2_St05.2_IN_TR_Subbase_E", warnings[0].Subject);
+            Assert.Contains("(St05.1)", warnings[0].Message);
+            var notes = report.Issues.Where(i => i.Severity == NamingSeverity.Note).ToList();
+            Assert.Single(notes);
+            Assert.Equal("Ph2_St5.2_IN_TR_Subbase_F", notes[0].Subject);
+        }
+
         [Fact]
         public void RealFixtureReport()
         {

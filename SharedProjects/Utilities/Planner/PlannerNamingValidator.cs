@@ -86,9 +86,9 @@ namespace Utilities.Planner
     public static class PlannerNamingValidator
     {
         // A name that was clearly meant to start with a Ph tag but does not parse ("Ph1_S03_..", "PH 1_St01..").
-        private static readonly Regex LooksTagged = new Regex(@"^\s*ph\s*[-_ ]?\s*\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex LooksTagged = new Regex(@"^\s*ph\s*[-_ ]?\s*[0-9]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         // A second Ph tag hiding inside the description ("..._Ph1_S03_RM", "..._Ph2_St00_RM_extra").
-        private static readonly Regex StrayTrail = new Regex(@"_Ph\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex StrayTrail = new Regex(@"_Ph[0-9]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         public static NamingReport Validate(IEnumerable<SceneNodeInfo> nodes, DateTime today)
         {
@@ -165,7 +165,7 @@ namespace Utilities.Planner
                 if (LooksTagged.IsMatch(name))
                 {
                     Add(report, NamingSeverity.Error, name, string.Format(
-                        "'{0}': the leading tag is malformed. Objects are tagged Ph<n>_St<nn>_IN|RM_<description>, e.g. Ph1_St03_IN_Sheet_Pile_1.", name));
+                        "'{0}': the leading tag is malformed. Objects are tagged Ph<n>_St<nn>_IN|RM_<description>, with an optional sub-stage St<nn>.<m>, e.g. Ph1_St03_IN_Sheet_Pile_1 or Ph1_St03.2_IN_Sheet_Pile_1.", name));
                 }
                 else if (datedGroup != null)
                 {
@@ -188,7 +188,7 @@ namespace Utilities.Planner
             if (parsed.Trail == null && StrayTrail.IsMatch(parsed.Description))
             {
                 Add(report, NamingSeverity.Error, name, string.Format(
-                    "'{0}': the text after the description looks like a second Ph/St tag but does not read as one. A trailing tag must be _Ph<n>_St<nn>_IN|RM at the very end of the name (notes go after a space).", name));
+                    "'{0}': the text after the description looks like a second Ph/St tag but does not read as one. A trailing tag must be _Ph<n>_St<nn>[.<m>]_IN|RM at the very end of the name (notes go after a space).", name));
             }
 
             // A stray underscore at the description's edge ("..._C_") is trimmed by the Planner and is deliberately
@@ -202,7 +202,7 @@ namespace Utilities.Planner
             if (NeedsPadding(parsed.Lead) || NeedsPadding(parsed.Trail))
             {
                 Add(report, NamingSeverity.Note, name, string.Format(
-                    "'{0}': write stage numbers with two digits (St01, St06) so names read and sort consistently.", name));
+                    "'{0}': write stage numbers with two digits (St01, St06, St06.1) so names read and sort consistently.", name));
             }
 
             if (datedGroup == null)
@@ -225,13 +225,13 @@ namespace Utilities.Planner
             }
             else
             {
-                bool leadMatches = parsed.Lead.Stage == datedGroup.Stage;
-                bool trailMatches = parsed.Trail != null && parsed.Trail.Stage == datedGroup.Stage;
+                bool leadMatches = MatchesStage(parsed.Lead, datedGroup);
+                bool trailMatches = parsed.Trail != null && MatchesStage(parsed.Trail, datedGroup);
                 if (!leadMatches && !trailMatches)
                 {
                     Add(report, NamingSeverity.Warning, name, string.Format(
-                        "'{0}': neither tag matches the stage of its group '{1}' (St{2:00}), so the group cannot own this object's work and the Planner falls back to the leading tag. Check the St numbers, or move the object to the group for its stage.",
-                        name, datedGroupName, datedGroup.Stage));
+                        "'{0}': neither tag matches the stage of its group '{1}' ({2}), so the group cannot own this object's work and the Planner falls back to the leading tag. Check the St numbers, or move the object to the group for its stage.",
+                        name, datedGroupName, PlannerNaming.StageText(datedGroup.Stage, datedGroup.SubStage)));
                 }
             }
         }
@@ -312,9 +312,22 @@ namespace Utilities.Planner
             }
         }
 
+        // A group owns the object's work when the stage matches and the sub-stages agree (a plain group number
+        // covers the whole stage, and a plain St<n> sits under a sub-numbered group as it always has).
+        private static bool MatchesStage(PlannerMeshSegment segment, PlannerLayerName group)
+        {
+            return PlannerNaming.SameStage(segment.Stage, segment.SubStage, group.Stage, group.SubStage);
+        }
+
+        // "St6" and "St6.1" want a zero; the digits before any sub-stage are what is padded.
         private static bool NeedsPadding(PlannerMeshSegment segment)
         {
-            return segment != null && segment.Stage < 10 && segment.StageToken.Length < 2;
+            if (segment == null || segment.Stage >= 10)
+            {
+                return false;
+            }
+            int dot = segment.StageToken.IndexOf('.');
+            return (dot < 0 ? segment.StageToken.Length : dot) < 2;
         }
 
         private static bool ContainsWhitespace(string text)

@@ -218,6 +218,82 @@ namespace Utilities.Tests
             Assert.Empty(p.Issues);
         }
 
+        [Fact]
+        public void MeshName_SubStage()
+        {
+            var p = PlannerNaming.ParseMeshName("Ph2_St05.2_IN_TR_Subbase_280mm_C_");
+            AssertSegment(p.Lead, "PH2", "St05.2", PlannerTaskType.Install);
+            Assert.Equal(5, p.Lead.Stage);
+            Assert.Equal(2, p.Lead.SubStage.Value);
+            Assert.Equal("TR_Subbase_280mm_C_", p.Description);
+            Assert.Null(p.Trail);
+
+            var q = PlannerNaming.ParseMeshName("Ph2_St03.2_IN_Utility_Crossing_SB_H_Ph1_St14_RM");
+            Assert.Equal(3, q.Lead.Stage);
+            Assert.Equal(2, q.Lead.SubStage.Value);
+            Assert.Equal(14, q.Trail.Stage);
+            Assert.False(q.Trail.SubStage.HasValue);
+            Assert.Equal("Utility_Crossing_SB_H", q.Description);
+
+            var r = PlannerNaming.ParseMeshName("Ph3_St01.1_RM_RC_Hrd_CardingtonSt_N_Ph3_St07.2_IN");
+            AssertSegment(r.Trail, "PH3", "St07.2", PlannerTaskType.Install);
+            Assert.Equal(2, r.Trail.SubStage.Value);
+
+            Assert.Equal(10, PlannerNaming.ParseMeshName("Ph1_St03.10_IN_Kerb").Lead.SubStage.Value);
+            Assert.Equal(2, PlannerNaming.ParseMeshName("Ph1_St3.2_IN_Kerb").Lead.SubStage.Value);
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03._IN_Kerb"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03.x_IN_Kerb"));
+        }
+
+        [Fact]
+        public void LayerName_SubNumberIsTheSubStage()
+        {
+            var p = PlannerNaming.ParseLayerName("06-1 Temporary Hoarding - Erection_19-10-26_19-10-26");
+            Assert.Equal(6, p.Stage);
+            Assert.Equal(1, p.SubStage.Value);
+
+            var q = PlannerNaming.ParseLayerName("05.2_Subbase_B_03-11-26_04-11-26");
+            Assert.Equal("05.2", q.Order);
+            Assert.Equal(5, q.Stage);
+            Assert.Equal(2, q.SubStage.Value);
+            Assert.Equal("05.2_Subbase_B", q.Label);
+            Assert.Equal("2026-11-03", PlannerNaming.ToIsoDate(q.Start));
+            Assert.Empty(q.Issues);
+
+            Assert.False(PlannerNaming.ParseLayerName("01_Sheet_Piling_SA&DS3_17-08-26_18-09-26").SubStage.HasValue);
+            Assert.Null(PlannerNaming.ParseLayerName("3.5m_Barrier_17-10-26")); // a size, not an order
+            // a dotted number needs an underscore after it: dimension-led group names are not layers
+            Assert.Null(PlannerNaming.ParseLayerName("2.4 High Hoarding"));
+            Assert.Null(PlannerNaming.ParseLayerName("1.8 x 2.4 Heras Panel"));
+            Assert.Null(PlannerNaming.ParseLayerName("05.2 Subbase_03-11-26"));
+            Assert.Equal(1, PlannerNaming.ParseLayerName("06-1 Temporary Hoarding").SubStage.Value); // the dashed form stays lenient
+        }
+
+        [Fact]
+        public void OnlyAsciiDigitsAreDigits()
+        {
+            // The Planner's JavaScript \d is ASCII-only; .NET's \d is not — the port must agree with the Planner.
+            Assert.Null(PlannerNaming.ParseMeshName("Ph١_St٠٣_IN_x"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03.٢_IN_x"));
+            Assert.Null(PlannerNaming.ParseLayerName("٠١_Name_17-08-26"));
+            Assert.Null(PlannerNaming.ParseLayerName("01_Name_1٧-08-26").Start); // not a date at all
+        }
+
+        [Fact]
+        public void SameStage_AWholeStageCoversItsSubStages()
+        {
+            Assert.True(PlannerNaming.SameStage(5, null, 5, null));
+            Assert.True(PlannerNaming.SameStage(5, null, 5, 1)); // group 05 dates St05.1 work
+            Assert.True(PlannerNaming.SameStage(5, 1, 5, null)); // object St05 under group 05-1, as before
+            Assert.True(PlannerNaming.SameStage(5, 1, 5, 1));
+            Assert.False(PlannerNaming.SameStage(5, 1, 5, 2));
+            Assert.False(PlannerNaming.SameStage(5, null, 6, null));
+            Assert.False(PlannerNaming.SameStage(5, 1, 6, 1));
+            Assert.Equal("St05", PlannerNaming.StageText(5, null));
+            Assert.Equal("St05.1", PlannerNaming.StageText(5, 1));
+            Assert.Equal("St12.10", PlannerNaming.StageText(12, 10));
+        }
+
         private static void AssertSegment(PlannerMeshSegment segment, string folder, string activity, PlannerTaskType type)
         {
             Assert.NotNull(segment);
