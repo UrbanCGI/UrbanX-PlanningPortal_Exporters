@@ -29,7 +29,7 @@ namespace Max2Babylon
         private bool isBabylonExported, isGltfExported;
 
         // UrbanCGI fork: shows up in the GLB's asset.generator so a file's origin is clear during triage.
-        public static string exporterVersion = "1.0-urbancgi";
+        public static string exporterVersion = "1.1-urbancgi";
         public float scaleFactorToMeters = 1.0f;
 
         public const int MaxSceneTicksPerSecond = 4800; //https://knowledge.autodesk.com/search-result/caas/CloudHelp/cloudhelp/2016/ENU/MAXScript-Help/files/GUID-141213A1-B5A8-457B-8838-E602022C8798-htm.html
@@ -263,10 +263,16 @@ namespace Max2Babylon
                 }
             }
 
-            Tools.InitializeGuidNodesMap();
+            // UrbanCGI fork: the Planner re-links activities by these ids, so new ones must be saved with the scene.
+            var newGuids = Tools.InitializeGuidNodesMap();
 
             string fileExportString = exportNode != null? $"{exportNode.NodeName} | {exportParameters.outputPath}": exportParameters.outputPath;
             RaiseMessage($"Exportation started: {fileExportString}", Color.Blue);
+            if (newGuids > 0)
+            {
+                Loader.Global.SetSaveRequiredFlag(true, false);
+                RaiseWarning(string.Format("{0} object(s) were given new Planner ids (new objects, or copies that carried another object's id). Save the scene so the next export keeps them.", newGuids), 1);
+            }
 
 
             scaleFactorToMeters = Tools.GetScaleFactorToMeters();
@@ -1007,6 +1013,17 @@ namespace Max2Babylon
                 if (tag != "")
                 {
                     babylonNode.tags = tag;
+                }
+
+                // UrbanCGI fork: every node carries its fixed Max GUID into the glTF extras, and a Planner layer
+                // helper its folder (glTF only; the .babylon output is unchanged).
+                try
+                {
+                    babylonNode.gltfExtras = maxGameNode.MaxNode.PlannerGltfExtras();
+                }
+                catch (Exception e)
+                {
+                    RaiseWarning(string.Format("Planner extras skipped for {0}: {1}", maxGameNode.Name, e.Message), 2);
                 }
 
                 // Export its children

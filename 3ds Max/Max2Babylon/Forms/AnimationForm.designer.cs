@@ -251,7 +251,7 @@ namespace Max2Babylon
             this.MinimumSize = new System.Drawing.Size(516, 371);
             this.Name = "AnimationForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Babylon.js - Animation Groups";
+            this.Text = "Planner Exporters - Animation Groups";
             this.Activated += new System.EventHandler(this.AnimationForm_Activated);
             this.Deactivate += new System.EventHandler(this.AnimationForm_Deactivate);
             this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.AnimationForm_FormClosed);

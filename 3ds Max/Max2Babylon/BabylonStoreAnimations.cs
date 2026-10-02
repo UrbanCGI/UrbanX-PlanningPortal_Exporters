@@ -37,7 +37,7 @@ namespace Max2Babylon
 
         public override string ButtonText
         {
-            get { return "Babylon Store AnimationGroups..."; }
+            get { return "Planner Store AnimationGroups..."; }
         }
 
         public override string MenuText
@@ -47,23 +47,23 @@ namespace Max2Babylon
                 var selectedContainers = Tools.GetContainerInSelection();
                 if (selectedContainers?.Count > 0)
                 {
-                    return "&Babylon Store AnimationGroups to selected containers...";
+                    return "&Planner Store AnimationGroups to selected containers...";
                 }
                 else
                 {
-                    return "&(Xref/Merge) Babylon Store AnimationGroups";
+                    return "&(Xref/Merge) Planner Store AnimationGroups";
                 }
             }
         }
 
         public override string DescriptionText
         {
-            get { return "Babylon - Copy AnimationGroups into a BabylonAnimationHelper or a BabylonContainerHelper"; }
+            get { return "Planner - Copy AnimationGroups into a BabylonAnimationHelper or a BabylonContainerHelper"; }
         }
 
         public override string CategoryText
         {
-            get { return "Babylon"; }
+            get { return CuiTitles.ActionCategory; }
         }
 
         public override bool IsChecked_

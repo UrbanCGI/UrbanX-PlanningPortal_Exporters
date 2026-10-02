@@ -34,7 +34,7 @@ namespace Max2Babylon
         public override int Id_ => 5;
         public override string ButtonText
         {
-            get { return "Babylon Load AnimationGroups"; }
+            get { return "Planner Load AnimationGroups"; }
         }
 
         public override string MenuText
@@ -44,23 +44,23 @@ namespace Max2Babylon
                 var selectedContainers = Tools.GetContainerInSelection();
                 if (selectedContainers?.Count > 0)
                 {
-                    return "&Babylon Load AnimationGroups from selected containers";
+                    return "&Planner Load AnimationGroups from selected containers";
                 }
                 else
                 {
-                    return "&(Xref/Merge) Babylon Load AnimationGroups";
+                    return "&(Xref/Merge) Planner Load AnimationGroups";
                 }
             }
         }
 
         public override string DescriptionText
         {
-            get { return "Babylon - Load AnimationGroups from Scene or selected Containers"; }
+            get { return "Planner - Load AnimationGroups from Scene or selected Containers"; }
         }
 
         public override string CategoryText
         {
-            get { return "Babylon"; }
+            get { return CuiTitles.ActionCategory; }
         }
 
         public override bool IsChecked_

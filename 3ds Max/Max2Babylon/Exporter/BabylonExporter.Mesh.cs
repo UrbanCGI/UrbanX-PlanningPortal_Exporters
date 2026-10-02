@@ -79,6 +79,9 @@ namespace Max2Babylon
             babylonMesh.autoAnimateTo = babylonNode.autoAnimateTo;
             babylonMesh.autoAnimateLoop = babylonNode.autoAnimateLoop;
 
+            // UrbanCGI fork: the camera or light keeps its Planner extras as a dummy.
+            babylonMesh.gltfExtras = babylonNode.gltfExtras;
+
             babylonScene.MeshesList.Add(babylonMesh);
 
             return babylonMesh;
@@ -765,10 +768,14 @@ namespace Max2Babylon
                     babylonMesh.metadata = new Dictionary<string, object>();
                 try
                 {
-                    // JSON parse the string value
-                    var o = JObject.Parse(userProp);
-                    // convert Newtonsoft JSON to dictionary
-                    Dictionary<string, object> d = o.ToObject<Dictionary<string, object>>();
+                    // JSON parse the string value and convert it to a dictionary. UrbanCGI fork: a "planner" block is
+                    // read into plain dictionaries so the Planner's own extras merge into it rather than replace it.
+                    bool hasPlannerKey;
+                    Dictionary<string, object> d = PlannerUserExtras.Parse(userProp, out hasPlannerKey);
+                    if (hasPlannerKey)
+                    {
+                        RaiseWarning(string.Format("{0}: \"planner\" in the extras property is reserved for the Planner; its guid and folder values are written over, other keys are kept.", meshNode.Name), 2);
+                    }
                     // insert root elements to metadata
                     foreach (var e in d)
                     {

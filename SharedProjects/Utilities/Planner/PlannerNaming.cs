@@ -90,7 +90,7 @@ namespace Utilities.Planner
         // ..._Ph<n>_St<n>[.<m>]_<IN|RM> pinned to the end, or followed only by a space-separated note.
         private static readonly Regex Trail = new Regex(@"_Ph([0-9]+)_St([0-9]+(?:\.[0-9]+)?)_(IN|RM)(?=$|\s)", OptionsIgnoreCase);
 
-        private static readonly Regex DuplicateSuffix = new Regex(@"\s*\([0-9]+\)\s*$", Options);
+        internal static readonly Regex DuplicateSuffix = new Regex(@"\s*\([0-9]+\)\s*$", Options);
         // "01" or a dashed sub-number "06-1", followed by an underscore or a space (or nothing at all); a dotted
         // sub-number "06.1" only when an underscore follows, so a dimension-led group name that is not a layer
         // ("2.4 High Hoarding", "1.8 x 2.4 Heras Panel") is never read as one.
@@ -147,7 +147,45 @@ namespace Utilities.Planner
             int stage;
             int? subStage;
             ParseStageNumber(order, out stage, out subStage);
-            var rest = s.Substring(orderMatch.Length);
+            var tokens = ReadScheduleTokens(s.Substring(orderMatch.Length), true);
+            var name = tokens.Name;
+
+            return new PlannerLayerName
+            {
+                Order = order,
+                Stage = stage,
+                SubStage = subStage,
+                Name = name,
+                Label = name.Length > 0 ? order + "_" + name : order,
+                Tbc = tokens.Tbc || !tokens.Start.HasValue || tokens.Issues.Count > 0,
+                Start = tokens.Start,
+                End = tokens.End,
+                Issues = tokens.Issues
+            };
+        }
+
+        /// <summary>What <see cref="ReadScheduleTokens"/> found in the text after a group's number.</summary>
+        internal sealed class ScheduleTokens
+        {
+            /// <summary>The text with the date and TBC tokens removed, underscores collapsed and the edges trimmed.</summary>
+            public string Name;
+            public DateTime? Start;
+            /// <summary>Inclusive last day; equals Start for a single day. Null when undated.</summary>
+            public DateTime? End;
+            /// <summary>True when a TBC token was present (the token alone, not the missing-dates fallback).</summary>
+            public bool Tbc;
+            public List<string> Issues = new List<string>();
+        }
+
+        /// <summary>
+        /// The date and TBC rules of <see cref="ParseLayerName"/>, applied to the text after the order number: the
+        /// last one or two DD-MM-YY tokens are the range, a TBC token anywhere marks the dates unconfirmed. Shared
+        /// with the legacy layer reader of <see cref="PlannerCodes"/>, which must strip exactly the same tokens.
+        /// <paramref name="datesExpected"/> adds the "no dates" issue when neither dates nor TBC were found.
+        /// </summary>
+        internal static ScheduleTokens ReadScheduleTokens(string rest, bool datesExpected)
+        {
+            rest = rest ?? string.Empty;
             var issues = new List<string>();
 
             // Dates are pinned to the end by convention, so the LAST two date tokens are the range; anything
@@ -200,7 +238,7 @@ namespace Utilities.Planner
                 issues.Add("finish " + parsedText[1] + " is before start " + parsedText[0]);
                 end = start;
             }
-            if (!start.HasValue && !tbc)
+            if (!start.HasValue && !tbc && datesExpected)
             {
                 issues.Add("no dates");
             }
@@ -209,16 +247,12 @@ namespace Utilities.Planner
                 end = null;
             }
 
-            return new PlannerLayerName
+            return new ScheduleTokens
             {
-                Order = order,
-                Stage = stage,
-                SubStage = subStage,
                 Name = name,
-                Label = name.Length > 0 ? order + "_" + name : order,
-                Tbc = tbc || !start.HasValue || issues.Count > 0,
                 Start = start,
                 End = end,
+                Tbc = tbc,
                 Issues = issues
             };
         }

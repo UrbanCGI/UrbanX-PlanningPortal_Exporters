@@ -385,7 +385,7 @@ namespace Max2Babylon
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "CameraPropertiesForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Babylon.js - Camera Properties";
+            this.Text = "Planner Exporters - Camera Properties";
             this.Load += new System.EventHandler(this.CameraPropertiesForm_Load);
             this.groupBox1.ResumeLayout(false);
             this.groupBox1.PerformLayout();

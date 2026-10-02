@@ -152,6 +152,74 @@ namespace Max2Babylon
             Loader.Core.RootNode.SetUserPropBool("babylonjs_autosave",false);
         }
 
+        // UrbanCGI fork: the Planner layers, for MAXScript and toolbar buttons, e.g.
+        //   (dotNetClass "Max2Babylon.MaxScriptManager").ShowPlannerLayers()
+        //   (dotNetClass "Max2Babylon.MaxScriptManager").LoadPlannerSchedule @"C:\jobs\EUS.planner-schedule.json"
+        //   print ((dotNetClass "Max2Babylon.MaxScriptManager").UpdatePlannerLayers false)  -- dry run: the review list
+
+        /// <summary>Opens the Planner layers window.</summary>
+        public static void ShowPlannerLayers()
+        {
+            PlannerLayersForm.ShowWindow();
+        }
+
+        /// <summary>Reads a Planner schedule file and keeps it with the scene. Returns an empty string on success, else why it was refused.</summary>
+        public static string LoadPlannerSchedule(string jsonPath)
+        {
+            if (Loader.Class_ID == null)
+            {
+                Loader.AssemblyMain();
+            }
+            var loaded = PlannerLayersActions.ReadFile(jsonPath);
+            if (loaded.Schedule == null)
+            {
+                return string.Join(" ", loaded.Errors.ToArray());
+            }
+            PlannerLayersActions.Store(loaded);
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Plans Update layers from the schedule kept with the scene and, with <paramref name="apply"/>, applies it
+        /// (holding the scene first). Returns the review list, or the outcome after applying.
+        /// </summary>
+        public static string UpdatePlannerLayers(bool apply)
+        {
+            if (Loader.Class_ID == null)
+            {
+                Loader.AssemblyMain();
+            }
+            var stored = PlannerLayersActions.Stored();
+            if (stored == null || stored.Schedule == null)
+            {
+                return stored == null ? "No Planner schedule is kept with this scene: load one first." : string.Join(" ", stored.Errors.ToArray());
+            }
+            var schedule = stored.Schedule;
+            var plan = PlannerLayersActions.PlanUpdate(schedule);
+            if (!apply)
+            {
+                return PlannerLayersActions.ReviewText(plan);
+            }
+            bool succeeded;
+            return PlannerLayersActions.Apply(plan, true, () => PlannerLayersActions.PlanUpdate(schedule), out succeeded);
+        }
+
+        /// <summary>Plans Adopt existing layers and, with <paramref name="apply"/>, applies it (holding the scene first). Returns the review list, or the outcome.</summary>
+        public static string AdoptPlannerLayers(bool apply)
+        {
+            if (Loader.Class_ID == null)
+            {
+                Loader.AssemblyMain();
+            }
+            var plan = PlannerLayersActions.PlanAdopt();
+            if (!apply)
+            {
+                return PlannerLayersActions.ReviewText(plan);
+            }
+            bool succeeded;
+            return PlannerLayersActions.Apply(plan, true, PlannerLayersActions.PlanAdopt, out succeeded);
+        }
+
         public static void ImportAnimationGroups(string jsonPath)
         {
             AnimationGroupList animationGroups = new AnimationGroupList();

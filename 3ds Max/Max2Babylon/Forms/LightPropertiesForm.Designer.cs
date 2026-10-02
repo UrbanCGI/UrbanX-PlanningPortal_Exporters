@@ -389,7 +389,7 @@ namespace Max2Babylon
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "LightPropertiesForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Babylon.js - Light Properties";
+            this.Text = "Planner Exporters - Light Properties";
             this.Load += new System.EventHandler(this.LightPropertiesForm_Load);
             this.groupBox3.ResumeLayout(false);
             this.groupBox3.PerformLayout();

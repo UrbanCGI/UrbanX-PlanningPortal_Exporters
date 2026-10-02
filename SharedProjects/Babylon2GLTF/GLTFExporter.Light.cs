@@ -99,6 +99,7 @@ namespace Babylon2GLTF
             if (babylonLight.metadata != null && babylonLight.metadata.Count != 0)
             {
                 gltfNode.extras = babylonLight.metadata;
+                MergeGltfExtras(gltfNode, babylonLight); // UrbanCGI fork: keep the Planner extras ExportNode merged in
             }
 
             if (exportParameters.enableKHRLightsPunctual)

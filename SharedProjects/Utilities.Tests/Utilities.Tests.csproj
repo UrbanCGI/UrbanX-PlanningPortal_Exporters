@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     Unit tests for the shared, 3ds Max-free parts of the exporter (UrbanCGI fork): the byte-level image format
-    sniffer, the texture correction path and the Planner naming checks. The shared sources are compiled straight
+    sniffer, the texture correction path, the Planner naming checks, the Planner layer codes and planners, and
+    the glTF extras. The shared sources are compiled straight
     into this assembly, exactly as Max2Babylon does, so internal types are reachable and no Max install is needed.
 
       dotnet test SharedProjects/Utilities.Tests/Utilities.Tests.csproj
@@ -38,6 +39,12 @@
     <Reference Include="TQ.Texture">
       <HintPath>..\..\3ds Max\Refs\TQ.Texture.dll</HintPath>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Planner schedule and user extras readers live with the 3ds Max code (they need Newtonsoft) but make no Max calls. -->
+    <Compile Include="..\..\3ds Max\Max2Babylon\Planner\PlannerScheduleJson.cs" Link="Linked\PlannerScheduleJson.cs" />
+    <Compile Include="..\..\3ds Max\Max2Babylon\Planner\PlannerUserExtras.cs" Link="Linked\PlannerUserExtras.cs" />
   </ItemGroup>
 
   <!-- The same shared set Max2Babylon compiles; the entities reference each other across these folders. -->

@@ -36,7 +36,7 @@ namespace Max2Babylon
             try
             {
                 var logPath = PathFor(outputPath);
-                var header = "Babylon.js exporter for 3ds Max, UrbanCGI build v" + BabylonExporter.exporterVersion
+                var header = "Planner Exporters for 3ds Max (Urban CGI) v" + BabylonExporter.exporterVersion
                              + " - " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " - " + Path.GetFileName(outputPath)
                              + "\r\n\r\n";
                 File.WriteAllText(logPath, header + text, Encoding.UTF8);

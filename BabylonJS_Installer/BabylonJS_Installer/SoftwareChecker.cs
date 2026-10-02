@@ -114,23 +114,40 @@ namespace BabylonJS_Installer
             if(soft == "Max")
             {
                 Directory.CreateDirectory(path + "scripts\\Startup");
+                // UrbanCGI fork: removes the menus under the current titles ("Planner", "Planner...") and the
+                // ones earlier builds used ("Babylon", "Babylon..."), last item first so positions stay valid.
                 File.WriteAllText(
                     path + "scripts\\Startup\\BabylonCleanUp.ms",
-                    "/* Remove menu \"Babylon\" from Main menu bar */\n" +
-                    "try (menuMan.unRegisterMenu(menuMan.findMenu \"Babylon\")) catch ()\n" +
-                    "/* Remove item \"Babylon...\" from quad */\n" +
+                    "/* Remove the \"Planner\" (or older \"Babylon\") menu from the main menu bar */\n" +
                     "try (\n" +
-                        "quadMenu = menuMan.getViewportRightClickMenu #nonePressed\n" +
-                        "menu = quadMenu.getMenu 1\n" +
-                        "nbItems = menu.numItems()\n" +
-                        "for i = 1 to nbItems do \n" +
-                                             "(\n" +
-                                                "item = menu.getItem i\n" +
-                            "title = item.getTitle()\n" +
-                            "if title == \"Babylon...\" do menu.removeItemByPosition i\n" +
+                        "mainBar = menuMan.getMainMenuBar()\n" +
+                        "for i = mainBar.numItems() to 1 by -1 do\n" +
+                        "(\n" +
+                            "sub = (mainBar.getItem i).getSubMenu()\n" +
+                            "if sub != undefined and (sub.getTitle() == \"Planner\" or sub.getTitle() == \"Babylon\") do mainBar.removeItemByPosition i\n" +
                         ")\n" +
                     ")\n" +
                     "catch ()\n" +
+                    "for title in #(\"Planner\", \"Babylon\") do\n" +
+                    "(\n" +
+                        "try (for n = 1 to 8 do (m = menuMan.findMenu title; if m == undefined then exit; menuMan.unRegisterMenu m)) catch ()\n" +
+                    ")\n" +
+                    "/* Remove the \"Planner...\" (or older \"Babylon...\") item from the quad */\n" +
+                    "try (\n" +
+                        "quadMenu = menuMan.getViewportRightClickMenu #nonePressed\n" +
+                        "menu = quadMenu.getMenu 1\n" +
+                        "for i = menu.numItems() to 1 by -1 do\n" +
+                        "(\n" +
+                            "title = (menu.getItem i).getTitle()\n" +
+                            "if title == \"Planner...\" or title == \"Babylon...\" do menu.removeItemByPosition i\n" +
+                        ")\n" +
+                    ")\n" +
+                    "catch ()\n" +
+                    "for title in #(\"Planner...\", \"Babylon...\") do\n" +
+                    "(\n" +
+                        "try (for n = 1 to 8 do (m = menuMan.findMenu title; if m == undefined then exit; menuMan.unRegisterMenu m)) catch ()\n" +
+                    ")\n" +
+                    "try (menuMan.updateMenuBar()) catch ()\n" +
                     "/* Self destruction */\n" +
                     "root = getdir #maxroot\n" +
                     "filePath = root + \"scripts\\Startup\\BabylonCleanUp.ms\"\n" +

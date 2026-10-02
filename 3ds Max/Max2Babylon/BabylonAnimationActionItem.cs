@@ -63,22 +63,22 @@ namespace Max2Babylon
 
 		public override string ButtonText
 		{
-			get { return "Babylon Animation Groups"; }
+			get { return "Planner Animation Groups"; }
 		}
 
 		public override string MenuText
 		{
-			get { return "&Babylon Animation Groups"; }
+			get { return "&Planner Animation Groups"; }
 		}
 
 		public override string DescriptionText
 		{
-			get { return "Babylon - manage animation groups for this scene"; }
+			get { return "Planner - manage animation groups for this scene"; }
 		}
 
 		public override string CategoryText
 		{
-			get { return "Babylon"; }
+			get { return CuiTitles.ActionCategory; }
 		}
 
 		public override bool IsChecked_

@@ -10,6 +10,8 @@ namespace Max2Babylon
         public ScenePropertiesForm()
         {
             InitializeComponent();
+            // UrbanCGI fork: set here rather than in the designer file, which holds bytes an edit would mangle.
+            this.Text = "Planner Exporters - Scene Properties";
         }
 
         private void butOK_Click(object sender, EventArgs e)

@@ -174,6 +174,163 @@ namespace Utilities.Tests
             Assert.Single(report.Issues); // unfiled
         }
 
+        // ---- coded scheme (the scene has a Work_Phasing root) ------------------------------------------------------
+
+        /// <summary>The export's nodes as the 3ds Max side collects them: every non-helper with its id, layer and ancestor names.</summary>
+        private static List<SceneNodeInfo> ExportNodes(PlannerScene scene, bool withIds = true)
+        {
+            var result = new List<SceneNodeInfo>();
+            foreach (var node in scene.Nodes.Where(n => !n.IsHelper))
+            {
+                var ancestors = new List<string>();
+                for (var parent = scene.FindNode(node.ParentId); parent != null; parent = scene.FindNode(parent.ParentId))
+                {
+                    ancestors.Add(parent.Name);
+                }
+                result.Add(new SceneNodeInfo { Id = withIds ? node.Id : null, Name = node.Name, IsMesh = true, Ancestors = ancestors, LayerName = node.LayerName });
+            }
+            return result;
+        }
+
+        private static PlannerScene Adopted()
+        {
+            return PlannerLayerPlans.AdoptPlan(PlannerLayerPlansTests.BuildFixture(), null).Result;
+        }
+
+        [Fact]
+        public void CodedSceneIsReadByItsLayers()
+        {
+            var scene = Adopted();
+            var report = PlannerNamingValidator.Validate(ExportNodes(scene), scene, Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            output.WriteLine(report.Summary());
+
+            Assert.Equal("Work_Phasing", report.RootLayerName);
+            Assert.Equal(20, report.PlannerLayers);
+            Assert.Equal(23, report.PhasedObjects);   // the two context objects on layer 0 are not phased
+            Assert.Equal(22, report.TaggedObjects);   // Bollard_Cap carries no tag, and needs none
+            Assert.Equal(0, report.UnfiledObjects);
+            Assert.Equal(0, report.Errors);
+            Assert.Contains("23 object(s) on 20 Planner layer(s) under 'Work_Phasing', 22 tagged;", report.Summary());
+
+            var warnings = report.Issues.Where(i => i.Severity == NamingSeverity.Warning).ToList();
+            Assert.Contains(warnings, w => w.Subject == "Ph1_St01_IN_Sheet_Pile_1" && w.Message.Contains("its tag reads 01-01 but it sits on '01-04.0_Zone5_Working_Phase1_Retainment_Installation' (01-04.0)"));
+            Assert.Contains(warnings, w => w.Subject == "Ph2_St01.3_RM_RC_Road_Barriers2" && w.Message.Contains("its tag reads 02-01.3"));
+            Assert.DoesNotContain(warnings, w => w.Subject == "Ph1_St04_IN_Sheet_Pile_1");
+            Assert.DoesNotContain(warnings, w => w.Subject == "Ph6_St05_IN_RC_PlasticRoadBarrier_Full_Closure_Ph99_St99_RM" && w.Message.Contains("its tag")); // 06-05 covers 06-05.2
+            Assert.Contains(warnings, w => w.Message.Contains("Code 02-01.5 is used by 2 Planner layers"));
+            Assert.Contains(warnings, w => w.Message.Contains("no Planner layer has the code 99-99"));
+            Assert.Contains(warnings, w => w.Message.Contains("no Planner layer has the code 01-26"));
+            Assert.Contains(warnings, w => w.Subject.StartsWith("Ph2_St02_IN_LM_based on", StringComparison.Ordinal) && w.Message.Contains("contains a space"));
+
+            // The legacy rules are not applied: no dated groups, no "unfiled" and no undated-group warnings.
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("dated group"));
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("neither dates nor TBC"));
+            Assert.DoesNotContain(report.Issues, i => i.Subject == "St1_Kerb_003" || i.Subject == "EUS_Con_HRB_Bridge_Slab");
+        }
+
+        [Fact]
+        public void CodedSceneFlagsObjectsNotUnderTheirLayersHelper()
+        {
+            var scene = Adopted();
+            scene.Nodes.Single(n => n.Name == "Ph1_St04_IN_Sheet_Pile_3").ParentId = null;
+            var zoneHelper = scene.Nodes.Single(n => n.IsHelper && n.Name == "01-04.1_Phase1_Retainment_Installation");
+            scene.Nodes.Add(new PlannerSceneNode { Id = "x1", Name = "IN_Zone_Fence", LayerName = "01_Zone5_Working", ParentId = zoneHelper.Id }); // a sub-folder's helper
+            scene.Nodes.Add(new PlannerSceneNode { Id = "x2", Name = "Ph3_St02_IN_TR_Kerb", LayerName = "0" });                                // tagged, outside the root
+
+            foreach (var withIds in new[] { true, false })
+            {
+                var report = PlannerNamingValidator.Validate(ExportNodes(scene, withIds), scene, Today);
+                Assert.Equal(3, report.UnfiledObjects);
+                Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Warning && i.Subject == "01-04.1_Phase1_Retainment_Installation"
+                                                   && i.Message.StartsWith("1 object(s) on the Planner layer '01-04.1_Phase1_Retainment_Installation' are not linked under its helper", StringComparison.Ordinal)
+                                                   && i.Message.Contains("'Ph1_St04_IN_Sheet_Pile_3'") && i.Message.Contains("Run Update layers"));
+                Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Warning && i.Subject == "01_Zone5_Working" && i.Message.Contains("'IN_Zone_Fence'"));
+                Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Warning && i.Message.Contains("1 tagged object(s) on the layer '0' sit outside 'Work_Phasing'"));
+                Assert.Contains("3 not filed under their layer", report.Summary());
+            }
+        }
+
+        [Fact]
+        public void CodedSceneFlagsPhasingLayersOutsideTheRootAndLayersWithoutHelpers()
+        {
+            var scene = PlannerLayerPlansTests.BuildFixture();
+            scene.Layers.Add(new PlannerSceneLayer { Name = "Work_Phasing" });
+            scene.Layers.Add(new PlannerSceneLayer { Name = "01_02_Old_Dated_12-01-27", ParentName = "Work_Phasing" });
+
+            var report = PlannerNamingValidator.Validate(ExportNodes(scene), scene, Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+
+            var warnings = report.Issues.Where(i => i.Severity == NamingSeverity.Warning).ToList();
+            Assert.Contains(warnings, w => w.Message.Contains("The phasing root 'Work_Phasing' has no helper yet"));
+            Assert.Contains(warnings, w => w.Subject == "01_02_Old_Dated_12-01-27" && w.Message.Contains("has no helper yet"));
+            Assert.Contains(warnings, w => w.Subject == "01_02_Old_Dated_12-01-27" && w.Message.Contains("still has an old dated name: it reads as code 01-02"));
+            Assert.Contains(warnings, w => w.Subject == "_06_Weekend_Closure" && w.Message.Contains("looks like a phasing layer but sits outside 'Work_Phasing' (with 3 more inside it)"));
+            Assert.Contains(warnings, w => w.Subject == "_01_Zone5_Working" && w.Message.Contains("(with 4 more inside it)"));
+            Assert.Contains(warnings, w => w.Subject == "06_06_Full_Closure_of_Main_Road_TBC_07-02-27" && w.Message.Contains("looks like a phasing layer"));
+            Assert.DoesNotContain(warnings, w => w.Subject == "01_04.1_Phase1_Retainment_Installation_18-09-26_23-10-26"); // inside a reported layer
+            Assert.DoesNotContain(warnings, w => w.Subject == OldRootName);                                               // not a phasing layer itself
+            Assert.DoesNotContain(warnings, w => w.Message.Contains("tagged object(s)"));                                // covered by the layer warnings
+            Assert.Equal(0, report.PhasedObjects);
+        }
+
+        private const string OldRootName = "HS2_EUS_HRB_Phasing_RoadConstraction_Main_Section_v.02";
+
+        [Fact]
+        public void CodedSceneKeepsErrorsForBrokenNames()
+        {
+            var scene = new PlannerScene();
+            scene.Layers.Add(new PlannerSceneLayer { Name = "Work_Phasing" });
+            scene.Layers.Add(new PlannerSceneLayer { Name = "01-04_Retainment", ParentName = "Work_Phasing" });
+            scene.Nodes.Add(new PlannerSceneNode { Id = "r", Name = "Work_Phasing", LayerName = "Work_Phasing", IsHelper = true, Props = { { PlannerProps.Root, "true" } } });
+            scene.Nodes.Add(new PlannerSceneNode { Id = "h", Name = "01-04_Retainment", LayerName = "01-04_Retainment", ParentId = "r", IsHelper = true, Props = { { PlannerProps.Code, "01-04" } } });
+            var names = new[]
+            {
+                "Ph1_S03_RM_Thing",              // malformed lead -> error
+                "IN_Kerb_Ph2_S06_RM",            // malformed removal -> error
+                "Ph1_St04_IN_Kerb_Ph2_St06_IN",  // a trailing install tag means nothing now -> warning
+                "Ph1_St04_RM_Barrier_Ph2_St06_IN", // re-install after a removal -> note
+                "Ph1_St04_IN",                   // empty description -> warning
+                "Ph1_St4_IN_Pile",               // padding -> note
+                "Sheet_Pile_7",                  // untagged: an activity like any other -> nothing
+                "IN_Pile_RM_01-04",              // removal by code, resolved -> nothing
+                "Sheet_Pile_7"                   // duplicate name -> error
+            };
+            var id = 0;
+            foreach (var name in names)
+            {
+                scene.Nodes.Add(new PlannerSceneNode { Id = "o" + (++id), Name = name, LayerName = "01-04_Retainment", ParentId = "h" });
+            }
+
+            var report = PlannerNamingValidator.Validate(ExportNodes(scene), scene, Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+
+            Assert.Equal(3, report.Errors);
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Error && i.Subject == "Ph1_S03_RM_Thing" && i.Message.Contains("leading tag is malformed"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Error && i.Subject == "IN_Kerb_Ph2_S06_RM" && i.Message.Contains("looks like a removal tag"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Error && i.Subject == "Sheet_Pile_7" && i.Message.Contains("is the name of 2 objects"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Warning && i.Subject == "Ph1_St04_IN_Kerb_Ph2_St06_IN" && i.Message.Contains("ends in an install tag"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Note && i.Subject == "Ph1_St04_RM_Barrier_Ph2_St06_IN" && i.Message.Contains("re-install is ignored"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Warning && i.Subject == "Ph1_St04_IN" && i.Message.Contains("no description"));
+            Assert.Contains(report.Issues, i => i.Severity == NamingSeverity.Note && i.Subject == "Ph1_St4_IN_Pile" && i.Message.Contains("two digits"));
+            Assert.DoesNotContain(report.Issues, i => i.Subject == "IN_Pile_RM_01-04");
+            Assert.Equal(NamingSeverity.Error, report.Issues.First().Severity);
+        }
+
+        [Fact]
+        public void SceneWithoutARootKeepsTheLegacyRules()
+        {
+            var legacy = PlannerNamingValidator.Validate(RepresentativeScene(), Today);
+            var withScene = PlannerNamingValidator.Validate(RepresentativeScene(), PlannerLayerPlansTests.BuildFixture(), Today);
+            var withoutScene = PlannerNamingValidator.Validate(RepresentativeScene(), null, Today);
+            foreach (var report in new[] { withScene, withoutScene })
+            {
+                Assert.Null(report.RootLayerName);
+                Assert.Equal(legacy.Summary(), report.Summary());
+                Assert.Equal(legacy.Issues.Select(i => i.ToString()).ToArray(), report.Issues.Select(i => i.ToString()).ToArray());
+            }
+        }
+
         /// <summary>
         /// Runs the rules over a real exported hierarchy when PLANNER_NODES_FIXTURE points at a JSON file of the form
         /// { "nodes": [ { "name": "...", "parent": "..." | null, "isMesh": true|false } ] } and prints the report.

@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // Les informations générales relatives à un assembly dépendent de
 // l'ensemble d'attributs suivant. Changez les valeurs de ces attributs pour modifier les informations
 // associées à un assembly.
-[assembly: AssemblyTitle("BabylonJS_Exporters")]
-[assembly: AssemblyDescription("Installs the UrbanCGI Planner build of the Babylon.js exporters (from the UrbanCGI fork's GitHub releases, or a package next to the program) into 3ds Max and Maya.")]
+[assembly: AssemblyTitle("Planner Exporters")]
+[assembly: AssemblyDescription("Installs the Planner Exporters, Urban CGI's build of the Babylon.js exporters (from the fork's GitHub releases, or a package next to the program), into 3ds Max and Maya.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Babylon.js")]
-[assembly: AssemblyProduct("Babylon.js_Exporters")]
+[assembly: AssemblyCompany("Urban CGI")]
+[assembly: AssemblyProduct("Planner Exporters")]
 [assembly: AssemblyCopyright("Copyright Babylon.js ©  2019-2026")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -32,5 +32,5 @@ using System.Runtime.InteropServices;
 // Vous pouvez spécifier toutes les valeurs ou indiquer les numéros de build et de révision par défaut
 // en utilisant '*', comme indiqué ci-dessous :
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.8.0.0")]
-[assembly: AssemblyFileVersion("1.8.0.0")]
+[assembly: AssemblyVersion("1.9.0.0")]
+[assembly: AssemblyFileVersion("1.9.0.0")]

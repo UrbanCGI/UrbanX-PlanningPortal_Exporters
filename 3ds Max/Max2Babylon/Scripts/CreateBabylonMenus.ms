@@ -5,7 +5,8 @@
         local menuMgr= callbacks.notificationParam() 
         local mainMenu=menuMgr.mainMenuBar
 
-        local babMenu = mainMenu.CreateSubMenu "01840AAF-46C6-49F3-9234-9FB704BE4278" "Babylon"
+        -- UrbanCGI fork: display titles only; the menu GUIDs, the action table id and the action ids stay as they were.
+        local babMenu = mainMenu.CreateSubMenu "01840AAF-46C6-49F3-9234-9FB704BE4278" "Planner"
         babMenu.CreateAction "f801f1c3-1e38-48e6-a0b8-551866315985" actionTableId "1"
     )
 
@@ -15,7 +16,7 @@
         local CuiParentQuadMenuId="f1af2d63-86f8-4f38-bb9e-e5a371a3f863"
         local quadMgr = callbacks.notificationParam() 
         local parent = quadMgr.GetMenuById CuiParentQuadMenuId
-        local quadMenu=parent.CreateSubMenu "ffd098bb-9064-4d7b-9309-24936af41994" "Babylon..."
+        local quadMenu=parent.CreateSubMenu "ffd098bb-9064-4d7b-9309-24936af41994" "Planner..."
 
         quadMenu.CreateAction "b573c490-d450-4449-ac39-23294e6122a3" actionTableId "2"
         quadMenu.CreateAction "0dfe0096-3c09-4865-9254-11471dc9c3b4" actionTableId "3"

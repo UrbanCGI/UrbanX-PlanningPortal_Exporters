@@ -30,6 +30,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Texture\ImageFormatSniffer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNaming.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNamingValidator.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerCodes.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerSchedule.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerScene.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerPlans.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNodeExtras.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerTree.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerPanelModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerMaxScript.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TreeViewExtension.cs" />
   </ItemGroup>
   <ItemGroup>

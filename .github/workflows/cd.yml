@@ -51,9 +51,12 @@ jobs:
           foreach ($year in $years) {
               $fullConfig = "Release_MAX${year}"
               Write-Host "Restoring $fullConfig"
-              msbuild "3ds Max\Max2Babylon.sln" /t:Restore /p:Configuration=$fullConfig 
+              msbuild "3ds Max\Max2Babylon.sln" /t:Restore /p:Configuration=$fullConfig
+              # A failed year must stop the release, not leave its Max_<year>.zip out without a word.
+              if ($LASTEXITCODE -ne 0) { throw "msbuild restore for $fullConfig failed" }
               Write-Host "Building $fullConfig"
-              msbuild "3ds Max\Max2Babylon.sln" /p:Configuration="$fullConfig" "/p:Platform=x64" /p:PostBuildEvent= /p:PreBuildEvent= /v:minimal							
+              msbuild "3ds Max\Max2Babylon.sln" /p:Configuration="$fullConfig" "/p:Platform=x64" /p:PostBuildEvent= /p:PreBuildEvent= /v:minimal
+              if ($LASTEXITCODE -ne 0) { throw "msbuild $fullConfig failed" }
           }
 
       # ── Maya ──
@@ -114,10 +117,10 @@ jobs:
             }
           }
 
-          # Installer zip
+          # Installer zip (the asset keeps its name, Installer.zip; the program inside is Planner_Exporters.exe)
           $installerDir = "BabylonJS_Installer\BabylonJS_Installer\bin\Release"
           if (Test-Path $installerDir) {
-            Compress-Archive -Path "$installerDir\BabylonJS_Exporters.exe","BabylonJS_Installer\README.md" -DestinationPath "$staging\Installer.zip" -Force
+            Compress-Archive -Path "$installerDir\Planner_Exporters.exe","BabylonJS_Installer\README.md" -DestinationPath "$staging\Installer.zip" -Force
           }
 
           # Print manifest

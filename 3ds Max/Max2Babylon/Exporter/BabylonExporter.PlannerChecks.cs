@@ -25,10 +25,22 @@ namespace Max2Babylon
             }
 
             RaiseMessage("Checking Planner naming convention", Color.Blue);
+
+            // A scene with a Work_Phasing root is checked by its Planner layers; without one, the legacy rules apply.
+            PlannerScene layers = null;
+            try
+            {
+                layers = PlannerMaxScene.Read();
+            }
+            catch (Exception e)
+            {
+                RaiseWarning("Planner layers could not be read, so the naming check uses the older dated-group rules: " + e.Message, 1);
+            }
+
             NamingReport report;
             try
             {
-                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene), DateTime.Today);
+                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene, layers), layers, DateTime.Today);
             }
             catch (Exception e)
             {
@@ -63,11 +75,12 @@ namespace Max2Babylon
 
         /// <summary>
         /// The exportable mesh nodes with their ancestor chain (what becomes the GLB hierarchy the Planner reads),
-        /// plus every ancestor as a group record.
+        /// plus every ancestor as a group record. Each record carries the node handle, the id the Planner layers
+        /// scene uses.
         /// </summary>
-        private IEnumerable<SceneNodeInfo> CollectSceneNodes(IIGameScene gameScene)
+        private IEnumerable<SceneNodeInfo> CollectSceneNodes(IIGameScene gameScene, PlannerScene layers)
         {
-            var layerOf = BuildNodeLayerMap();
+            var layerOf = layers != null ? LayerMapOf(layers) : BuildNodeLayerMap();
             var result = new List<SceneNodeInfo>();
             var groups = new Dictionary<uint, SceneNodeInfo>();
 
@@ -87,6 +100,7 @@ namespace Max2Babylon
                     {
                         groups[parent.Handle] = new SceneNodeInfo
                         {
+                            Id = PlannerMaxScene.IdOf(parent),
                             Name = parent.Name,
                             IsMesh = false,
                             Ancestors = AncestorNames(parent),
@@ -96,6 +110,7 @@ namespace Max2Babylon
                 }
                 result.Add(new SceneNodeInfo
                 {
+                    Id = PlannerMaxScene.IdOf(maxNode),
                     Name = maxNode.Name,
                     IsMesh = true,
                     Ancestors = ancestors,
@@ -122,34 +137,36 @@ namespace Max2Babylon
             return layerOf.TryGetValue(node.Handle, out layerName) ? layerName : null;
         }
 
-        /// <summary>Node handle to layer name for the whole scene. Layer membership only refines the wording of hints.</summary>
-        private static Dictionary<uint, string> BuildNodeLayerMap()
+        /// <summary>Node handle to layer name, from the Planner layers scene already read.</summary>
+        private static Dictionary<uint, string> LayerMapOf(PlannerScene layers)
         {
             var map = new Dictionary<uint, string>();
+            foreach (var node in layers.Nodes)
+            {
+                uint handle;
+                if (node.LayerName != null && uint.TryParse(node.Id, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out handle))
+                {
+                    map[handle] = node.LayerName;
+                }
+            }
+            return map;
+        }
+
+        /// <summary>
+        /// Node handle to layer name for the whole scene, when the Planner layers could not be read. Layer membership
+        /// then only refines the wording of hints.
+        /// </summary>
+        private static Dictionary<uint, string> BuildNodeLayerMap()
+        {
             try
             {
-                var manager = Loader.Core.LayerManager;
-                for (int i = 0; i < manager.LayerCount; i++)
-                {
-                    var layer = manager.GetLayer(i);
-                    if (layer == null)
-                    {
-                        continue;
-                    }
-                    foreach (var node in layer.LayerNodes())
-                    {
-                        if (node != null)
-                        {
-                            map[node.Handle] = layer.Name;
-                        }
-                    }
-                }
+                return PlannerMaxScene.NodeLayerMap();
             }
             catch (Exception)
             {
                 // The check works without layer information.
+                return new Dictionary<uint, string>();
             }
-            return map;
         }
 
         /// <summary>Lists, at the end of the export, every texture whose extension lied about its content.</summary>

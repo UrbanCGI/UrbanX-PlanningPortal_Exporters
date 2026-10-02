@@ -77,7 +77,7 @@ namespace BabylonJS_Installer
             this.buttons["Maya"].Add("2022", new[] { this.button_Maya22_Update, this.button_Maya22_Delete, this.button_Maya22_Locate });
             this.buttons["Maya"].Add("2020", new[] { this.button_Maya20_Update, this.button_Maya20_Delete, this.button_Maya20_Locate });
 
-            this.log("---------- BABYLON.JS EXPORTERS TOOL STARTED (UrbanCGI Planner build) ----------");
+            this.log("---------- PLANNER EXPORTERS INSTALLER STARTED (Urban CGI) ----------");
             this.log("Packages come from " + Downloader.Url_releases_page + "\n");
 
             this.downloader = new Downloader();

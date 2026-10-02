@@ -55,7 +55,7 @@ namespace Max2Babylon
             RegisterFilePostOpen();
 
             this.pictureBox1.Image = ResourceHelper.LoadImage("Max2Babylon.Resources.MaxExporter.png");
-            this.Text = $"Babylon.js - Export scene to babylon or glTF format v{BabylonExporter.exporterVersion}";
+            this.Text = $"Planner Exporters - Export the scene to glTF or babylon v{BabylonExporter.exporterVersion}";
 
             this.babylonExportAction = babylonExportAction;
 
@@ -63,6 +63,31 @@ namespace Max2Babylon
             this.gltfPipelineInstalled = GLTFPipelineUtilities.IsGLTFPipelineInstalled();
 
             exportOptionsScrollPanel.MouseMove += exportOptionsScrollPanel_MouseMove;
+
+            AddPlannerLayersButton();
+        }
+
+        /// <summary>
+        /// UrbanCGI fork: opens the Planner layers window. Added here rather than in the designer file, top right
+        /// beside the logo where the window has room.
+        /// </summary>
+        private void AddPlannerLayersButton()
+        {
+            var button = new Button
+            {
+                Name = "butPlannerLayers",
+                Text = "Planner layers...",
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                AutoSize = true,
+                MinimumSize = new System.Drawing.Size(130, 23),
+                TabIndex = 120
+            };
+            button.Click += (sender, e) => PlannerLayersForm.ShowWindow();
+            Controls.Add(button);
+            button.Location = new System.Drawing.Point(ClientSize.Width - button.Width - 8, 8);
+            button.BringToFront();
         }
 
 
@@ -154,11 +179,11 @@ namespace Max2Babylon
             var maxVersion = Tools.GetMaxVersion();
             if (maxVersion.Major == 22 && maxVersion.Minor < 2)
             {
-                CreateErrorMessage("You must update 3dsMax 2020 to version 2020.2 to use Max2Babylon. Unpatched versions of 3dsMax will crash during export.", 0);
+                CreateErrorMessage("You must update 3dsMax 2020 to version 2020.2 to use the Planner Exporters. Unpatched versions of 3dsMax will crash during export.", 0);
             }
             else
             {
-                CreateMessage(String.Format("Using Max2Babylon for 3dsMax version v{0}.{1}.{2}.{3}", maxVersion.Major, maxVersion.Minor, maxVersion.Revision, maxVersion.BuildNumber), Color.Black, 0, true);
+                CreateMessage(String.Format("Using the Planner Exporters v{4} for 3dsMax version v{0}.{1}.{2}.{3}", maxVersion.Major, maxVersion.Minor, maxVersion.Revision, maxVersion.BuildNumber, BabylonExporter.exporterVersion), Color.Black, 0, true);
             }
         }
 

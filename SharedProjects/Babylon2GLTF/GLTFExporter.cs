@@ -64,7 +64,8 @@ namespace Babylon2GLTF
             var softwareVersion = babylonScene.producer != null ? babylonScene.producer.version : "";
             var exporterVersion = babylonScene.producer != null ? babylonScene.producer.exporter_version : "";
 
-            gltf.asset.generator = $"babylon.js glTF exporter for {softwarePackageName} {softwareVersion} v{exporterVersion}";
+            // UrbanCGI fork: the generator names the fork so a file's origin is clear during triage.
+            gltf.asset.generator = $"UrbanCGI Planner Exporters for {softwarePackageName} {softwareVersion} v{exporterVersion}";
 
             // Scene
             gltf.scene = 0;
@@ -497,6 +498,7 @@ namespace Babylon2GLTF
             {
                 gltfNode.extras = babylonNode.metadata;
             }
+            MergeGltfExtras(gltfNode, babylonNode);
 
             gltf.NodesList.Add(gltfNode);   // add the node to the gltf list
             nodeToGltfNodeMap.Add(babylonNode, gltfNode);   // add the node to the global map
@@ -551,6 +553,18 @@ namespace Babylon2GLTF
             ExportGLTFExtension(babylonNode,ref gltfNode, gltf);
             
             return gltfNode;
+        }
+
+        /// <summary>
+        /// UrbanCGI fork: adds the node's glTF-only extras (the Planner block) to whatever extras it already has.
+        /// The merge builds a new dictionary, so the node's Babylon metadata is never modified.
+        /// </summary>
+        private static void MergeGltfExtras(GLTFNode gltfNode, BabylonNode babylonNode)
+        {
+            if (babylonNode.gltfExtras != null && babylonNode.gltfExtras.Count != 0)
+            {
+                gltfNode.extras = Utilities.Planner.PlannerNodeExtras.Merge(gltfNode.extras, babylonNode.gltfExtras);
+            }
         }
 
         private void ExportGLTFExtension<T1,T2>(T1 babylonObject, ref T2 gltfObject, GLTF gltf) where T2:GLTFProperty

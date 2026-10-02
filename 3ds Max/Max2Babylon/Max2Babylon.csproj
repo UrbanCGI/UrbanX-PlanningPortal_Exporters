@@ -23,9 +23,10 @@
 	  <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- from legacy Assembly info -->
-    <AssemblyTitle>Max2Babylon</AssemblyTitle>
-    <Product>Max2Babylon</Product>
+    <!-- from legacy Assembly info. UrbanCGI fork: display names only; AssemblyName and RootNamespace stay Max2Babylon. -->
+    <AssemblyTitle>Planner Exporters for 3ds Max</AssemblyTitle>
+    <Product>Planner Exporters</Product>
+    <Company>Urban CGI</Company>
     <Copyright>Copyright © 2024</Copyright>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>

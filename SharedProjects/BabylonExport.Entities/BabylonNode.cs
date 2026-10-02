@@ -47,5 +47,9 @@ namespace BabylonExport.Entities
 
         // Animations exported for glTF but not for Babylon
         public List<BabylonAnimation> extraAnimations;
+
+        // UrbanCGI fork: extras written to the glTF node only, never to .babylon (the Planner's node GUID and
+        // layer folder, see Utilities.Planner.PlannerNodeExtras). Merged into the node's extras by the glTF exporter.
+        public Dictionary<string, object> gltfExtras;
     }
 }

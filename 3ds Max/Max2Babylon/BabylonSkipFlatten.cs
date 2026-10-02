@@ -26,7 +26,7 @@ namespace Max2Babylon
 
         public override string ButtonText
         {
-            get { return "Babylon Toggle Skip Flatten Status"; }
+            get { return "Planner Toggle Skip Flatten Status"; }
         }
 
         public override string MenuText
@@ -50,12 +50,12 @@ namespace Max2Babylon
 
         public override string DescriptionText
         {
-            get { return "Babylon - Toggle skip flatten status"; }
+            get { return "Planner - Toggle skip flatten status"; }
         }
 
         public override string CategoryText
         {
-            get { return "Babylon"; }
+            get { return CuiTitles.ActionCategory; }
         }
 
         public override bool IsChecked_

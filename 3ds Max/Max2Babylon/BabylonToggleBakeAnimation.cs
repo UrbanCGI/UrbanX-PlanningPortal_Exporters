@@ -29,7 +29,7 @@ namespace Max2Babylon
 
         public override string ButtonText
         {
-            get { return "Babylon Toggle Bake Animation Status"; }
+            get { return "Planner Toggle Bake Animation Status"; }
         }
 
         public override string MenuText
@@ -58,7 +58,7 @@ namespace Max2Babylon
 
         public override string CategoryText
         {
-            get { return "Babylon"; }
+            get { return CuiTitles.ActionCategory; }
         }
 
         public override bool IsChecked_

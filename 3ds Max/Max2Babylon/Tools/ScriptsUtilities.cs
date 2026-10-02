@@ -33,6 +33,20 @@ namespace Max2Babylon
             }
         }
 
+        /// <summary>UrbanCGI fork: runs MAXScript and returns its result as text (used by the Planner layers panel).</summary>
+        public static string ExecuteMaxScriptQuery(string maxScriptCmd)
+        {
+            if (string.IsNullOrEmpty(maxScriptCmd))
+            {
+                return null;
+            }
+#if MAX2022_OR_NEWER
+            return ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(maxScriptCmd, ManagedServices.MaxscriptSDK.ScriptSource.NotSpecified);
+#else
+            return ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(maxScriptCmd);
+#endif
+        }
+
         public static void ExecuteMaxScriptFile(string filePath)
         {
             if (File.Exists(filePath))

@@ -17,11 +17,12 @@ namespace Max2Babylon
             }
         }
 
+        // UrbanCGI fork: the display name; NonLocalizedClassName below keeps the name scripts may know it by.
         public override string ClassName
         {
             get
             {
-                return "Babylon File Exporter";
+                return "Planner File Exporter";
             }
         }
 

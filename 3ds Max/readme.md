@@ -3,8 +3,9 @@
 
 Documentation: https://doc.babylonjs.com/features/featuresDeepDive/Exporters/3DSMax
 
-UrbanCGI fork: the texture content check and the Planner naming check are described in [PLANNER.md](PLANNER.md),
-together with build and install steps that need no 3ds Max installation.
+Urban CGI fork (the Planner Exporters): the texture content check, the Planner naming check, the Planner
+layer conventions and the glTF extras are described in [PLANNER.md](PLANNER.md), together with build and
+install steps that need no 3ds Max installation.
 
 # How to contribute:
 ## Requirements:

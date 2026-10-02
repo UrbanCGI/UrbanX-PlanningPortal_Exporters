@@ -1202,13 +1202,37 @@ namespace Max2Babylon
             return result as IINode;
         }
 
-        public static void InitializeGuidNodesMap()
+        /// <summary>
+        /// Gives every node its GUID and fills the map. UrbanCGI fork: nodes are visited oldest first (by handle), so
+        /// when a clone or a merge left two nodes with the same babylonjs_GUID, the original keeps it and the copy gets
+        /// a new one, whatever the hierarchy order (the Planner re-links activities by this id). Returns how many
+        /// nodes were given a new GUID, which only lasts once the scene is saved.
+        /// </summary>
+        public static int InitializeGuidNodesMap()
         {
             IINode root = Loader.Core.RootNode;
-            foreach (IINode iNode in root.NodeTree())
+            var before = assignedNodeGuids;
+            foreach (IINode iNode in root.NodeTree().OrderBy(n => n.Handle))
             {
                 iNode.GetGuid();
             }
+            return assignedNodeGuids - before;
+        }
+
+        /// <summary>How many node GUIDs this session has written (new nodes, and copies that carried another node's GUID).</summary>
+        private static int assignedNodeGuids;
+
+        /// <summary>UrbanCGI fork: drops the node's GUID and gives it a new one (a clone carries its original's GUID).</summary>
+        public static Guid RenewGuid(this IINode node)
+        {
+            Guid old;
+            if (Guid.TryParse(node.GetStringProperty("babylonjs_GUID", string.Empty), out old)
+                && guids.ContainsKey(old) && guids[old].Equals(node as IInterfaceServer))
+            {
+                guids.Remove(old);
+            }
+            node.DeleteProperty("babylonjs_GUID");
+            return node.GetIINodeGuid();
         }
 
         public static Guid GetGuid<T>(this T animatable) where T : IAnimatable
@@ -1244,6 +1268,7 @@ namespace Max2Babylon
                         guid = Guid.NewGuid();
                         guids.Add(guid, node);
                         node.SetStringProperty("babylonjs_GUID", guid.ToString());
+                        assignedNodeGuids++;
                     }
                 }
                 else
@@ -1264,6 +1289,7 @@ namespace Max2Babylon
                 }
                 guids.Add(guid, node);
                 node.SetStringProperty("babylonjs_GUID", guid.ToString());
+                assignedNodeGuids++;
             }
             return guid;
         }
