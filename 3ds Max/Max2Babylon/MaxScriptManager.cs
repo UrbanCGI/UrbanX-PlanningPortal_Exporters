@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using BabylonExport.Entities;
@@ -145,6 +146,42 @@ namespace Max2Babylon
             exportParameters.pbrEnvironment = Loader.Core.RootNode.GetStringProperty(ExportParameters.PBREnvironmentPathPropertyName, string.Empty);
             exportParameters.exportNode = null;
             return exportParameters;
+        }
+
+        // UrbanCGI fork: the phasing name fixer without its window, for MAXScript. Expose both overloads, as above.
+        public static string FixPhasingNames()
+        {
+            return FixPhasingNames(false);
+        }
+
+        /// <summary>
+        /// Plans the phasing name fix with the word fixes saved in the scene (or the HS2 list) and no stage changes,
+        /// and returns the summary followed by the list as CSV text. With <paramref name="apply"/> the list is also
+        /// carried out, after holding the scene (Edit > Fetch restores it), and the outcome follows the summary.
+        /// </summary>
+        public static string FixPhasingNames(bool apply)
+        {
+            if (Loader.Class_ID == null)
+            {
+                Loader.AssemblyMain();
+            }
+            var wordFixes = PhasingScene.LoadWordFixes();
+            var plan = PhasingScene.Plan(wordFixes, null);
+            var text = new StringBuilder();
+            text.Append(plan.Summary()).Append("\r\n");
+            foreach (var note in plan.Notes)
+            {
+                text.Append(note).Append("\r\n");
+            }
+            if (apply && plan.HasChanges)
+            {
+                Loader.Core.FileHold();
+                var result = PhasingScene.Apply(plan);
+                var after = PhasingScene.Plan(wordFixes, null, new[] { result });
+                text.Append(result.Describe(after, true)).Append("\r\n");
+            }
+            text.Append("\r\n").Append(plan.ToCsv().TrimStart((char)0xFEFF));
+            return text.ToString();
         }
 
         public static void DisableBabylonAutoSave()

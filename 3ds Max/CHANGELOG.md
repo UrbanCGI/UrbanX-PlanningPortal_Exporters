@@ -245,3 +245,9 @@ not exported correctly using glTF
 
 **Fixed bugs**
 - .jpg sources with texture operations, and .jpeg sources in general, fell through the format switches (unsupported-format warning / image/ mime type); both are now normalised to jpg.
+
+## Unreleased (UrbanCGI fork)
+**Implemented changes**
+- Fix phasing names: a "Fix phasing names..." button on the exporter window (Options tab, next to the Planner naming options) lists how the phasing layer and object names in the scene would be corrected, and applies the list in one go after a confirmation: phase and stage IDs written the standard way, split numbers in start-date order, object tags and removal tags following their layers, spaces replaced, the project's spelling fixes, a layer moved into its phase group, and the 3ds Max layers of the same names renamed and re-parented with them. Dates and TBC are never changed; anything that does not read is left as it is and listed to check, as is a corrected name another node already has. Word fixes run again until a name stops changing, and are not used where they would change a date or TBC or leave a name unreadable. In the list a layer's stage can be changed (its ID and the tags follow), the word-fix list is edited and saved with the scene (a scene without one starts with the five HS2 fixes), and the list saves as CSV. Node renames and moves are one undo step; the scene is held first by default (Edit > Fetch restores it, until the next hold). See PLANNER.md.
+- The Planner naming check adds one warning when phasing names can be corrected automatically, pointing to the button; it never stops the export.
+- MAXScript: `MaxScriptManager.FixPhasingNames false` returns the summary and the list as CSV text; `true` also applies it, holding the scene first.

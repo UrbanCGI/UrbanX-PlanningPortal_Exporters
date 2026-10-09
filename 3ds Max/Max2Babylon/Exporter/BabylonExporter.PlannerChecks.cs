@@ -51,6 +51,7 @@ namespace Max2Babylon
                         break;
                 }
             }
+            ReportPhasingNameFixes();
             RaiseMessage(report.Summary(), report.Errors > 0 ? Color.Red : Color.Black, 0, true);
 
             if (parameters.plannerNamingStrict && report.Errors > 0)
@@ -59,6 +60,26 @@ namespace Max2Babylon
                 return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// One warning when the phasing name fixer could correct names in the scene (with the word fixes saved in
+        /// it, no stage changes), pointing to its button. Never stops the export: a failure of the fixer is ignored.
+        /// </summary>
+        private void ReportPhasingNameFixes()
+        {
+            try
+            {
+                var warning = PhasingFixScript.ExportWarning(PhasingScene.Plan(PhasingScene.LoadWordFixes(), null));
+                if (warning != null)
+                {
+                    RaiseWarning(warning, 1);
+                }
+            }
+            catch (Exception)
+            {
+                // The naming check stands on its own.
+            }
         }
 
         /// <summary>

@@ -30,6 +30,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)Texture\ImageFormatSniffer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNaming.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNamingValidator.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixPlan.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingNameFixer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixScript.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingWordFixText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TreeViewExtension.cs" />
   </ItemGroup>
   <ItemGroup>
