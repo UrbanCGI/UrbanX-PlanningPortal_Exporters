@@ -1,8 +1,9 @@
 # UrbanCGI Planner additions to the 3ds Max exporter
 
 This fork of [BabylonJS/Exporters](https://github.com/BabylonJS/Exporters) adds two pre-flight
-safeguards for models that are exported to the UrbanCGI Planner (planning.urbancgi.co.uk), and a tool
-that corrects the phasing names in the scene before export. Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
+safeguards for models that are exported to the UrbanCGI Planner (planning.urbancgi.co.uk), a tool
+that corrects the phasing names in the scene before export, and an Update button that installs the latest
+release from inside 3ds Max. Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
 `babylon.js glTF exporter for 3dsmax <year> v1.0-urbancgi`.
 
 ## 1. Textures are exported by content, not by file extension
@@ -187,6 +188,88 @@ list); `Max2Babylon/Tools/PhasingScene.cs` (reads the scene, keeps the word fixe
 `Max2Babylon/Forms/PhasingFixForm.cs`, `PhasingWordFixForm.cs`, the button in `Max2Babylon/Forms/ExporterForm.cs`,
 `MaxScriptManager.FixPhasingNames`, the export warning in `BabylonExporter.PlannerChecks.cs`.
 
+## 4. Updating from inside the exporter
+
+**First time.** Exporters installed before this feature was released have no Update button: update them once
+more with the installer (see "Installing" below). From then on the button does it.
+
+**What the window shows.** Top right of the exporter window: the release this exporter is ("Version
+v20261009.3", also in the window title and at the top of every export log), a status line ("Up to date",
+"Update available: v…", "Checking…", "Couldn't reach GitHub", "No release published yet", "GitHub is busy, try
+again in an hour"), the "Check for updates" and "Update" buttons, and the download progress.
+
+**When it checks.** When the window opens, at most once a day, in the background, so opening the window is never
+slower. The answer is remembered for 24 hours in `%LOCALAPPDATA%\UrbanCGI\Exporter\updates.json` (one file per
+Windows user, shared by every 3ds Max version). A failed check is silent and is not tried again for an hour.
+"Check for updates" always asks GitHub and says so when it cannot reach it. The check reads the fork's latest
+release (never a draft or pre-release) from the GitHub API, with a 10 second time-out. GitHub allows 60 such
+requests an hour per network without signing in, which a once-a-day check stays well inside. A proxy that asks
+for a Windows sign-in is given the signed-in user's (GitHub itself never is); one that still refuses shows
+"Blocked by the network proxy". A latest release without a package for this 3ds Max (or without the installer)
+shows "v… has no package for 3ds Max <year>" (or "cannot be installed from here") and Update stays off.
+
+**Update, one click.**
+1. Downloads `Max_<year>.zip` for the running 3ds Max and `Installer.zip` from the latest release into a new
+   folder under `%TEMP%\UrbanCGI-Exporter-Update`, and checks them: the sizes the release lists, the exporter
+   DLL inside the package, and an installer that knows the update mode (version 1.8.1 or later; a release made
+   before this feature stops here with a message, and 3ds Max stays open).
+2. Asks "Version v… is ready. 3ds Max will close to install it and open again afterwards." Then 3ds Max's own
+   "save changes?" prompt; Cancel there stops the update and nothing changes. If the scene still has unsaved
+   changes after that prompt (No was chosen, or the save did not happen: Save As cancelled, a read-only file, a
+   lost network share), it asks "The scene has unsaved changes that will be lost. Close 3ds Max anyway?", with No
+   as the default; No stops the update. From the first question until 3ds Max closes, the exporter window is
+   disabled, so nothing in it can be pressed while 3ds Max's own dialogs are open.
+3. Starts the installer, and Windows asks for permission (the installer needs administrator rights to write to
+   Program Files). Saying No shows "Update cancelled" and 3ds Max stays open; pressing Update again uses the same
+   download. An installer that stops within 3 seconds did not start properly: 3ds Max then stays open and the
+   window points to the log.
+4. Once the installer runs, 3ds Max closes. The scene as it was left after the save prompt goes without a second
+   prompt; anything changed since then (from another tool window) gets 3ds Max's own save prompt rather than being
+   lost. The installer waits for 3ds Max to exit, installs the package exactly as an offline install does, and
+   opens 3ds Max again with the scene (an unsaved scene is not reopened). If the install fails, it still reopens
+   3ds Max and says why, and the installer from the releases page works as before. It logs to
+   `%LOCALAPPDATA%\UrbanCGI\Exporter\update.log`.
+
+If 3ds Max is still open a minute after it was asked to close (a prompt was cancelled), the exporter window works
+again and says "3ds Max did not close": close 3ds Max to finish the update, or press Cancel in the installer. After
+Cancel the installer waits up to a minute for a 3ds Max that is closing (and opens it again); one still open then
+is left as it is. Only one update per 3ds Max year runs at a time: a second one changes nothing, says so, and
+still waits for its 3ds Max and opens it again (unless the first update does). If the remembered "Update
+available" turns out to be out of date, Update shows "Up to date" and nothing else happens.
+
+The Update button waits while an export runs. A **development build** (any build not made by the CD workflow)
+says "Development build", never checks by itself, and its "Check for updates" names the latest release and
+offers Update.
+
+The exporter starts the installer with this command line; both sides compile the same
+`SharedProjects/Utilities/Updates/UpdateCommandLine.cs`, so what one writes is what the other reads:
+
+```
+BabylonJS_Exporters.exe --update --max <year> --package "<folder>\Max_<year>.zip" --wait-pid <3ds Max process id>
+  [--restart "<folder>\3dsmax.exe"] [--open "<scene>.max"]
+```
+
+**The release number.** The CD workflow works out the tag `v<yyyyMMdd>.<run number>` once, writes it into
+`Max2Babylon/Updates/ReleaseInfo.cs` in place of the placeholder before it builds 3ds Max, and publishes the
+release under the same tag. A build made anywhere else keeps the placeholder and is a development build. The
+glTF generator string (`v1.0-urbancgi`) does not change.
+
+**Checking by hand in 3ds Max** (none of this can run on a machine without 3ds Max): the block sits clear of the
+banner and the tabs at the usual and at high display scaling; opening the window offline is as quick as before
+and shows nothing; "Check for updates" offline says "Couldn't reach GitHub"; Update with an unsaved, a saved and
+a modified scene; Yes at the save prompt of an untitled scene and then Cancel in Save As brings the "unsaved
+changes" question; Cancel at each prompt and No at the permission prompt leave 3ds Max open and unchanged, and the
+exporter window cannot be used while 3ds Max's prompts are open; a change made after the save prompt (Fix
+phasing names) gets 3ds Max's own prompt on closing; Cancel in 3ds Max's prompt on closing, then Cancel in the
+installer, leaves 3ds Max open and the window says "3ds Max did not close" after a minute; after a successful
+update 3ds Max reopens with the scene and the window shows the new version.
+
+Files: `SharedProjects/Utilities/Updates/ReleaseTag.cs` (tags), `UpdateCheckLogic.cs` (verdict, texts, once a
+day), `UpdatePackages.cs` (release assets, the installer in the zip, the request), `UpdateCommandLine.cs` (the
+command line, shared with the installer); `Max2Babylon/Updates/ReleaseInfo.cs` (the release number),
+`GitHubReleaseJson.cs`, `UpdateStateFile.cs`, `UpdateChecker.cs` (the GitHub request), `UpdateRunner.cs`
+(download, prompts, starting the installer, closing 3ds Max), the block in `Max2Babylon/Forms/ExporterForm.cs`.
+
 ## Building
 
 No 3ds Max installation is needed: the SDK assemblies for every supported version are vendored under
@@ -206,8 +289,21 @@ The Max-side code targets C# 7.3 (net48), so no newer language features.
 Every push to the fork's `master` runs the "CD Release" workflow (`.github/workflows/cd.yml`, GitHub
 Actions must be enabled on the fork). It builds every Max version, Maya and the installer, and publishes a
 GitHub Release at https://github.com/UrbanCGI/UrbanX-PlanningPortal_Exporters/releases with the assets
-`Max_<year>.zip`, `Maya_<year>.zip` and `Installer.zip`. The installer looks for exactly these names, so
-keep the packaging step as it is. The workflow can also be started by hand from the Actions tab.
+`Max_<year>.zip`, `Maya_<year>.zip` and `Installer.zip`. The installer and the exporter's Update button look
+for exactly these names, so keep the packaging step as it is. The workflow writes the release tag into the 3ds
+Max exporter before building it (section 4), so every `Max_<year>.zip` of a release knows its release. The
+workflow can also be started by hand from the Actions tab.
+
+Every exporter offers the latest release as an update, so the workflow guards it:
+
+- Only `master` publishes. A run started by hand on any other branch builds and packages everything (a useful
+  build check, e.g. for Max 2027, which needs the .NET 10 SDK) but creates no tag and no release.
+- Each Max year must build and package (`Max_<year>.zip` holding `Max2Babylon.dll`), and `Installer.zip` must
+  be there; otherwise the run fails and nothing is published, rather than a release that every Update of the
+  missing year would fail on.
+- Runs go one at a time per branch (a newer run replaces one still waiting).
+- A run whose commit does not contain the latest release stops at once. Re-running an old run gives it today's
+  date with its old code, which exporters would take as newer: start a new run from `master` instead.
 
 ## Installing on a modeller's machine
 
@@ -216,8 +312,9 @@ run `BabylonJS_Exporters.exe` as administrator with 3ds Max closed. It finds eac
 through the registry, shows whether the installed exporter is current, and Install / Update pulls
 `Max_<year>.zip` from the fork's latest release into that Max's `bin\assemblies`. Uninstall removes it
 again. This is the fork's own build of the installer (window title "UrbanCGI Planner build", version
-1.8.0): the stock Babylon.js installer points at upstream and would replace the Planner build with the
-stock exporter, so do not mix them.
+1.8.1): the stock Babylon.js installer points at upstream and would replace the Planner build with the
+stock exporter, so do not mix them. Once an exporter with the Update button is installed, later releases
+install from inside 3ds Max (section 4).
 
 **Offline.** A `Max_<year>.zip` placed next to `BabylonJS_Exporters.exe` is installed instead of anything
 on GitHub. That is how to test a local build before a release exists (`Compress-Archive` the contents of
@@ -231,8 +328,9 @@ Microsoft.WindowsAPICodePack assemblies) from `bin/Release/<year>/` into
 post-build event does this automatically (it reads the `ADSK_3DSMAX_x64_<year>` environment variable Max
 sets up).
 
-To confirm the install: the exporter log shows "Checking Planner naming convention" at the start of an
-export, and the GLB's generator string ends in `v1.0-urbancgi`.
+To confirm the install: the exporter window shows the release ("Version v…") at the top right, the exporter
+log shows "Checking Planner naming convention" at the start of an export, and the GLB's generator string ends
+in `v1.0-urbancgi`.
 
 ## Reading and sharing the log
 
@@ -247,8 +345,11 @@ then notes, and the line starting "Planner naming check:" sums them up.
 dotnet test SharedProjects/Utilities.Tests/Utilities.Tests.csproj
 ```
 
-The test project compiles the shared sources directly (as Max2Babylon does) and needs no Max. Some tests
-run only when pointed at real data and print their report:
+The test project compiles the shared sources directly (as Max2Babylon does) and needs no Max. It also
+compiles the three Max-free update files (`ReleaseInfo.cs`, `GitHubReleaseJson.cs`, `UpdateStateFile.cs`), runs
+the update command line through Windows' own argument splitting into the installer's parser, and reads
+`cd.yml` to check that the release tag still reaches the one placeholder. Some tests run only when pointed at
+real data and print their report:
 
 - `PLANNER_REAL_TGA=<file>`: a mislabelled texture, e.g. the image bytes extracted from a broken GLB;
   proves the bytes round-trip to a decodable PNG.

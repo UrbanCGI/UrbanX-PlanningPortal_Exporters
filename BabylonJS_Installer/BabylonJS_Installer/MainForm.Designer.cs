@@ -911,7 +911,7 @@ namespace BabylonJS_Installer
 			this.soft_version.Name = "soft_version";
 			this.soft_version.Size = new System.Drawing.Size(98, 20);
 			this.soft_version.TabIndex = 3;
-			this.soft_version.Text = "  v1.8.0";
+			this.soft_version.Text = "  v1.8.1";
 			this.soft_version.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 			// 
 			// button_All_Update

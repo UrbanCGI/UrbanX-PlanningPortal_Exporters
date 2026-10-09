@@ -23,3 +23,28 @@ If the software (3ds Max or Maya) was not automatically found, you can easily re
 
 ## Quick Update
 The update all button is the way to go and will install / update the exporter for all the applications found on your system at once.
+
+# Updating from inside 3ds Max (installer 1.8.1 and later)
+From this release on, the exporter window in 3ds Max has an Update button, so there is no need to come back to this installer for each new version. The button downloads the new version, asks you to save your scene, closes 3ds Max, runs this installer in update mode (Windows asks for permission once, because the exporter lives in Program Files) and then opens 3ds Max again with the same scene.
+
+Exporters installed before this release have no Update button: update them once more with this installer, as before.
+
+In update mode the installer only shows a small window, "Updating the exporter for 3ds Max <year>...":
+
+- It waits for 3ds Max to close. If another 3ds Max of the same version is still open, it asks you to close that one too; a loaded exporter cannot be replaced.
+- Cancel stops the update at any point before the new files are written. Nothing is changed and 3ds Max opens again once it has closed. If 3ds Max is still open a minute after Cancel, it is left open as it is.
+- Only one update per 3ds Max version runs at a time. A second one changes nothing and says so; it still waits for its 3ds Max to close and opens it again.
+- If this window itself runs into an unexpected problem, the problem is written to the log and 3ds Max is opened again.
+- The new files are installed exactly as the Update button in this window installs them.
+- If the new files cannot be written, the previous version is put back, 3ds Max opens again and a message says what went wrong. Update by hand with this installer, as before.
+- 3ds Max is opened again with your normal Windows rights, not the installer's administrator rights, so mapped network drives and dragging files in from Explorer keep working.
+- Every update is written to `%LOCALAPPDATA%\UrbanCGI\Exporter\update.log`. The last line of each run says `RESULT: updated`, `RESULT: cancelled` or `RESULT: failed: <reason>`.
+
+For support only: the exporter starts the installer with this command line (you never need to type it).
+
+```
+BabylonJS_Exporters.exe --update --max <year> --package "<full path to Max_<year>.zip>" --wait-pid <3ds Max process id>
+  [--restart "<full path to 3dsmax.exe>"] [--open "<full path to the scene>"]
+```
+
+Started without `--update`, the installer opens its usual window.

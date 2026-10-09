@@ -35,6 +35,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixScript.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingWordFixText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TreeViewExtension.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Updates\UpdateCommandLine.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Updates\ReleaseTag.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Updates\UpdateCheckLogic.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Updates\UpdatePackages.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)Draco\DracoUserControl.resx">

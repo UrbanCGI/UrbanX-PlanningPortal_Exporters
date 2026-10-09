@@ -6,7 +6,7 @@ using System.Linq;
 
 namespace BabylonJS_Installer
 {
-    public partial class MainForm : Form
+    public partial class MainForm : Form, IInstallLog
     {
         private Downloader downloader = null;
         private SoftwareChecker checker = null;

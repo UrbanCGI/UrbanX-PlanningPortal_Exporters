@@ -9,6 +9,14 @@ using System.Threading.Tasks;
 
 namespace BabylonJS_Installer
 {
+    /// <summary>Where the install routine reports to: the main window's log, or the update window's log file.</summary>
+    interface IInstallLog
+    {
+        void log(string text);
+        void warn(string text);
+        void error(string text);
+    }
+
     class Downloader
     {
         // UrbanCGI fork: packages come from the fork's GitHub Releases, never from upstream, whose DLLs lack the
@@ -28,6 +36,17 @@ namespace BabylonJS_Installer
         private string latestRelease = "";
 
         public MainForm form;
+
+        /// <summary>Where the install routine (TryInstallPackage) reports; the main window when not set. Update mode sets its log file.</summary>
+        public IInstallLog output;
+
+        /// <summary>Why the last package could not be extracted (the exception message), or null.</summary>
+        public string LastFailure;
+
+        private IInstallLog Out
+        {
+            get { return this.output ?? this.form; }
+        }
 
         public async Task UpdateAsync(string software, string version, string installDir, string installLibSubDir)
         {
@@ -168,6 +187,42 @@ namespace BabylonJS_Installer
             return target;
         }
 
+        /// <summary>
+        /// Installs a package that is already on disk, exactly as the main window installs one (same files, same
+        /// stamping, same clean-up). Update mode uses this with the Max_&lt;year&gt;.zip the exporter downloaded.
+        /// </summary>
+        public bool InstallPackage(string software, string version, string installDir, string installLibSubDir, string zipPath, bool deleteAfterInstall)
+        {
+            this.software = software;
+            this.version = version;
+            this.installDir = installDir;
+            this.installLibSubDir = installLibSubDir;
+            return TryInstallPackage(zipPath, deleteAfterInstall);
+        }
+
+        /// <summary>Where each file of a package goes, in package order (the files TryInstallPackage writes).</summary>
+        public static List<string> PackageTargets(string zipPath, string installDir, string installLibSubDir)
+        {
+            var targets = new List<string>();
+            using (ZipArchive myZip = ZipFile.OpenRead(zipPath))
+            {
+                foreach (ZipArchiveEntry entry in myZip.Entries)
+                {
+                    if (entry.IsDirectory()) continue;
+                    targets.Add(TargetPath(installDir, installLibSubDir, entry.Name));
+                }
+            }
+            return targets;
+        }
+
+        private static string TargetPath(string installDir, string installLibSubDir, string entryName)
+        {
+            if (entryName.StartsWith("AEbabylon", StringComparison.Ordinal)) return Path.Combine(installDir, "scripts\\AETemplates", entryName);
+            if (entryName.StartsWith("NEbabylon", StringComparison.Ordinal)) return Path.Combine(installDir, "scripts\\NETemplates", entryName);
+            if (entryName == "Maya2Babylon.dll") return Path.Combine(installDir, installLibSubDir, "Maya2Babylon.nll.dll"); // force renaming the dll in case of maya plug-in
+            return Path.Combine(installDir, installLibSubDir, entryName);
+        }
+
         private bool TryInstallPackage(string zipPath, bool deleteAfterInstall)
         {
             var installedFiles = new List<string>();
@@ -178,11 +233,7 @@ namespace BabylonJS_Installer
                     foreach (ZipArchiveEntry entry in myZip.Entries)
                     {
                         if (entry.IsDirectory()) continue;
-                        string target;
-                        if (entry.Name.StartsWith("AEbabylon", StringComparison.Ordinal)) target = Path.Combine(this.installDir, "scripts\\AETemplates", entry.Name);
-                        else if (entry.Name.StartsWith("NEbabylon", StringComparison.Ordinal)) target = Path.Combine(this.installDir, "scripts\\NETemplates", entry.Name);
-                        else if (entry.Name == "Maya2Babylon.dll") target = Path.Combine(this.installDir, this.installLibSubDir, "Maya2Babylon.nll.dll"); // force renaming the dll in case of maya plug-in
-                        else target = Path.Combine(this.installDir, this.installLibSubDir, entry.Name);
+                        string target = TargetPath(this.installDir, this.installLibSubDir, entry.Name);
                         entry.ExtractToFile(target, true);
                         installedFiles.Add(target);
                     }
@@ -190,7 +241,8 @@ namespace BabylonJS_Installer
             }
             catch (Exception ex)
             {
-                this.form.error(
+                this.LastFailure = ex.Message;
+                this.Out.error(
                     "Can't extract the files.\n"
                     + "If you're not, please try to run this tool in ADMINISTRATOR MODE. It's necessary to extract the files in \"Program Files\" folder (or other protected folders).\n"
                     + "Close 3ds Max / Maya first: a loaded exporter cannot be overwritten.\n"
@@ -208,7 +260,7 @@ namespace BabylonJS_Installer
                 try { File.SetLastWriteTimeUtc(file, installTime); } catch (Exception) { }
             }
 
-            this.form.log("Extraction complete (" + installedFiles.Count + " files).");
+            this.Out.log("Extraction complete (" + installedFiles.Count + " files).");
 
             if (deleteAfterInstall)
             {
@@ -219,7 +271,7 @@ namespace BabylonJS_Installer
                 catch (Exception ex)
                 {
                     // A leftover temp file is not a failed install.
-                    this.form.warn("Can't delete the temporary file " + zipPath + ": " + ex.Message);
+                    this.Out.warn("Can't delete the temporary file " + zipPath + ": " + ex.Message);
                 }
             }
 
@@ -228,13 +280,13 @@ namespace BabylonJS_Installer
                 string uninstallScriptPath = Path.Combine(this.installDir, "scripts\\Startup\\BabylonCleanUp.ms");
                 if (File.Exists(uninstallScriptPath))
                 {
-                    this.form.log("\nRemoving " + uninstallScriptPath + ".\n");
+                    this.Out.log("\nRemoving " + uninstallScriptPath + ".\n");
                     File.Delete(uninstallScriptPath);
                 }
             }
             catch (Exception ex)
             {
-                this.form.warn(
+                this.Out.warn(
                     "Can't delete temporary script.\n"
                     + "Error message : \n"
                     + "\"" + ex.Message + "\""

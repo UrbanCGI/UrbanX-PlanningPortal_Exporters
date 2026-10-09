@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write
 
+# One run at a time per branch, in the order they were started (a newer run replaces one that is still waiting), so a
+# release with a later date is never built from older code than the one before it.
+concurrency:
+  group: cd-release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   MAX_VERSIONS: '2022 2023 2024 2025 2026 2027'
   MAYA_VERSIONS: '2020 2022 2023 2024'
@@ -20,6 +26,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # The release tag, worked out once: written into the 3ds Max exporter before it is built (so the exporter
+      # knows its release and can check for a newer one) and used again for the GitHub release below.
+      # Exporters take the release with the latest date as the newest. A re-run keeps its run number and commit but
+      # gets today's date, so re-running an old run would offer its older code to every exporter as an update. A
+      # publishing run therefore has to contain the latest release's commit (the checkout has every tag).
+      - name: Release Tag
+        id: release_tag
+        shell: pwsh
+        run: |
+          $date = Get-Date -Format "yyyyMMdd"
+          $patch = "${{ github.run_number }}"
+          if ("${{ github.ref }}" -eq "refs/heads/master") {
+            $latest = git tag -l 'v*.*' | Where-Object { $_ -match '^v[0-9]{8}\.[0-9]+$' } |
+              Sort-Object -Property @{ Expression = { [int]$_.Substring(1, 8) } }, @{ Expression = { [int]$_.Split('.')[1] } } |
+              Select-Object -Last 1
+            if ($latest) {
+              git merge-base --is-ancestor "$latest^{commit}" HEAD
+              if ($LASTEXITCODE -ne 0) {
+                throw "This run's commit does not contain the latest release $latest, so it would publish older code as an update. Start a new run from master instead of re-running an old one."
+              }
+            }
+          }
+          "tag=v${date}.${patch}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "title=CD Release ${date}.${patch}" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -43,6 +74,15 @@ jobs:
           $content = $content -replace 'Custom\.Build\.Version', "${{ github.run_number }}"
           Set-Content -Path 'Maya\Exporter\BabylonExporter.cs' -Value $content
 
+      - name: Release Tag Update - Max
+        shell: pwsh
+        run: |
+          $path = '3ds Max\Max2Babylon\Updates\ReleaseInfo.cs'
+          $content = Get-Content -Path $path -Raw
+          if ($content -notmatch 'Custom\.Release\.Tag') { throw "The release tag placeholder is missing from $path" }
+          $content = $content -replace 'Custom\.Release\.Tag', "${{ steps.release_tag.outputs.tag }}"
+          Set-Content -Path $path -Value $content
+
       # ── 3ds Max ──
       - name: Build Max
         shell: pwsh
@@ -51,9 +91,11 @@ jobs:
           foreach ($year in $years) {
               $fullConfig = "Release_MAX${year}"
               Write-Host "Restoring $fullConfig"
-              msbuild "3ds Max\Max2Babylon.sln" /t:Restore /p:Configuration=$fullConfig 
+              msbuild "3ds Max\Max2Babylon.sln" /t:Restore /p:Configuration=$fullConfig
+              if ($LASTEXITCODE -ne 0) { throw "Restore failed for $fullConfig" }
               Write-Host "Building $fullConfig"
-              msbuild "3ds Max\Max2Babylon.sln" /p:Configuration="$fullConfig" "/p:Platform=x64" /p:PostBuildEvent= /p:PreBuildEvent= /v:minimal							
+              msbuild "3ds Max\Max2Babylon.sln" /p:Configuration="$fullConfig" "/p:Platform=x64" /p:PostBuildEvent= /p:PreBuildEvent= /v:minimal
+              if ($LASTEXITCODE -ne 0) { throw "Build failed for $fullConfig" }
           }
 
       # ── Maya ──
@@ -88,16 +130,16 @@ jobs:
           $staging = "release-staging"
           New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
-          # Max zips
+          # Max zips. Every year must be there: exporters of a year without its zip would see "Update available"
+          # and every Update would fail.
           foreach ($year in "${{ env.MAX_VERSIONS }}".Split(' ')) {
             $src = "3ds Max\Max2Babylon\bin\Release\$year"
-            if (Test-Path $src) {
-              $tmp = "$staging\tmp\Release"
-              New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-              Copy-Item -Path "$src\*.dll" -Destination $tmp -Force
-              Compress-Archive -Path "$staging\tmp\Release" -DestinationPath "$staging\Max_$year.zip" -Force
-              Remove-Item -Path "$staging\tmp" -Recurse -Force
-            }
+            if (-not (Test-Path "$src\Max2Babylon.dll")) { throw "No 3ds Max $year exporter at $src" }
+            $tmp = "$staging\tmp\Release"
+            New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+            Copy-Item -Path "$src\*.dll" -Destination $tmp -Force
+            Compress-Archive -Path "$staging\tmp\Release" -DestinationPath "$staging\Max_$year.zip" -Force
+            Remove-Item -Path "$staging\tmp" -Recurse -Force
           }
 
           # Maya zips
@@ -114,11 +156,10 @@ jobs:
             }
           }
 
-          # Installer zip
+          # Installer zip (the exporter's Update button needs it too)
           $installerDir = "BabylonJS_Installer\BabylonJS_Installer\bin\Release"
-          if (Test-Path $installerDir) {
-            Compress-Archive -Path "$installerDir\BabylonJS_Exporters.exe","BabylonJS_Installer\README.md" -DestinationPath "$staging\Installer.zip" -Force
-          }
+          if (-not (Test-Path "$installerDir\BabylonJS_Exporters.exe")) { throw "No installer at $installerDir" }
+          Compress-Archive -Path "$installerDir\BabylonJS_Exporters.exe","BabylonJS_Installer\README.md" -DestinationPath "$staging\Installer.zip" -Force
 
           # Print manifest
           Get-ChildItem $staging -Filter *.zip | ForEach-Object {
@@ -132,10 +173,9 @@ jobs:
         id: release_info
         shell: pwsh
         run: |
-          $date = Get-Date -Format "yyyyMMdd"
-          $patch = "${{ github.run_number }}"
-          $tag = "v${date}.${patch}"
-          $title = "CD Release ${date}.${patch}"
+          # The tag from the first step, the one the 3ds Max exporter was built with.
+          $tag = "${{ steps.release_tag.outputs.tag }}"
+          $title = "${{ steps.release_tag.outputs.title }}"
 
           # Get commits since last tag
           $lastTag = git describe --tags --abbrev=0 2>$null
@@ -154,12 +194,16 @@ jobs:
           # Write body to a file to preserve multiline
           $notes | Out-File -FilePath "release-notes.md" -Encoding utf8
 
+      # Only master publishes. Every exporter offers the latest release as an update, so a run started by hand on
+      # another branch builds and packages everything (a check) but publishes nothing.
       - name: Create Tag
+        if: github.ref == 'refs/heads/master'
         run: |
           git tag ${{ steps.release_info.outputs.tag }}
           git push origin ${{ steps.release_info.outputs.tag }}
 
       - name: Create GitHub Release and Upload Assets
+        if: github.ref == 'refs/heads/master'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
