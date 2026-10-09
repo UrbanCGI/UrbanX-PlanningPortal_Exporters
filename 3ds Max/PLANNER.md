@@ -1,8 +1,8 @@
 # UrbanCGI Planner additions to the 3ds Max exporter
 
 This fork of [BabylonJS/Exporters](https://github.com/BabylonJS/Exporters) adds two pre-flight
-safeguards for models that are exported to the UrbanCGI Planner (planning.urbancgi.co.uk). Everything
-else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
+safeguards for models that are exported to the UrbanCGI Planner (planning.urbancgi.co.uk), and a tool
+that corrects the phasing names in the scene before export. Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
 `babylon.js glTF exporter for 3dsmax <year> v1.0-urbancgi`.
 
 ## 1. Textures are exported by content, not by file extension
@@ -82,6 +82,111 @@ The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 Files: `SharedProjects/Utilities/Planner/PlannerNaming.cs`, `PlannerNamingValidator.cs` (rules, Max-free),
 `Max2Babylon/Exporter/BabylonExporter.PlannerChecks.cs` (collects the scene nodes, reports, stops).
 
+## 3. Fix phasing names
+
+**What it does.** Corrects the names of the phasing hierarchy in the 3ds Max scene, so the exported GLB
+carries the names the Planner reads, the same result as cleaning up the exported file by hand. It works on:
+
+- the phasing top node: the first top-level node with "phasing" in its name (any capitals);
+- its phase groups, `_<n>_<name>` (`_06_Weekend_Closure`);
+- the groups' layers, `<PP>_<SS>[.<split>]_<name>` (`02_05.1_Eastside_Kerbing_17-08-26`);
+- the layers' objects, `Ph<n>_St<nn>[.<split>]_IN|RM_<description>[_Ph<n>_St<nn>_RM]`;
+- the 3ds Max layers named like the top node, the groups and the layers, in any capitals (a modeller's scene has a
+  Max layer and a helper node of the same name for each).
+
+What it corrects:
+
+- the project's spelling mistakes (the word-fix list below), then spaces: ` - ` becomes `-`, any other space `_`;
+- layer IDs: the phase written with two digits and an underscore after it (`6.06_…` becomes `06_06_…`), the stage
+  with two digits;
+- a layer sitting directly under the top node is moved into the group of its phase;
+- a stage with several layers is split `.1`, `.2`, … in start-date order (the first date in the name; undated
+  layers last); a stage with a single layer keeps its split, unless the review moved the layer there (the split
+  belonged to its old stage, so it goes);
+- each object's leading tag becomes its layer's ID (`Ph2_St05.1_IN_…`), and a trailing removal tag follows the
+  layer it points at to that layer's new ID;
+- objects that would end up with the same name get `_02`, `_03`, … on their description;
+- the Max layers are renamed with their nodes, and a moved layer's Max layer goes under its group's.
+
+Dates and TBC are never changed. Anything that does not read is left exactly as it is and listed as **Check** for
+a person to look at: an object with no Ph/St tag, a group child that is not a layer, a removal tag naming a stage
+with no layer in the file (or a layer that cannot be moved), a corrected top, group, layer or object name that
+another node already has, a word fix that would leave a name unreadable, and so on.
+
+**How to use it.**
+
+1. Open the exporter. On the Options tab, next to the Planner naming options, press **Fix phasing names…**.
+   Nothing changes yet.
+2. The window lists every change, one line per name: Status (Changed, Check or No change), Type, Stage, the layer
+   it sits in, the current name, the corrected name and what changed. Check lines are highlighted. The line at the
+   top sums it up, for example "55 layers and 103 objects to change, 11 to check."
+3. To give a layer another stage, type the number in its Stage column; clear the cell to go back to the stage in
+   its name. The list is worked out again at once: the layer's ID and split, the tags of its objects and any
+   removal tags pointing at it follow. **Show every layer** (on) also lists the layers that need no change, so any
+   layer's stage can be changed. Stages given here last only while the window is open.
+4. **Word fixes…** edits the project's spelling fixes (below); the list is worked out again when it closes.
+5. **Save list…** writes the list as a CSV file with the same columns, to keep or to send for review.
+6. **Apply** asks first, then carries the whole list out in one go. With **Hold the scene first** ticked (the
+   default) the scene is held before anything changes, and Edit > Fetch puts it back as it was. Fetch restores the
+   most recent hold only: the next Hold, including an export with "Use pre-export process", replaces it. The node
+   renames and moves are also a single Edit > Undo step ("Fix phasing names"); whether 3ds Max undoes the Max layer
+   renames with them has not been checked yet, so Hold is the safer way back. Afterwards the scene is read again
+   and the window says what was done, anything that could not be changed and anything still left. A Max layer
+   change that could not be made stays in the list as a Check line until it is done by hand.
+7. Export as usual.
+
+The window does not stop anyone working in the scene. If the scene has changed since the list was made, Apply
+reads it again and asks for another look before changing anything; **Read the scene again** does the same by
+hand. Opening another scene, or File > New or Reset, reads the new scene with its own word fixes and forgets the
+stages given in the window. While an export is running Apply does nothing but say so, and the exporter's button
+is greyed out.
+
+**The word-fix list.** Plain text, capitals as written, applied in order to the top node, group, layer and object
+names before spaces are replaced. The fixes and the space step run again until a name stops changing, so a fix
+written with underscores also catches a name written with spaces, and a fix that writes another fix's text is
+followed through. A fix is never used where it would change a date or TBC, or where it would leave a name the
+fixer could no longer read (an empty group or layer name, a top node without "phasing", a broken object tag); the
+window notes the first and lists the second to check. Fixes that keep feeding each other are used once only on
+that name, with a note. A scene with no list of its own starts with the five fixes the HS2 model needed:
+
+| Find | Replace |
+| --- | --- |
+| `Constraction` | `Construction` |
+| `SubGgrade` | `SubGrade` |
+| `Cource` | `Course` |
+| `Islandsl` | `Islands` |
+| `Sub-grade_and_Sub-base` | `SubGrade_and_SubBase` |
+
+Pressing OK in the editor saves the list with the scene (root node app data under the exporter's class ID,
+sub-id `0x50484658`), so save the .max file to keep it; an emptied list stays empty. A fix whose new text contains
+the text it replaces (`Road` to `Roads`) is refused, since every run would change the names again.
+
+**At export.** When "Check Planner naming" is on and the fix would change anything, the log has one warning:
+"N phasing layers and objects can be corrected automatically — use Fix phasing names… on the exporter window". It never stops
+the export.
+
+**From MAXScript.** Both calls use the scene's word fixes and no stage changes:
+
+```maxscript
+maxScriptManager = dotNetObject "Max2Babylon.MaxScriptManager"
+maxScriptManager.FixPhasingNames false  -- the summary, then the list as CSV text; nothing changes
+maxScriptManager.FixPhasingNames true   -- holds the scene, applies the list, adds the outcome after the summary
+```
+
+**How it applies.** One MAXScript batch inside one undo record: nodes are found by handle and Max layers by their
+current names before anything is renamed; nodes are renamed (one renamed since the list was made is left alone),
+the layer nodes moved (attached when the group is a 3ds Max group), the Max layers re-parented, then renamed in two
+steps through temporary names so a new name never meets an old one. Each item reports its own failure.
+
+The rules are a port of the clean-up first done on the HS2 GLB (`reference-fix.mjs`, kept out of the repo); the
+acceptance tests run them on that model's node trees.
+
+Files: `SharedProjects/Utilities/Planner/PhasingNameFixer.cs`, `PhasingFixPlan.cs` (rules and list, Max-free),
+`PhasingFixScript.cs` (the MAXScript batch and the reading of its report), `PhasingWordFixText.cs` (the stored
+list); `Max2Babylon/Tools/PhasingScene.cs` (reads the scene, keeps the word fixes, runs the batch),
+`Max2Babylon/Forms/PhasingFixForm.cs`, `PhasingWordFixForm.cs`, the button in `Max2Babylon/Forms/ExporterForm.cs`,
+`MaxScriptManager.FixPhasingNames`, the export warning in `BabylonExporter.PlannerChecks.cs`.
+
 ## Building
 
 No 3ds Max installation is needed: the SDK assemblies for every supported version are vendored under
@@ -142,10 +247,15 @@ then notes, and the line starting "Planner naming check:" sums them up.
 dotnet test SharedProjects/Utilities.Tests/Utilities.Tests.csproj
 ```
 
-The test project compiles the shared sources directly (as Max2Babylon does) and needs no Max. Two tests
+The test project compiles the shared sources directly (as Max2Babylon does) and needs no Max. Some tests
 run only when pointed at real data and print their report:
 
 - `PLANNER_REAL_TGA=<file>`: a mislabelled texture, e.g. the image bytes extracted from a broken GLB;
   proves the bytes round-trip to a decodable PNG.
 - `PLANNER_NODES_FIXTURE=<json>`: `{ "nodes": [ { "name", "parent" | null, "isMesh" } ] }` extracted from
   a GLB; prints the naming report for a real hierarchy.
+- `PLANNER_FIX_V305=<json>` and `PLANNER_FIX_V306=<json>`: `{ "roots": [i…], "nodes": [ { "name", "children": [i…] } ] }`,
+  the node trees of a GLB before and after its phasing clean-up (the same nodes in the same order); the fixer must
+  turn the first into the second (with the review's stages, Max layers included) and find nothing to do on the
+  second. Optional: `PLANNER_FIX_REF_CSV=<csv>` compares the list with the clean-up's, `PLANNER_FIX_OUT_CSV=<csv>`
+  writes the fixer's own.
