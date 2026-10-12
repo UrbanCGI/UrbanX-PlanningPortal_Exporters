@@ -158,6 +158,8 @@
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
     <Reference Include="System.Web" />
+    <!-- UrbanCGI fork: the in-exporter update reads the downloaded release zips (built into .NET 8 and later). -->
+    <Reference Include="System.IO.Compression" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Autodesk.Max">

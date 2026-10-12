@@ -46,4 +46,12 @@
   <Import Project="..\BabylonFileConverter\BabylonFileConverter.projitems" Label="Shared" />
   <Import Project="..\GltfExport.Entities\GltfExport.Entities.projitems" Label="Shared" />
   <Import Project="..\Babylon2GLTF\Babylon2GLTF.projitems" Label="Shared" />
+
+  <!-- The exporter's update pieces that need neither 3ds Max nor the network: the release number, GitHub's
+       answer and the remembered check. -->
+  <ItemGroup>
+    <Compile Include="..\..\3ds Max\Max2Babylon\Updates\ReleaseInfo.cs" Link="MaxUpdates\ReleaseInfo.cs" />
+    <Compile Include="..\..\3ds Max\Max2Babylon\Updates\GitHubReleaseJson.cs" Link="MaxUpdates\GitHubReleaseJson.cs" />
+    <Compile Include="..\..\3ds Max\Max2Babylon\Updates\UpdateStateFile.cs" Link="MaxUpdates\UpdateStateFile.cs" />
+  </ItemGroup>
 </Project>
