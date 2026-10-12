@@ -86,8 +86,9 @@ namespace Max2Babylon
                 };
             }
 
-            // Start export
-            exporter.Export(exportParameters);
+            // Start export. UrbanCGI fork: marked as running, so the exporter window's Update and the phasing name
+            // fixer wait for it (the export lets the window handle clicks while it runs).
+            ExporterForm.RunExport(() => exporter.Export(exportParameters));
 
             string logError;
             var logPath = ExportLog.Write(exportParameters.outputPath, logLines.ToString(), out logError);

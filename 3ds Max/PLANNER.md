@@ -212,8 +212,15 @@ shows "v… has no package for 3ds Max <year>" (or "cannot be installed from her
 1. Downloads `Max_<year>.zip` for the running 3ds Max and `Installer.zip` from the latest release into a new
    folder under `%TEMP%\UrbanCGI-Exporter-Update`, and checks them: the sizes the release lists, the exporter
    DLL inside the package, and an installer that knows the update mode (version 1.8.1 or later; a release made
-   before this feature stops here with a message, and 3ds Max stays open).
-2. Asks "Version v… is ready. 3ds Max will close to install it and open again afterwards." Then 3ds Max's own
+   before this feature stops here with a message, and 3ds Max stays open). The end of the download can come in
+   the middle of other work that lets the window handle messages (a MAXScript export, a render, a modal dialog).
+   Then, and when the exporter window is hidden (also while 3ds Max is minimised), the status line says "Ready to install v…" and the install
+   waits for the next press of Update; otherwise it goes straight on. A later check that finds a different
+   latest release drops the waiting download.
+2. It first checks that no other update of this 3ds Max year is still running (one is: a
+   message, and nothing else happens). Then it asks "Version v… is ready. 3ds Max will close to install it and
+   open again afterwards.", adding, when another 3ds Max of the same installation is open (a render or batch job
+   counts too), that the update also waits for that one to close. Then 3ds Max's own
    "save changes?" prompt; Cancel there stops the update and nothing changes. If the scene still has unsaved
    changes after that prompt (No was chosen, or the save did not happen: Save As cancelled, a read-only file, a
    lost network share), it asks "The scene has unsaved changes that will be lost. Close 3ds Max anyway?", with No
@@ -232,12 +239,20 @@ shows "v… has no package for 3ds Max <year>" (or "cannot be installed from her
 
 If 3ds Max is still open a minute after it was asked to close (a prompt was cancelled), the exporter window works
 again and says "3ds Max did not close": close 3ds Max to finish the update, or press Cancel in the installer. After
-Cancel the installer waits up to a minute for a 3ds Max that is closing (and opens it again); one still open then
-is left as it is. Only one update per 3ds Max year runs at a time: a second one changes nothing, says so, and
-still waits for its 3ds Max and opens it again (unless the first update does). If the remembered "Update
-available" turns out to be out of date, Update shows "Up to date" and nothing else happens.
+Cancel (or a failure before anything was written) the installer waits up to five minutes for a 3ds Max that is
+closing, which a heavy scene can need, and opens it again (Close in its window stops waiting, and 3ds Max is then
+not opened again). A 3ds Max still
+open then is left as it is, and the installer says it is not opened again. Another 3ds Max that was open all
+along does not stop the reopening; only one started after the 3ds Max that asked had closed (it was opened again
+already) does. Only one update per 3ds Max year runs at a time, and the installer lets go of it as soon as it has
+nothing left to change or open. A second one that starts anyway changes nothing, says so, still waits for its
+3ds Max, and leaves the reopening to the first, which reopens only the 3ds Max that started it. The exporter
+looks for a running update before it asks and again just before it starts the installer, so that takes two
+near-simultaneous presses in two 3ds Max windows. If the remembered "Update available" turns out to be out of date,
+Update shows "Up to date" and nothing else happens.
 
-The Update button waits while an export runs. A **development build** (any build not made by the CD workflow)
+The Update button waits while an export runs, from the window or from MAXScript (`MaxScriptManager.Export`), and
+so does Apply in Fix phasing names. A **development build** (any build not made by the CD workflow)
 says "Development build", never checks by itself, and its "Check for updates" names the latest release and
 offers Update.
 
@@ -261,8 +276,11 @@ a modified scene; Yes at the save prompt of an untitled scene and then Cancel in
 changes" question; Cancel at each prompt and No at the permission prompt leave 3ds Max open and unchanged, and the
 exporter window cannot be used while 3ds Max's prompts are open; a change made after the save prompt (Fix
 phasing names) gets 3ds Max's own prompt on closing; Cancel in 3ds Max's prompt on closing, then Cancel in the
-installer, leaves 3ds Max open and the window says "3ds Max did not close" after a minute; after a successful
-update 3ds Max reopens with the scene and the window shows the new version.
+installer, leaves 3ds Max open and the window says "3ds Max did not close" after a minute, and Update pressed
+then says an update is already running; a download that ends while a MAXScript export or a render runs stops
+at "Ready to install v…" and the next press installs, and Update during a MAXScript export says to wait; with a second 3ds Max of the same
+year open, the question says the update also waits for it, and Cancel in the installer then opens the first one
+again; after a successful update 3ds Max reopens with the scene and the window shows the new version.
 
 Files: `SharedProjects/Utilities/Updates/ReleaseTag.cs` (tags), `UpdateCheckLogic.cs` (verdict, texts, once a
 day), `UpdatePackages.cs` (release assets, the installer in the zip, the request), `UpdateCommandLine.cs` (the
@@ -297,13 +315,28 @@ workflow can also be started by hand from the Actions tab.
 Every exporter offers the latest release as an update, so the workflow guards it:
 
 - Only `master` publishes. A run started by hand on any other branch builds and packages everything (a useful
-  build check, e.g. for Max 2027, which needs the .NET 10 SDK) but creates no tag and no release.
+  build check, e.g. for Max 2027, which needs the .NET 10 SDK) but creates no tag and no release. This holds
+  only for branches that already contain this workflow: an older branch (one made before the update feature)
+  runs its own older copy, which publishes a release that every exporter is offered. Check such branches with
+  a pull request instead (the CI workflow builds every Max year), or merge `master` into them first.
+- The latest release is the one exporters read (`releases/latest`), not the newest tag, so a tag left behind by
+  a publish that failed half-way does not stop the next run from publishing.
 - Each Max year must build and package (`Max_<year>.zip` holding `Max2Babylon.dll`), and `Installer.zip` must
   be there; otherwise the run fails and nothing is published, rather than a release that every Update of the
   missing year would fail on.
 - Runs go one at a time per branch (a newer run replaces one still waiting).
 - A run whose commit does not contain the latest release stops at once. Re-running an old run gives it today's
   date with its old code, which exporters would take as newer: start a new run from `master` instead.
+- A run of the latest release's own commit (a re-run of that release, or a run started by hand with nothing new
+  since) builds and packages everything but publishes nothing: the same code under a newer tag would show every
+  exporter an "Update available" that closes 3ds Max for no change.
+
+**Taking back a bad release.** Revert it with a new commit on `master` (GitHub's Revert button on the pull
+request does this): the history keeps the release, so the run publishes the old code under a newer tag, which
+every exporter is then offered. Do not reset `master` and force-push: every run then stops at the guard above
+until the bad release and its tag are deleted (`gh release delete <tag> --cleanup-tag`), and even then the
+machines that took the bad release stay on it until a newer release is published (push a new commit to
+`master`; an empty one is enough).
 
 ## Installing on a modeller's machine
 

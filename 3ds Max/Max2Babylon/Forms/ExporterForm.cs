@@ -29,8 +29,30 @@ namespace Max2Babylon
         // UrbanCGI fork: opens the phasing name fixer; added at run time (see AddFixPhasingNamesButton).
         private Button butFixPhasingNames;
 
-        /// <summary>UrbanCGI fork: true while this window runs an export, so the phasing name fixer waits for it.</summary>
-        internal static bool ExportRunning { get; private set; }
+        /// <summary>
+        /// UrbanCGI fork: true while an export runs, from this window or from MAXScript (MaxScriptManager.Export), so
+        /// the phasing name fixer and the Update button wait for it.
+        /// </summary>
+        internal static bool ExportRunning
+        {
+            get { return exportsRunning > 0; }
+        }
+
+        private static int exportsRunning;  // only ever changed on 3ds Max's main thread
+
+        /// <summary>UrbanCGI fork: runs an export with <see cref="ExportRunning"/> set.</summary>
+        internal static void RunExport(Action export)
+        {
+            exportsRunning++;
+            try
+            {
+                export();
+            }
+            finally
+            {
+                exportsRunning--;
+            }
+        }
 
         // UrbanCGI fork: version and update controls, added at run time (see AddUpdatePanel).
         private Panel updatePanel;
@@ -44,6 +66,10 @@ namespace Max2Babylon
         private bool exportBusy;           // this window is exporting
         private UpdateVerdict updateVerdict = UpdateVerdict.Unknown;
         private PreparedUpdate preparedUpdate;  // downloaded but not installed (e.g. the permission prompt was declined)
+        private DateTime preparedAtUtc;         // when preparedUpdate was downloaded
+
+        /// <summary>How long a kept download is installed without asking GitHub again (it may have been replaced).</summary>
+        private static readonly TimeSpan KeptDownloadAge = TimeSpan.FromMinutes(30);
         private readonly CancellationTokenSource updateCancel = new CancellationTokenSource();
         private System.Windows.Forms.Timer maxCloseWatch;  // after asking 3ds Max to close, notices that it did not
 
@@ -402,6 +428,13 @@ namespace Max2Babylon
 
         private async Task<bool> DoExport(ExportItem exportItem, bool multiExport = false, bool clearLogs = true)
         {
+            // UrbanCGI fork: a MAXScript export lets this window handle clicks while it runs, and a second export
+            // inside it would share its scene.
+            if (ExportRunning)
+            {
+                MessageBox.Show(this, "An export is running. Export again once it has finished.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return false;
+            }
             new BabylonAnimationActionItem().Close();
             SaveOptions();
 
@@ -566,8 +599,7 @@ namespace Max2Babylon
 
                 exporter.callerForm = this;
 
-                ExportRunning = true;
-                exporter.Export(exportParameters);
+                RunExport(() => exporter.Export(exportParameters));
             }
             catch (OperationCanceledException)
             {
@@ -587,11 +619,6 @@ namespace Max2Babylon
                 progressBar.Value = 0;
                 success = false;
                 ScriptsUtilities.ExecuteMaxScriptCommand(@"global BabylonExporterStatus = Available");
-            }
-            finally
-            {
-                // Even when reporting the failure fails, so the phasing name fixer is not locked out.
-                ExportRunning = false;
             }
 
             SaveExportLog(logOutputPath);
@@ -1043,6 +1070,11 @@ namespace Max2Babylon
                 return;
             }
             updateVerdict = UpdateCheckLogic.Compare(ReleaseInfo.Tag, outcome.LatestTag);
+            // A download kept from an earlier press is only installed while it is still the latest release.
+            if (preparedUpdate != null && !string.Equals((preparedUpdate.Tag ?? string.Empty).Trim(), outcome.LatestTag.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                preparedUpdate = null;
+            }
             if (outcome.Release != null && UpdateCheckLogic.CanUpdate(updateVerdict))
             {
                 // A release without this 3ds Max's package (or installer) is not offered: Update could only fail.
@@ -1055,6 +1087,11 @@ namespace Max2Babylon
                     return;
                 }
             }
+            if (preparedUpdate != null && UpdateCheckLogic.CanUpdate(updateVerdict))
+            {
+                ShowReadyToInstall();
+                return;
+            }
             ShowUpdateStatus(UpdateCheckLogic.StatusText(updateVerdict, outcome.LatestTag),
                 updateVerdict == UpdateVerdict.UpdateAvailable ? System.Drawing.SystemColors.HotTrack : System.Drawing.SystemColors.ControlText);
         }
@@ -1065,9 +1102,10 @@ namespace Max2Babylon
         }
 
         /// <summary>
-        /// The one-click update: download (off the UI thread), then ask, let 3ds Max offer to save, start the
-        /// installer and close 3ds Max (see UpdateRunner). A download from an earlier attempt in this window is used
-        /// again, e.g. after Windows' permission prompt was declined.
+        /// Update: one click downloads the release (off the UI thread), then asks, lets 3ds Max offer to save, starts
+        /// the installer and closes 3ds Max (see UpdateRunner). A download that finishes while other 3ds Max work is
+        /// under way waits for the next click instead (see CanInstallNow). The download is kept for later clicks in
+        /// this window, e.g. after Windows' permission prompt was declined.
         /// </summary>
         private void butUpdate_Click(object sender, EventArgs e)
         {
@@ -1089,7 +1127,8 @@ namespace Max2Babylon
                                           + UpdateChecker.ReleasesPageUrl + ".", UpdateRunner.Title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                if (preparedUpdate != null && File.Exists(preparedUpdate.PackagePath) && File.Exists(preparedUpdate.InstallerPath))
+                if (preparedUpdate != null && DateTime.UtcNow - preparedAtUtc < KeptDownloadAge
+                    && File.Exists(preparedUpdate.PackagePath) && File.Exists(preparedUpdate.InstallerPath))
                 {
                     InstallPreparedUpdate(preparedUpdate);
                     return;
@@ -1140,17 +1179,50 @@ namespace Max2Babylon
             }
 
             preparedUpdate = done.Result;
+            preparedAtUtc = DateTime.UtcNow;
             updateVerdict = UpdateCheckLogic.Compare(ReleaseInfo.Tag, preparedUpdate.Tag);
-            ShowUpdateStatus(UpdateCheckLogic.StatusText(updateVerdict, preparedUpdate.Tag), System.Drawing.SystemColors.HotTrack);
             RefreshUpdateButtons();
-            if (exportBusy || ExportRunning)
+            // This runs from whichever message loop comes next, which can be inside a MAXScript export, a render or a
+            // modal dialog that lets the window handle messages. The install closes 3ds Max, so it only goes straight
+            // on when nothing else is under way; otherwise it waits for the next press of Update.
+            if (CanInstallNow())
             {
-                MessageBox.Show(this, "An export started while the update downloaded. Press Update again once it has finished.",
-                    UpdateRunner.Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                InstallPreparedUpdate(preparedUpdate);
                 return;
             }
-            InstallPreparedUpdate(preparedUpdate);
+            ShowReadyToInstall();
         }
+
+        private void ShowReadyToInstall()
+        {
+            ShowUpdateStatus(UpdateCheckLogic.ReadyText(preparedUpdate.Tag), System.Drawing.SystemColors.HotTrack,
+                "Downloaded. Press Update to close 3ds Max, install it and open 3ds Max again.");
+        }
+
+        /// <summary>
+        /// True when the finished download may go straight on to the install: no export runs, this window is shown
+        /// and usable, and 3ds Max's main window is not held by a modal dialog. False when 3ds Max cannot say.
+        /// </summary>
+        private bool CanInstallNow()
+        {
+            if (exportBusy || ExportRunning || IsDisposed || !Visible || !Enabled)
+            {
+                return false;
+            }
+            try
+            {
+                var maxWindow = Loader.Core.MAXHWnd;
+                return maxWindow != IntPtr.Zero && IsWindowEnabled(maxWindow);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool IsWindowEnabled(IntPtr window);
 
         private void InstallPreparedUpdate(PreparedUpdate update)
         {

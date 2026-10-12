@@ -315,6 +315,22 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void TheExporterOnlyCountsAnother3dsMaxKnownToBeOfItsInstallation()
+        {
+            const string max = @"C:\Program Files\Autodesk\3ds Max 2024\3dsmax.exe";
+            Assert.True(UpdatePaths.SameInstallation(@"C:\PROGRAM FILES\Autodesk\3ds Max 2024\3dsmax.exe", max));
+            Assert.True(UpdatePaths.SameInstallation(@"C:/Program Files/Autodesk/3ds Max 2024/3dsmaxbatch.exe", max));
+            Assert.False(UpdatePaths.SameInstallation(@"C:\Program Files\Autodesk\3ds Max 2025\3dsmax.exe", max));
+            Assert.False(UpdatePaths.SameInstallation(@"C:\Program Files\Autodesk\3ds Max 2024 Copy\3dsmax.exe", max));
+            Assert.False(UpdatePaths.SameInstallation(@"C:\Program Files\Autodesk\3ds Max 2024\sub\3dsmax.exe", max));
+            // Unlike the installer, which waits on a guess, the exporter never warns on one.
+            Assert.False(UpdatePaths.SameInstallation(null, max));
+            Assert.False(UpdatePaths.SameInstallation("", max));
+            Assert.False(UpdatePaths.SameInstallation(max, null));
+            Assert.False(UpdatePaths.SameInstallation(max, "3dsmax.exe"));
+        }
+
+        [Fact]
         public void UnderFolderNeedsAWholeFolderName()
         {
             Assert.True(UpdatePaths.IsUnderFolder(@"C:\Users\jo\AppData\Local\Temp\u1\Max_2024.zip", @"C:\Users\jo\AppData\Local\Temp\"));

@@ -383,5 +383,15 @@ namespace Utilities.Updates
             if (string.IsNullOrEmpty(processImagePath)) return true;
             return SameFolder(FolderOf(processImagePath), installFolder);
         }
+
+        /// <summary>
+        /// True when a running process is known to run from the folder of <paramref name="maxExePath"/> (the 3ds Max
+        /// running the exporter); false when either path is unknown, so the exporter never warns on a guess.
+        /// </summary>
+        public static bool SameInstallation(string processImagePath, string maxExePath)
+        {
+            if (string.IsNullOrEmpty(processImagePath) || string.IsNullOrEmpty(maxExePath)) return false;
+            return SameFolder(FolderOf(processImagePath), FolderOf(maxExePath));
+        }
     }
 }

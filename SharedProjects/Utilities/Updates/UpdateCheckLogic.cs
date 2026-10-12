@@ -100,6 +100,12 @@ namespace Utilities.Updates
             }
         }
 
+        /// <summary>The status line once Update has downloaded a release: the next press of Update installs it.</summary>
+        public static string ReadyText(string tag)
+        {
+            return "Ready to install " + (tag ?? string.Empty).Trim();
+        }
+
         /// <summary>The status line after a check that failed (shown only when the button asked).</summary>
         public static string FailureText(UpdateCheckFailure failure)
         {

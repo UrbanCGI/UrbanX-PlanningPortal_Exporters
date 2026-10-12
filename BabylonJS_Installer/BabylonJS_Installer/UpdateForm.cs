@@ -30,13 +30,21 @@ namespace BabylonJS_Installer
         private static readonly TimeSpan SlowClose = TimeSpan.FromSeconds(30);
 
         /// <summary>
-        /// After a cancel or a failure, how long a 3ds Max that is closing is waited for to open it again. One still
-        /// open after that was kept open by the modeller (nothing was changed), and is left as it is.
+        /// After a cancel or a failure, how long a 3ds Max that is closing is waited for to open it again. Long enough
+        /// for a heavy scene to close (the clock can start before the exporter has even asked 3ds Max to close); one
+        /// still open after that was kept open by the modeller (nothing was changed), and is left as it is. The
+        /// window's Close button ends the wait sooner (3ds Max is then not opened again).
         /// </summary>
-        private static readonly TimeSpan RequesterGrace = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan RequesterGrace = TimeSpan.FromMinutes(5);
+
+        /// <summary>The same wait when the window itself failed: nothing is on screen then, so it is kept short.</summary>
+        private static readonly TimeSpan CrashGrace = TimeSpan.FromSeconds(60);
 
         /// <summary>The install while it runs, so a failure of the window itself waits for it (Program.Main).</summary>
         private static Task runningInstall;
+
+        /// <summary>The per-year lock while this installer owns it, so a failure of the window itself lets go of it.</summary>
+        private static Mutex ownedLock;
 
         private enum Phase { Waiting, Installing, Finishing, Done }
         private enum Outcome { Updated, Cancelled, Failed }
@@ -57,6 +65,7 @@ namespace BabylonJS_Installer
         private bool finishing;
         private UpdateCommandLine request = new UpdateCommandLine();
         private string installFolder;
+        private DateTime? requesterExited;  // when the 3ds Max that asked was seen to exit (local time, as Process.StartTime)
 
         public UpdateForm(string[] args)
         {
@@ -205,9 +214,12 @@ namespace BabylonJS_Installer
             updateLog.Write("3ds Max installation: " + (installFolder ?? "(not found)"));
 
             // One update per 3ds Max year at a time. The exporter has already been told this installer runs and is
-            // closing 3ds Max, so a second one changes nothing but still waits for that 3ds Max and opens it again.
+            // closing 3ds Max, so a second one changes nothing but still waits for that 3ds Max; the update that
+            // holds the lock reopens only the 3ds Max that started it. (The exporter checks for the lock before it asks
+            // and again before it starts the installer, so a second one only comes from two near-simultaneous starts.)
             lockName = UpdateCommandLine.UpdateLockName(request.MaxYear);
             single = new Mutex(false, lockName, out ownsLock);
+            if (ownsLock) ownedLock = single;
             if (!ownsLock)
             {
                 updateLog.Write("Another update of the exporter is already running (" + lockName + "); this one changes nothing.");
@@ -320,6 +332,7 @@ namespace BabylonJS_Installer
                     }
                     await Task.Delay(500, token);
                 }
+                if (!requesterExited.HasValue) requesterExited = DateTime.Now;
                 updateLog.Write("Process " + request.WaitPid + " has exited.");
                 return true;
             }
@@ -426,7 +439,7 @@ namespace BabylonJS_Installer
         }
 
         /// <summary>
-        /// Opens 3ds Max again (once the one that asked has gone and none of that installation runs), records the
+        /// Opens 3ds Max again (once the one that asked has gone, unless it was opened again already), records the
         /// result and tells the user what they need to know. The window can be closed meanwhile: 3ds Max then stays
         /// closed. After a cancel or a failure the 3ds Max that asked may never close (the modeller kept it open):
         /// it is waited for <see cref="RequesterGrace"/> only, and then left open as it is.
@@ -452,11 +465,11 @@ namespace BabylonJS_Installer
                 {
                     maxStillOpen = true;
                     updateLog.Write("3ds Max is still open; it is left as it is.");
-                    SetStatus(opening + " 3ds Max is still open.");
+                    SetStatus(opening + " 3ds Max had not closed, so it is not opened again.");
                 }
                 else if (AnotherUpdateRunning())
                 {
-                    updateLog.Write("Another update of this 3ds Max is still running; it opens 3ds Max again.");
+                    updateLog.Write("Another update of this 3ds Max is still running; it reopens only the 3ds Max that started it, so this one is not opened again.");
                     SetStatus(opening);
                 }
                 else
@@ -465,6 +478,15 @@ namespace BabylonJS_Installer
                     SetStatus(opening + (reopenProblem == null ? " Opening 3ds Max" + Ellipsis : ""));
                 }
             }
+
+            // Nothing more is changed or opened, so a later update need not wait for this window's last message (any
+            // handle keeps the lock in existence, so this one goes also when it never held the lock).
+            if (single != null)
+            {
+                single.Dispose();
+                single = null;
+            }
+            ownedLock = null;
 
             switch (outcome)
             {
@@ -487,7 +509,7 @@ namespace BabylonJS_Installer
                 Activate();
                 MessageBox.Show(this,
                     "The exporter could not be updated.\n\n" + reason + "\n\n"
-                    + (maxStillOpen ? "3ds Max is still open, and nothing was changed.\n\n" : "")
+                    + (maxStillOpen ? "Nothing was changed. 3ds Max had not closed, so it is not opened again; if it closes now, open it from the Start menu.\n\n" : "")
                     + (reopenProblem != null ? reopenProblem + "\n\n" : "")
                     + "To update by hand, close 3ds Max and run the installer from " + Downloader.Url_releases_page + ".\n\n"
                     + "Details are in " + updateLog.FilePath + ".",
@@ -511,13 +533,17 @@ namespace BabylonJS_Installer
             Close();
         }
 
-        /// <summary>Opens 3ds Max (with the scene) through the desktop; returns null when done, else a sentence for the user.</summary>
+        /// <summary>
+        /// Opens 3ds Max (with the scene) through the desktop; returns null when done, else a sentence for the user.
+        /// Not when a 3ds Max of the installation was started after the one that asked had exited (it was opened
+        /// again already); another 3ds Max that was open all along does not count.
+        /// </summary>
         private string ReopenMax()
         {
             var folder = installFolder ?? UpdatePaths.InstallFolder(request.RestartPath, null);
-            if (folder != null && MaxProcesses.Blocking(folder).Count > 0)
+            if (folder != null && MaxProcesses.StartedSince(folder, requesterExited ?? started).Count > 0)
             {
-                updateLog.Write("3ds Max of that installation is already running; not opening another.");
+                updateLog.Write("3ds Max of that installation was opened again already; not opening another.");
                 return null;
             }
             var arguments = request.OpenPath != null ? UpdateCommandLine.QuoteArgument(request.OpenPath) : "";
@@ -534,7 +560,7 @@ namespace BabylonJS_Installer
         /// <summary>
         /// For Program.Main when the update window itself failed: the exporter has been told the installer runs and
         /// closes 3ds Max, so this still logs why, lets a running install finish, waits a while for that 3ds Max to
-        /// close, opens it again (unless one of that installation runs, or it stayed open) and says what happened.
+        /// close, opens it again (unless it was opened again already, or it stayed open) and says what happened.
         /// Never throws.
         /// </summary>
         public static void RecoverAfterCrash(string[] args, Exception error)
@@ -558,6 +584,21 @@ namespace BabylonJS_Installer
                     }
                 }
 
+                // Nothing is written any more: an update started from 3ds Max meanwhile may go ahead.
+                var held = ownedLock;
+                ownedLock = null;
+                if (held != null)
+                {
+                    try
+                    {
+                        held.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                        // Already let go of.
+                    }
+                }
+
                 List<string> problems;
                 var request = UpdateCommandLine.Parse(args, out problems);
                 if (request.RestartPath != null)
@@ -572,27 +613,29 @@ namespace BabylonJS_Installer
                         started = DateTime.Now;
                     }
                     bool closed = true;
+                    var exited = started; // as in ReopenMax: a 3ds Max started after this was opened again by someone else
                     using (var process = request.WaitPid > 0 ? MaxProcesses.WaitTarget(request.WaitPid, started) : null)
                     {
                         var since = DateTime.UtcNow;
                         while (process != null && !MaxProcesses.HasExited(process))
                         {
-                            if (DateTime.UtcNow - since >= RequesterGrace)
+                            if (DateTime.UtcNow - since >= CrashGrace)
                             {
                                 closed = false;
                                 break;
                             }
                             Thread.Sleep(500);
                         }
+                        if (process != null && closed) exited = DateTime.Now;
                     }
                     var folder = UpdatePaths.InstallFolder(request.RestartPath, null);
                     if (!closed)
                     {
                         log.Write("3ds Max is still open; it is left as it is.");
                     }
-                    else if (folder != null && MaxProcesses.Blocking(folder).Count > 0)
+                    else if (folder != null && MaxProcesses.StartedSince(folder, exited).Count > 0)
                     {
-                        log.Write("3ds Max of that installation is already running; not opening another.");
+                        log.Write("3ds Max of that installation was opened again already; not opening another.");
                     }
                     else
                     {
@@ -649,20 +692,28 @@ namespace BabylonJS_Installer
                 Folder = Path.Combine(Path.GetTempPath(), "UrbanCGI exporter backup " + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)
                                                           + " " + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
                 Directory.CreateDirectory(Folder);
-                int index = 0;
-                foreach (var target in targets)
+                try
                 {
-                    if (File.Exists(target))
+                    int index = 0;
+                    foreach (var target in targets)
                     {
-                        // File.Copy keeps the last-write time, which the main window compares with the release date.
-                        var copy = Path.Combine(Folder, (index++).ToString(CultureInfo.InvariantCulture) + "_" + Path.GetFileName(target));
-                        File.Copy(target, copy);
-                        saved.Add(new KeyValuePair<string, string>(target, copy));
+                        if (File.Exists(target))
+                        {
+                            // File.Copy keeps the last-write time, which the main window compares with the release date.
+                            var copy = Path.Combine(Folder, (index++).ToString(CultureInfo.InvariantCulture) + "_" + Path.GetFileName(target));
+                            File.Copy(target, copy);
+                            saved.Add(new KeyValuePair<string, string>(target, copy));
+                        }
+                        else
+                        {
+                            added.Add(target);
+                        }
                     }
-                    else
-                    {
-                        added.Add(target);
-                    }
+                }
+                catch (Exception)
+                {
+                    Discard(); // a part-made backup is no use, and a full disk needs the space
+                    throw;
                 }
             }
 

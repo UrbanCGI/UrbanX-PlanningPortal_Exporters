@@ -76,8 +76,34 @@ namespace BabylonJS_Installer
         }
 
         /// <summary>
+        /// The running 3ds Max processes of an installation (as <see cref="Blocking"/>) that started after
+        /// <paramref name="since"/> (local time). One whose start time cannot be read counts as started before.
+        /// </summary>
+        public static List<int> StartedSince(string installFolder, DateTime since)
+        {
+            var found = new List<int>();
+            foreach (var processId in Blocking(installFolder))
+            {
+                try
+                {
+                    using (var process = Process.GetProcessById(processId))
+                    {
+                        if (process.StartTime > since) found.Add(processId);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Gone, or its start time cannot be read.
+                }
+            }
+            return found;
+        }
+
+        /// <summary>
         /// The process to wait for, or null when it has already gone. A process that started after this installer
-        /// is not the 3ds Max that asked for the update (its id has been reused) and is not waited for.
+        /// is not the 3ds Max that asked for the update (its id has been reused) and is not waited for. The returned
+        /// process keeps a handle open where Windows allows it, so its id cannot be given to another process while
+        /// it is waited for.
         /// </summary>
         public static Process WaitTarget(int processId, DateTime installerStart)
         {
@@ -89,6 +115,15 @@ namespace BabylonJS_Installer
             catch (Exception)
             {
                 return null; // not running
+            }
+            try
+            {
+                // Without this, .NET Framework opens the process by id again for every question asked of it.
+                var keep = process.Handle;
+            }
+            catch (Exception)
+            {
+                // Then each question opens it by id, as before.
             }
             try
             {

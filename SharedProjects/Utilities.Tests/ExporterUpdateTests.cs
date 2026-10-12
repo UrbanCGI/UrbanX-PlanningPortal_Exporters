@@ -110,6 +110,9 @@ namespace Utilities.Tests
             Assert.Equal("Update available: v20261010.1", UpdateCheckLogic.StatusText(UpdateVerdict.UpdateAvailable, "v20261010.1"));
             Assert.Equal("Latest release: v20261010.1", UpdateCheckLogic.StatusText(UpdateVerdict.DevelopmentBuild, "v20261010.1"));
             Assert.Equal(string.Empty, UpdateCheckLogic.StatusText(UpdateVerdict.Unknown, null));
+            Assert.Equal("Ready to install v20261010.1", UpdateCheckLogic.ReadyText(" v20261010.1 "));
+            // The status line is as wide as the longest "Update available" line; the ready line must fit in it too.
+            Assert.True(UpdateCheckLogic.ReadyText("v20261231.9999").Length <= "Update available: v20261231.9999".Length);
             Assert.Equal("Couldn't reach GitHub", UpdateCheckLogic.FailureText(UpdateCheckFailure.Offline));
             Assert.Equal("Blocked by the network proxy", UpdateCheckLogic.FailureText(UpdateCheckFailure.ProxyRefused));
             foreach (UpdateCheckFailure failure in Enum.GetValues(typeof(UpdateCheckFailure)))
@@ -610,18 +613,26 @@ namespace Utilities.Tests
         {
             var workflow = RepositoryFile(@".github\workflows\cd.yml").Replace("\r\n", "\n");
 
-            // Every exporter offers the latest release: a run on another branch must not publish one.
+            // Every exporter offers the latest release: a run on another branch must not publish one, nor a run with
+            // nothing new.
             foreach (var step in new[] { "- name: Create Tag\n", "- name: Create GitHub Release and Upload Assets\n" })
             {
                 var at = workflow.IndexOf(step, StringComparison.Ordinal);
                 Assert.True(at >= 0, step);
-                Assert.StartsWith("        if: github.ref == 'refs/heads/master'\n", workflow.Substring(at + step.Length));
+                Assert.StartsWith("        if: github.ref == 'refs/heads/master' && steps.release_tag.outputs.publish == 'true'\n",
+                    workflow.Substring(at + step.Length));
             }
             Assert.True(workflow.IndexOf("git push origin", StringComparison.Ordinal) > workflow.IndexOf("- name: Create Tag", StringComparison.Ordinal));
             Assert.True(workflow.IndexOf("gh release create", StringComparison.Ordinal) > workflow.IndexOf("- name: Create GitHub Release", StringComparison.Ordinal));
 
-            // A re-run of an old run does not publish older code under a newer date; runs do not overlap.
-            Assert.Contains("git merge-base --is-ancestor", workflow);
+            // A re-run of an old run does not publish older code under a newer date, a run of the latest release's
+            // own commit publishes nothing, and runs do not overlap.
+            var tagStep = workflow.Substring(workflow.IndexOf("- name: Release Tag\n", StringComparison.Ordinal));
+            tagStep = tagStep.Substring(0, tagStep.IndexOf("- name: ", 2, StringComparison.Ordinal));
+            Assert.Contains("id: release_tag", tagStep);
+            Assert.Contains("git merge-base --is-ancestor", tagStep);
+            Assert.Contains("(git rev-parse \"$latest^{commit}\") -eq (git rev-parse HEAD)", tagStep);
+            Assert.Contains("\"publish=$(if ($publish) { 'true' } else { 'false' })\" | Out-File -FilePath $env:GITHUB_OUTPUT -Append", tagStep);
             Assert.Contains("concurrency:", workflow);
 
             // Each 3ds Max build fails the run on its own, and a missing year stops the release.

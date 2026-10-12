@@ -5,6 +5,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -76,6 +78,20 @@ namespace Max2Babylon
 
         /// <summary>An installer that has ended within this time after starting could not start the update.</summary>
         private static readonly TimeSpan InstallerStartCheck = TimeSpan.FromSeconds(3);
+
+        /// <summary>The programs of a 3ds Max installation that load the exporter (as the installer's MaxProcesses).</summary>
+        private static readonly string[] MaxProcessNames = { "3dsmax", "3dsmaxbatch" };
+
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder exeName, ref int size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr handle);
 
         private static Autodesk.Max.GlobalDelegates.Delegate5 shutdownWatch; // kept so the delegate is not collected
         private static volatile bool shuttingDown;
@@ -184,11 +200,31 @@ namespace Max2Babylon
             message = null;
             discardChanges = false;
             var maxExecutable = MaxExecutablePath();
+
+            // A second installer would change nothing and leave the reopening to the first one, which only reopens
+            // the 3ds Max that asked it.
+            if (UpdateAlreadyRunning(update.MaxYear))
+            {
+                MessageBox.Show(owner, "An update of the exporter for 3ds Max " + update.MaxYear + " is already running. Let it finish, or press Cancel "
+                                       + "or Close in its window (it may be behind 3ds Max), then press Update again.",
+                    Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                message = "An update is already running";
+                return UpdateLaunch.Cancelled;
+            }
+
+            // The installer has to wait for every 3ds Max of this installation, as each holds the exporter's files, so
+            // the question says so before this one closes.
+            int others = OtherMaxProcesses(maxExecutable);
             bool reopens = UpdatePackages.BuildRequest(update.MaxYear, update.PackagePath, 1, maxExecutable, null).RestartPath != null;
             var question = "Version " + update.Tag + " is ready. "
                            + (reopens
                                ? "3ds Max will close to install it and open again afterwards."
-                               : "3ds Max will close to install it. Open it again afterwards.");
+                               : "3ds Max will close to install it. Open it again afterwards.")
+                           + (others > 0
+                               ? "\n\n" + (others == 1 ? "Another 3ds Max " + update.MaxYear + " is" : others + " other 3ds Max " + update.MaxYear + " programs are")
+                                 + " open (a render or batch job counts too). The update also waits for "
+                                 + (others == 1 ? "it" : "them") + " to close; Cancel to finish there first."
+                               : "");
             if (MessageBox.Show(owner, question, Title, MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
             {
                 message = "Update cancelled";
@@ -224,6 +260,17 @@ namespace Max2Babylon
                     return UpdateLaunch.Cancelled;
                 }
                 discardChanges = true;
+            }
+
+            // Checked again after 3ds Max's prompts, which can take a while: an update started meanwhile from another
+            // 3ds Max of this year reopens only that one, so this 3ds Max would stay closed.
+            if (UpdateAlreadyRunning(update.MaxYear))
+            {
+                MessageBox.Show(owner, "An update of the exporter for 3ds Max " + update.MaxYear + " started meanwhile from another 3ds Max. Let it "
+                                       + "finish, then press Update again.",
+                    Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                message = "An update is already running";
+                return UpdateLaunch.Cancelled;
             }
 
             // Read after the save prompt: an untitled scene may just have been saved.
@@ -525,6 +572,87 @@ namespace Max2Babylon
             using (var process = Process.GetCurrentProcess())
             {
                 return process.Id;
+            }
+        }
+
+        /// <summary>
+        /// How many other 3ds Max processes (with a window or without, such as a render job) are known to run from the
+        /// folder of <paramref name="maxExecutable"/>. One whose path cannot be read is not counted; 0 when unsure.
+        /// </summary>
+        private static int OtherMaxProcesses(string maxExecutable)
+        {
+            if (string.IsNullOrEmpty(maxExecutable))
+            {
+                return 0;
+            }
+            int count = 0;
+            try
+            {
+                int own = CurrentProcessId();
+                foreach (var name in MaxProcessNames)
+                {
+                    foreach (var process in Process.GetProcessesByName(name))
+                    {
+                        using (process)
+                        {
+                            if (process.Id != own && UpdatePaths.SameInstallation(ImagePath(process.Id), maxExecutable))
+                            {
+                                count++;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Then the installer says so, if another one is open.
+            }
+            return count;
+        }
+
+        /// <summary>
+        /// True while an installer holds the update lock of this 3ds Max year (it waits for 3ds Max, installs, or is
+        /// about to open 3ds Max again; it lets go before its last message).
+        /// </summary>
+        private static bool UpdateAlreadyRunning(int maxYear)
+        {
+            try
+            {
+                Mutex other;
+                if (!Mutex.TryOpenExisting(UpdateCommandLine.UpdateLockName(maxYear), out other))
+                {
+                    return false;
+                }
+                other.Dispose();
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true; // it exists: the installer made it with administrator rights
+            }
+            catch (Exception)
+            {
+                return false; // the installer checks again itself
+            }
+        }
+
+        /// <summary>The full path a process runs from, or null when Windows does not say.</summary>
+        private static string ImagePath(int processId)
+        {
+            var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (handle == IntPtr.Zero)
+            {
+                return null;
+            }
+            try
+            {
+                var text = new StringBuilder(1024);
+                int size = text.Capacity;
+                return QueryFullProcessImageName(handle, 0, text, ref size) ? text.ToString(0, size) : null;
+            }
+            finally
+            {
+                CloseHandle(handle);
             }
         }
 

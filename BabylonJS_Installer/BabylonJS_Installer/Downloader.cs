@@ -303,6 +303,12 @@ namespace BabylonJS_Installer
             try
             {
                 HttpResponseMessage response = await client.GetAsync(requestURI);
+                // UrbanCGI fork: an error answer (403 once the hourly API limit is used up) is not a release list.
+                // Treated like no answer, so the caller names the connection or the API limit, not "no release".
+                if (!response.IsSuccessStatusCode)
+                {
+                    return string.Empty;
+                }
                 return await response.Content.ReadAsStringAsync();
             }
             catch(Exception)
