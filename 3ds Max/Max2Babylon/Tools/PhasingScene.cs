@@ -19,7 +19,7 @@ namespace Max2Babylon
         // flag, so the word fixes take one of their own ("PHFX").
         private const int WordFixesSubId = 0x50484658;
 
-        /// <summary>Every node of the scene (handle, name, parent, place among its siblings, group flags) and every Max layer.</summary>
+        /// <summary>Every node of the scene (handle, name, parent, place among its siblings, group, helper and shape flags) and every Max layer.</summary>
         public static void Read(List<PhasingSceneNode> nodes, List<PhasingMaxLayer> maxLayers)
         {
             var root = Loader.Core.RootNode;
@@ -37,6 +37,8 @@ namespace Max2Babylon
                     {
                         continue;
                     }
+                    bool isHelper, isShape;
+                    Classify(child, out isHelper, out isShape);
                     nodes.Add(new PhasingSceneNode
                     {
                         Key = child.Handle,
@@ -45,7 +47,9 @@ namespace Max2Babylon
                         ChildIndex = i,
                         HasChildren = child.NumberOfChildren > 0,
                         IsGroupHead = child.IsGroupHead,
-                        IsGroupMember = child.IsGroupMember
+                        IsGroupMember = child.IsGroupMember,
+                        IsHelper = isHelper,
+                        IsShape = isShape
                     });
                     pending.Enqueue(child);
                 }
@@ -70,6 +74,51 @@ namespace Max2Babylon
                     // Without its parent the layer is still renamed; only a re-parent could be planned twice.
                 }
                 maxLayers.Add(new PhasingMaxLayer { Name = layer.Name, ParentName = parentName });
+            }
+        }
+
+        /// <summary>
+        /// What 3ds Max says a node is. A helper rather than geometry: a group head, or a node whose evaluated object is
+        /// of the helper super class (dummies, points and the like). A shape: a node whose evaluated object is of the
+        /// shape super class, a spline such as a RailClone path, which the export leaves out (a spline with a modifier
+        /// that makes it geometry, e.g. Sweep or Extrude, evaluates to geometry, is exported and is not a shape). A node
+        /// whose base object is geometry is not evaluated: modifiers do not make geometry a helper or a shape. Anything
+        /// that cannot be read is neither.
+        /// </summary>
+        private static void Classify(IINode node, out bool isHelper, out bool isShape)
+        {
+            isHelper = false;
+            isShape = false;
+            try
+            {
+                if (node.IsGroupHead)
+                {
+                    isHelper = true;
+                    return;
+                }
+                var objectRef = node.ObjectRef;
+                if (objectRef == null)
+                {
+                    return;
+                }
+                var baseObject = objectRef.FindBaseObject();
+                if (baseObject != null && baseObject.SuperClassID == SClass_ID.Geomobject)
+                {
+                    return;
+                }
+                var state = node.EvalWorldState(0, false);
+                if (state == null || state.Obj == null)
+                {
+                    return;
+                }
+                var superClass = state.Obj.SuperClassID;
+                isHelper = superClass == SClass_ID.Helper;
+                isShape = superClass == SClass_ID.Shape;
+            }
+            catch (Exception)
+            {
+                isHelper = false;
+                isShape = false;
             }
         }
 

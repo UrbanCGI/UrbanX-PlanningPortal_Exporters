@@ -50,18 +50,65 @@ With strict mode on and at least one error the export stops with nothing written
 
 Objects carry one or two tags, `Ph<n>_St<nn>_IN|RM`: the leading tag starts the name, an optional
 trailing tag ends it, the free description sits between them
-(`Ph1_St01_IN_Sheet_Pile_1`, `Ph1_St00_IN_RC_Hoardings_Ph2_St06_RM`). A stage may carry a sub-stage,
-`St<nn>.<m>` (`Ph2_St05.2_IN_TR_Subbase_280mm_C`): work inside stage 5 with its own place in the order,
-5 < 5.1 < 5.2 < 6. Objects sit inside a group whose name carries the order number, activity name and
-dates: `N_<Activity>_DD-MM-YY[_DD-MM-YY]`, or `N_<Activity>_TBC` while dates are unknown
-(`01_Sheet_Piling_SA&DS3_17-08-26_18-09-26`, `35_Service_Road_Setback_TBC`). The group owns the segment
-whose `St` equals its order number; a sub-numbered group (`05-1_…` or `05.1_…` — the dotted form needs the
-underscore, so `2.4 High Hoarding` stays an ordinary group) owns that sub-stage (`St05.1`) and, as
-before, plain `St05` objects; a plain group number (`05_…`) covers every sub-stage of its stage. The Planner reads the exported node hierarchy, so it is the *group* that matters, not the
-3ds Max layer.
+(`Ph1_St01_IN_Sheet_Pile_1`, `Ph1_St00_IN_RC_Hoardings_Ph2_St06_RM`). A stage may carry a sub-stage
+after a hyphen, `St<nn>-<m>` (`Ph1_St04-2_IN_Sheet_Pile_6`, `..._Ph2_St05-2_RM`): work inside stage 4 with
+its own place in the order, 4 < 4-1 < 4-2 < 4-10 < 5. The old spelling with a full stop (`St04.2`) still
+reads as the same stage, and the log asks for the hyphen (below). Objects sit inside a group whose name
+carries its ID, activity name and dates: `<ID>_<Activity>_DD-MM-YY[_DD-MM-YY]`, or `<ID>_<Activity>_TBC`
+while dates are unknown. The ID is one number or two:
+
+- **two numbers, phase then stage**, `<PP>_<SS>[-<m>]` (`02_01-2_Construction_of_Phase1_TM_31-08-26_17-10-26`:
+  phase 2, stage 1, sub-stage 2; the old `01_04.2_…` is phase 1, stage 4-2): each one or two digits, apart by
+  underscores or spaces, the stage followed by an underscore, a space or the end; a stage with the old full stop
+  only by an underscore or the end, so `01_2.4 High Hoarding_…` is stage 1 named `2.4 High Hoarding`. The group
+  owns the work of a tag with its phase and stage. This is how Fix phasing names writes every layer;
+- **one number, the stage** (`01_Sheet_Piling_SA&DS3_17-08-26_18-09-26`, `35_Service_Road_Setback_TBC`): the
+  group owns the work of a tag with its stage, in the phase the Planner reads off its objects' *leading* tags: the
+  phase most of the leading tags with the group's stage carry (the lower phase on a tie). Only when no leading tag
+  has the group's stage does it look at the trailing tags, and take the phase most of those with its stage carry.
+  So one object whose leading tag has the stage sets the phase on its own, whatever the others' trailing tags carry:
+  in `06-2_Hoarding_Removal_…`, a single `Ph2_St06-2_RM_Old_Barrier` makes the group phase 2, and the
+  `Ph0_St00_IN_…_Ph1_St06-2_RM` hoardings beside it are then not its work.
+  An object of that stage in another phase is not its work: when another dated layer has the object's phase and
+  stage, the Planner dates the object from that layer, though it stays in the group's folder (the naming check
+  warns); with none, it keeps the group's dates. When only an object's trailing tag has the group's stage, in
+  another phase, the group does not own the removal, and the Planner dates the leading tag's work from its own
+  layer, or, with no dated layer for it, takes it as the group's own work, on the group's dates (TBC like the rest
+  of the group when the group is TBC; with no dates at all, at the start of the project) (the naming check warns in
+  both cases). The warnings say how the group got its phase and, when leading tags set it, name the
+  objects that did; when those are fewer than the objects warned in the group for another phase, the advice says
+  the slip may be theirs.
+
+A sub-numbered stage (`05-1`, or the old `05.1`, which needs the underscore after it, so `2.4 High Hoarding`
+stays an ordinary group) owns that sub-stage (`St05-1`) and, as before, plain `St05` objects; a plain stage
+(`05`) covers every sub-stage of its stage. Three hyphenated numbers are always a date, never a stage
+(`01_18-09-26_Kerbs` is stage 1, dated), and a stage (`04-2`) is never a date. The Planner reads the exported
+node hierarchy, so it is the *group* that matters, not the 3ds Max layer.
+
+Inside the phasing hierarchy that Fix phasing names (section 3) looks after — a group directly under a phase
+group `_<n>_<name>` of a top-level node with "phasing" in its name, or directly under that top node — the
+group is a layer and its name is read as the fixer reads it, `<PP>_<SS>[-<split>]_<name>_<dates>`
+(`01_04-2_Phase1_Retainment_Installation_18-09-26_23-10-26`: phase 01, stage 04, sub-stage 2), also where the
+Planner could not read it (a full stop after the phase, `6.06_…`, which the fixer corrects). An object belongs to
+such a layer when one of its tags has the layer's phase and stage. A scene that Fix phasing names leaves clean
+therefore reads clean, apart from what the fixer itself cannot correct (a removal tag naming a stage with no
+layer, below). The fixer corrects only the first top-level node with "phasing" in its name (the export asks it
+which); the layers of any other such node are pointed out to be renamed by hand. One known difference remains: a
+layer ID with a phase or stage of three digits or more (`01_100_…`) is read by the fixer, and so by the naming
+check, as phase 1, stage 100, while the Planner reads two numbers only when each has one or two digits, so it
+reads that group as stage 1 named with one number; a removal tag naming that stage then has no layer for the
+Planner, and the naming check does not say so. Stages run to two digits in practice.
 
 The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 `packages/domain/src/phasingNaming.ts`; its tests mirror `phasingNaming.test.ts`. Change both together.
+Both read `St04.2` and `St04-2` (and `01_04.2_…` and `01_04-2_…`) the same way and mark the full stop form
+as legacy, which only the naming check uses. A group name is legacy when the full stop is in its stage: a
+one-number name's (`05.2_…`) or a two-number name's (`01_04.2_…`, also after several underscores or a space,
+`01__04.2_…`, `01 04.2_…`), followed by an underscore or the end. A measurement in that place
+(`01_1.8_x_2.4_…`) reads the same to both parsers, so the naming check looks closer (below). For a two-number
+name the activity name is what follows the ID (`Retainment` for `01_04-2_Retainment_…`), and the label the
+Planner groups by is unchanged (`01_04-2_Retainment`). Spaces, line ends and trimming follow the Planner's
+JavaScript too (U+FEFF counts as a space, U+0085 does not).
 
 ### What is reported
 
@@ -71,17 +118,43 @@ The parser (`PlannerNaming.cs`) is a line-for-line port of the Planner's
 | Error | text after the description looks like a trailing tag but does not read as one (`..._Ph1_S03_RM`, `..._Ph2_St00_RM_extra`) |
 | Error | group date unreadable (`31-02-26`) or finish before start (`17-02-27_23-02-17`) |
 | Error | two exported objects share a name |
-| Warning | tagged object not inside a dated group (unfiled: the Planner cannot schedule it); names the offending group, or the dated 3ds Max layer if the object sits on one |
-| Warning | neither tag matches the group's stage (`Ph1_St06_RM_...` inside `00_...`, `Ph2_St05.2_IN_...` inside `05-1_...`) |
+| Warning | tagged object not inside a dated group (unfiled: the Planner cannot schedule it); names the offending group, or the dated 3ds Max layer if the object sits on one. In a phasing layer whose ID only Fix phasing names reads (a full stop after the phase, `06.01.2_…`), the message says so and points to Fix phasing names (or, under a second top node with "phasing" in its name, gives the ID to rename it to by hand) |
+| Warning | neither tag matches the group: for a two-number group (any layer of the phasing hierarchy, and any other group named phase then stage) neither tag has its phase and stage (`Ph2_St02-3_IN_...` or `Ph3_St02-7_IN_...` inside `02_02-7_...`, `Ph1_St01_IN_...` inside `01_04_...`); for a one-number group neither tag has its stage (`Ph1_St06_RM_...` inside `00_...`, `Ph2_St05-2_IN_...` inside `05-1_...`); or the leading tag has its stage but not its phase (the phase most of the leading tags with its stage carry, or, when no leading tag has its stage, most of the trailing tags with it; see section 1) and another dated layer has the leading tag's phase and stage, so the Planner dates the object from that layer, which the message names (`Ph2_St07_IN_...` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`, with `02_07_Other_01-03-27` in the file; with no such layer the Planner keeps the object on the group's dates, as meant, and nothing is said); or only the trailing tag has its stage, in another phase (`Ph2_St03_IN_..._Ph2_St07_RM` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`), so the group does not own the removal: the message is worded around the removal tag, says where the Planner dates the removal (the layer with its phase and stage, or after the end of the works, TBC, when there is none) and where it puts the leading tag's work (its own layer as usual, or, when no dated layer has the leading tag's phase and stage, the group's own work: spread over the group's dates, not listed as unresolved, which nothing else reports, and TBC only when the group is; a TBC group with no dates puts it at the start of the project, TBC like the rest of the group). Both messages say how the group got its phase; when leading tags set it they name the objects that did (up to five), and when those are fewer than the objects warned in the group for another phase, the advice says the slip may be theirs (`Ph2_St06-2_RM_Old_Barrier` beside three `Ph0_St00_IN_…_Ph1_St06-2_RM` hoardings in `06-2_Hoarding_Removal_…`). An object directly in a layer of the phasing top node is pointed to Fix phasing names, which gives it the layer's tag; one linked under another node inside the layer (a Max group, an object), or in a layer of a second top node with "phasing" in its name, is told to correct it by hand, as the fixer leaves it |
+| Warning | tags whose phase and stage have no layer in the file, one warning for removal tags and one for install tags, each with the count, the tags and up to 10 object names: the Planner cannot date that work, so it puts a removal after the end of the works and an install at the start of the project, both marked TBC (HS2: `Ph1_St06`, `Ph1_St14`, `Ph1_St23`, `Ph1_St26`, `Ph1_St34`, `Ph99_St99`, eight objects; Fix phasing names lists these as Check lines and cannot correct them). A tag is looked at only where the Planner looks for another layer: not the one its own group owns, not the leading tag when its group owns neither (the mismatch above), not an install in phase 0 (there before the works), and not on an unfiled object. As for the Planner, a group is a layer only when it holds a tagged object: one with the tag's phase and stage that holds none is named in the warning |
+| Warning | sub-stages written with a full stop, the old form: one warning for object names (`Ph1_St04.2_IN_...`) and one for group names (`01_04.2_...`, `05.2_...`), each with the count and up to 10 names, saying which ones Fix phasing names converts (the layers of the phasing top node it corrects and the objects directly in them) and which to rename by hand (anything else, e.g. an object linked under a Max group inside a layer, or a layer of a second top node with "phasing" in its name). In a phasing layer only a full stop before the split counts (a layer's `6.06` is corrected by the fixer with the rest of the ID). In any other group name only a full stop after a two-digit stage counts, and not one before `_x_`, so a measurement (`2.4_High_Hoarding`, `01_2.4_High_Hoarding_…`, `1.8_x_2.4_Heras_Panel`) is not counted; nor is a full stop inside a name (`…_v.02`) |
 | Warning | group has neither dates nor TBC; group has an order number but no name |
 | Warning | groups whose labels differ only by letter case (`..._Inst` / `..._inst`) |
 | Warning | empty description (a stray underscore at the description's edge is trimmed by the Planner and not reported) |
 | Warning | a space anywhere in a tagged object's name or a dated group's name (names use underscores only, no notes) |
 | Warning | two groups share a name |
-| Note | single-digit stage (`St6`, `St6.1`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
+| Note | single-digit stage (`St6`, `St6-1`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
+| Note | the phasing layers and helper nodes do not pair up by name (see the counts below): how many on each side, with up to 10 names |
+| Note | tags whose phase and stage only an undated layer has (`01_05_Hoarding_TBC`), one note for removal tags and one for install tags, with the tags, the layers and up to 10 object names: the Planner dates another stage's work only from a layer with a start date, so until that layer has dates it puts the work where it puts a tag with no layer, marked TBC |
+
+After the summary line ("Planner naming check: …", which gives the tagged objects of the export) comes the
+phasing counts line, for a quick comparison with the project's layer / activity matrix, e.g. "Phasing counts:
+91 layers in the Max layer HS2_…_v.02, 91 helper nodes under HS2_…_v.02." (the HS2 figures as worked out from its
+GLB and Max layers; not yet seen in 3ds Max itself):
+
+- **layers**: the 3ds Max layers inside the phasing top layer's tree, at any depth. The top layer is the Max layer
+  named like the phasing top node (any capitals), else the first top-level Max layer with "phasing" in its name;
+  it is not counted itself;
+- **helper nodes**: the dummies, points, group heads and other helper objects inside the phasing top node's
+  hierarchy, at any depth (the top node not counted). 3ds Max decides: a group head, or a node whose evaluated
+  object is of the helper class. Other objects are not counted here;
+- **shapes** (splines such as RailClone paths, whose evaluated object is of the shape class) are not counted at
+  all: the export leaves them out, so the Planner never sees them. The exception is a shape with something
+  exported linked under it, which the export writes as an empty node: it is counted with the helper nodes. A
+  spline with a modifier that makes geometry (Sweep, Extrude) is geometry, not a shape.
+
+A modeller's scene has a Max layer and a helper node of the same name for each group and layer, so the two
+numbers normally pair up; when they do not, the note above lists what is missing on each side. The counts come
+from the same reading of the scene as Fix phasing names, and its window shows them too.
 
 Files: `SharedProjects/Utilities/Planner/PlannerNaming.cs`, `PlannerNamingValidator.cs` (rules, Max-free),
-`Max2Babylon/Exporter/BabylonExporter.PlannerChecks.cs` (collects the scene nodes, reports, stops).
+`PhasingNameFixer.cs` (the layer IDs and the counts), `Max2Babylon/Exporter/BabylonExporter.PlannerChecks.cs`
+(collects the scene nodes, reports, stops), `Max2Babylon/Tools/PhasingScene.cs` (which nodes are helpers and
+which are shapes).
 
 ## 3. Fix phasing names
 
@@ -90,10 +163,15 @@ carries the names the Planner reads, the same result as cleaning up the exported
 
 - the phasing top node: the first top-level node with "phasing" in its name (any capitals);
 - its phase groups, `_<n>_<name>` (`_06_Weekend_Closure`);
-- the groups' layers, `<PP>_<SS>[.<split>]_<name>` (`02_05.1_Eastside_Kerbing_17-08-26`);
-- the layers' objects, `Ph<n>_St<nn>[.<split>]_IN|RM_<description>[_Ph<n>_St<nn>_RM]`;
+- the groups' layers, `<PP>_<SS>[-<split>]_<name>` (`02_05-1_Eastside_Kerbing_17-08-26`; the old `02_05.1_…`
+  reads the same);
+- the layers' objects, `Ph<n>_St<nn>[-<split>]_IN|RM_<description>[_Ph<n>_St<nn>[-<split>]_RM]`;
 - the 3ds Max layers named like the top node, the groups and the layers, in any capitals (a modeller's scene has a
   Max layer and a helper node of the same name for each).
+
+Shapes (splines such as RailClone paths) are left out wherever they sit: the export does not write them, so they
+are not listed, renamed or counted. The RailClone object itself is geometry and is handled like any other object.
+A shape with something exported linked under it is written as an empty node, and is handled like a helper.
 
 What it corrects:
 
@@ -101,26 +179,51 @@ What it corrects:
 - layer IDs: the phase written with two digits and an underscore after it (`6.06_…` becomes `06_06_…`), the stage
   with two digits;
 - a layer sitting directly under the top node is moved into the group of its phase;
-- a stage with several layers is split `.1`, `.2`, … in start-date order (the first date in the name; undated
+- a stage with several layers is split `-1`, `-2`, … in start-date order (the first date in the name; undated
   layers last); a stage with a single layer keeps its split, unless the review moved the layer there (the split
-  belonged to its old stage, so it goes);
-- each object's leading tag becomes its layer's ID (`Ph2_St05.1_IN_…`), and a trailing removal tag follows the
+  belonged to its old stage, so it goes). `02_05.1` and `02_05-1` are the same ID;
+- each object's leading tag becomes its layer's ID (`Ph2_St05-1_IN_…`), and a trailing removal tag follows the
   layer it points at to that layer's new ID;
+- a sub-stage written the old way, with a full stop, gets the hyphen: in layer IDs (`01_04.2_…` becomes
+  `01_04-2_…`), leading tags, removal tags (also one naming a stage with no layer) and a tag closing an RM
+  object's name (`…_Ph3_St07.2_IN`), with the reason "hyphen before the sub-stage number, not a full stop". No
+  full stop inside a name is touched (`…_v.02`, `…_2.4_High_Hoarding_…`, `…_1.8_x_2.4_Heras_Panel`), and neither
+  are dates. A phase group's child whose name starts `<n>.<n>_` reads as a layer ID, though (`6.06_…` becomes
+  `06_06_…`), so a group named after a measurement there needs a space (`2.4 High Hoarding`) or a start that is not
+  a number;
 - objects that would end up with the same name get `_02`, `_03`, … on their description;
-- the Max layers are renamed with their nodes, and a moved layer's Max layer goes under its group's.
+- the Max layers are renamed with their nodes, and a moved layer's Max layer goes under its group's. A Max layer
+  still written with the old full stop (`02_05.1_…`) takes the hyphen of its node also when the node already has it
+  (`02_05-1_…`), as a Changed line of its own, unless a Max layer of the node's name exists too.
 
 Dates and TBC are never changed. Anything that does not read is left exactly as it is and listed as **Check** for
 a person to look at: an object with no Ph/St tag, a group child that is not a layer, a removal tag naming a stage
 with no layer in the file (or a layer that cannot be moved), a corrected top, group, layer or object name that
-another node already has, a word fix that would leave a name unreadable, and so on.
+another node already has, a word fix that would leave a name unreadable, a second top-level node with "phasing" in
+its name (only the first is corrected), and so on. A removal tag naming a stage with no layer keeps its stage, but
+its spelling is still corrected (the phase's zeros, the hyphen): its Check line then says "tag kept, only its
+spelling corrected" and the object's Changed line shows the new spelling; otherwise "left as it is". The export's
+naming check gathers these objects in one warning (section 2). When the stage has no phasing layer but a layer
+elsewhere in the scene that the Planner reads as that phase and stage (at the scene root, under a second top node
+with "phasing" in its name; a group that holds a tagged object, read as the Planner reads it), the Check line names
+it instead, "points at `<layer>`, outside the phasing layers; tag kept - the Planner dates the removal from that
+group only if the group is exported" (", which has no dates yet" and "once it has dates, and only if ..." when it
+is undated). The Planner and the export's naming check see only what is exported, and what the export leaves out
+(hidden nodes, the export layers, selected objects only) depends on the export's settings, which Fix phasing names
+does not read: when that group is exported the naming check does not warn about the removal (an undated one gets
+the note on undated layers); when it is not, the naming check lists the removal in its warning on tags with no
+layer.
 
 **How to use it.**
 
 1. Open the exporter. On the Options tab, next to the Planner naming options, press **Fix phasing names…**.
    Nothing changes yet.
 2. The window lists every change, one line per name: Status (Changed, Check or No change), Type, Stage, the layer
-   it sits in, the current name, the corrected name and what changed. Check lines are highlighted. The line at the
-   top sums it up, for example "55 layers and 103 objects to change, 11 to check."
+   it sits in, the current name, the corrected name and what changed. Check lines are highlighted. At the very top
+   are the phasing counts (section 2), with the tagged objects of the scene: "Phasing counts: 91 layers in the
+   Max layer …, 91 helper nodes and 173 tagged objects under …" (HS2, as worked out from its GLB), and the note
+   when layers and helpers do not pair up. The line under them sums the list up, for example "55 layers and 103
+   objects to change, 11 to check."
 3. To give a layer another stage, type the number in its Stage column; clear the cell to go back to the stage in
    its name. The list is worked out again at once: the layer's ID and split, the tags of its objects and any
    removal tags pointing at it follow. **Show every layer** (on) also lists the layers that need no change, so any
@@ -164,14 +267,15 @@ the text it replaces (`Road` to `Roads`) is refused, since every run would chang
 
 **At export.** When "Check Planner naming" is on and the fix would change anything, the log has one warning:
 "N phasing layers and objects can be corrected automatically — use Fix phasing names… on the exporter window". It never stops
-the export.
+the export. The same reading of the scene gives the phasing counts line and the pairing note (section 2).
 
 **From MAXScript.** Both calls use the scene's word fixes and no stage changes:
 
 ```maxscript
 maxScriptManager = dotNetObject "Max2Babylon.MaxScriptManager"
-maxScriptManager.FixPhasingNames false  -- the summary, then the list as CSV text; nothing changes
-maxScriptManager.FixPhasingNames true   -- holds the scene, applies the list, adds the outcome after the summary
+maxScriptManager.FixPhasingNames false  -- the summary and the counts, then the list as CSV text; nothing changes
+maxScriptManager.FixPhasingNames true   -- holds the scene, applies the list, adds the outcome after the summary,
+                                        -- then the counts of the scene as the fix left it
 ```
 
 **How it applies.** One MAXScript batch inside one undo record: nodes are found by handle and Max layers by their
@@ -179,8 +283,9 @@ current names before anything is renamed; nodes are renamed (one renamed since t
 the layer nodes moved (attached when the group is a 3ds Max group), the Max layers re-parented, then renamed in two
 steps through temporary names so a new name never meets an old one. Each item reports its own failure.
 
-The rules are a port of the clean-up first done on the HS2 GLB (`reference-fix.mjs`, kept out of the repo); the
-acceptance tests run them on that model's node trees.
+The rules are a port of the clean-up first done on the HS2 GLB (`reference-fix.mjs`, kept out of the repo), with
+one change since: the clean-up wrote sub-stages with a full stop, the fixer writes the hyphen. The acceptance
+tests run them on that model's node trees.
 
 Files: `SharedProjects/Utilities/Planner/PhasingNameFixer.cs`, `PhasingFixPlan.cs` (rules and list, Max-free),
 `PhasingFixScript.cs` (the MAXScript batch and the reading of its report), `PhasingWordFixText.cs` (the stored
@@ -389,7 +494,12 @@ real data and print their report:
 - `PLANNER_NODES_FIXTURE=<json>`: `{ "nodes": [ { "name", "parent" | null, "isMesh" } ] }` extracted from
   a GLB; prints the naming report for a real hierarchy.
 - `PLANNER_FIX_V305=<json>` and `PLANNER_FIX_V306=<json>`: `{ "roots": [i…], "nodes": [ { "name", "children": [i…] } ] }`,
-  the node trees of a GLB before and after its phasing clean-up (the same nodes in the same order); the fixer must
-  turn the first into the second (with the review's stages, Max layers included) and find nothing to do on the
-  second. Optional: `PLANNER_FIX_REF_CSV=<csv>` compares the list with the clean-up's, `PLANNER_FIX_OUT_CSV=<csv>`
-  writes the fixer's own.
+  the node trees of a GLB before and after its phasing clean-up (the same nodes in the same order). The clean-up
+  wrote sub-stages with a full stop, so the expected result is the second tree with every sub-stage full stop
+  (layer IDs and Ph/St tags) turned into a hyphen ("v3_06h"). The fixer must turn the first tree into v3_06h (with
+  the review's stages, Max layers included), turn the second into v3_06h with hyphen-only renames, and find
+  nothing to do on v3_06h; the naming check must find no error on v3_06h and one warning only, the eight removal
+  tags whose stage has no layer (the fixer's own Check lines), with every object's tags matching its layer's phase
+  and stage; on v3_06 the two full stop warnings come on top. The report on the first tree is printed. Optional:
+  `PLANNER_FIX_REF_CSV=<csv>` compares the list with the clean-up's (full stops hyphenated on both sides, the
+  fixer's hyphen-only rows counted apart), `PLANNER_FIX_OUT_CSV=<csv>` writes the fixer's own.
