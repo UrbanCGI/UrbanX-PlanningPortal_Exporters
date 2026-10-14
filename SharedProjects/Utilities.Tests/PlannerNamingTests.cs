@@ -243,6 +243,67 @@ namespace Utilities.Tests
             Assert.Equal(2, PlannerNaming.ParseMeshName("Ph1_St3.2_IN_Kerb").Lead.SubStage.Value);
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03._IN_Kerb"));
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03.x_IN_Kerb"));
+            Assert.Equal(PlannerLegacyForm.Dot, p.Lead.LegacyForm);
+        }
+
+        [Fact]
+        public void MeshName_UnderscoreSubStage_TheExamplesBothParsersReadAlike()
+        {
+            // phasingNaming.test.ts: "reads the underscore sub-stage, and the older hyphen and dot as the same stage, flagged by kind".
+            var current = PlannerNaming.ParseMeshName("Ph1_St04_2_IN_Hoarding");
+            AssertSegment(current.Lead, "PH1", "St04_2", PlannerTaskType.Install);
+            Assert.Equal(new object[] { 1, 4, 2, PlannerLegacyForm.None }, new object[] { current.Lead.Phase, current.Lead.Stage, current.Lead.SubStage, current.Lead.LegacyForm });
+            Assert.Null(current.Trail);
+            Assert.Equal("Hoarding", current.Description);
+            Assert.False(current.Legacy);
+            var hyphen = PlannerNaming.ParseMeshName("Ph1_St04-2_IN_Hoarding");
+            Assert.Equal(new object[] { 1, 4, 2, PlannerLegacyForm.Hyphen, "Hoarding" }, new object[] { hyphen.Lead.Phase, hyphen.Lead.Stage, hyphen.Lead.SubStage, hyphen.Lead.LegacyForm, hyphen.Description });
+            var dot = PlannerNaming.ParseMeshName("Ph1_St04.2_IN_Hoarding");
+            Assert.Equal(new object[] { 1, 4, 2, PlannerLegacyForm.Dot, "Hoarding" }, new object[] { dot.Lead.Phase, dot.Lead.Stage, dot.Lead.SubStage, dot.Lead.LegacyForm, dot.Description });
+            // The activity token keeps what the model wrote.
+            Assert.Equal(new[] { "St04_2", "St04-2", "St04.2" }, new[] { current.Lead.ActivityName, hyphen.Lead.ActivityName, dot.Lead.ActivityName });
+
+            // The trailing tag.
+            var trail = PlannerNaming.ParseMeshName("Ph0_St00_IN_RC_Hrd_Ph1_St06_2_RM");
+            AssertSegment(trail.Lead, "PH0", "St00", PlannerTaskType.Install);
+            AssertSegment(trail.Trail, "PH1", "St06_2", PlannerTaskType.Dismantle);
+            Assert.Equal(new object[] { 1, 6, 2, PlannerLegacyForm.None }, new object[] { trail.Trail.Phase, trail.Trail.Stage, trail.Trail.SubStage, trail.Trail.LegacyForm });
+            Assert.Equal("RC_Hrd", trail.Description);
+
+            // A part number after the type is the description, never a sub-stage or a trailing tag (no "_Ph" before it).
+            var part = PlannerNaming.ParseMeshName("Ph1_St04_IN_Kerb_2_RM");
+            AssertSegment(part.Lead, "PH1", "St04", PlannerTaskType.Install);
+            Assert.Null(part.Trail);
+            Assert.Equal("Kerb_2_RM", part.Description);
+
+            // IN/RM must come straight after the sub-stage, so a date in the stage's place is no stage.
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St18_09_26_IN_x"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03_IN_Kerb_Ph2_St18_09_26_RM").Trail);
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03__2_IN_Kerb")); // two underscores
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03_x_IN_Kerb"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03_2x_IN_Kerb"));
+        }
+
+        [Fact]
+        public void MeshName_UnderscoreSubStageInBothTagsAndUnpadded()
+        {
+            var q = PlannerNaming.ParseMeshName("Ph2_St01_2_IN_Water_Barrier3_Ph2_St02_7_RM");
+            Assert.Equal(new object[] { 1, 2 }, new object[] { q.Lead.Stage, q.Lead.SubStage });
+            Assert.Equal(new object[] { 2, 7 }, new object[] { q.Trail.Stage, q.Trail.SubStage });
+            Assert.Equal("St02_7", q.Trail.ActivityName);
+            Assert.Equal("Water_Barrier3", q.Description);
+            var note = PlannerNaming.ParseMeshName("Ph1_St22_IN_Hrd_Ph2_St00_1_RM not proved").Trail;
+            Assert.Equal(new object[] { 0, 1 }, new object[] { note.Stage, note.SubStage });
+            var bare = PlannerNaming.ParseMeshName("Ph1_St03_2_RM");
+            AssertSegment(bare.Lead, "PH1", "St03_2", PlannerTaskType.Dismantle);
+            Assert.Equal(string.Empty, bare.Description);
+            Assert.Equal(new object[] { 3, 2 }, new object[] { PlannerNaming.ParseMeshName("Ph1_St3_2_IN_Kerb").Lead.Stage, PlannerNaming.ParseMeshName("Ph1_St3_2_IN_Kerb").Lead.SubStage });
+            Assert.Equal(10, PlannerNaming.ParseMeshName("Ph1_St03_10_IN_Kerb").Lead.SubStage.Value);
+            Assert.Equal(1, PlannerNaming.ParseMeshName("Ph1_St03_1_IN_Kerb").Lead.SubStage.Value);
+            // Hyphens and full stops outside the sub-stage's place are the description's.
+            Assert.Equal("1.8_x_2.4_Heras_Panel", PlannerNaming.ParseMeshName("Ph1_St04_2_IN_1.8_x_2.4_Heras_Panel").Description);
+            Assert.Equal("TR_Sub-base_280mm", PlannerNaming.ParseMeshName("Ph2_St05_2_IN_TR_Sub-base_280mm").Description);
+            Assert.False(PlannerNaming.ParseMeshName("Ph2_St05_IN_TR_Sub-base_280mm").Lead.SubStage.HasValue);
         }
 
         [Fact]
@@ -283,32 +344,49 @@ namespace Utilities.Tests
         public void SameStage_AWholeStageCoversItsSubStages()
         {
             Assert.True(PlannerNaming.SameStage(5, null, 5, null));
-            Assert.True(PlannerNaming.SameStage(5, null, 5, 1)); // group 05 dates St05.1 work
-            Assert.True(PlannerNaming.SameStage(5, 1, 5, null)); // object St05 under group 05-1, as before
+            Assert.True(PlannerNaming.SameStage(5, null, 5, 1)); // group 05 dates St05_1 work
+            Assert.True(PlannerNaming.SameStage(5, 1, 5, null)); // object St05 under group 01_05_1, as before
             Assert.True(PlannerNaming.SameStage(5, 1, 5, 1));
             Assert.False(PlannerNaming.SameStage(5, 1, 5, 2));
             Assert.False(PlannerNaming.SameStage(5, null, 6, null));
             Assert.False(PlannerNaming.SameStage(5, 1, 6, 1));
             Assert.Equal("St05", PlannerNaming.StageText(5, null));
-            Assert.Equal("St05-1", PlannerNaming.StageText(5, 1));
-            Assert.Equal("St12-10", PlannerNaming.StageText(12, 10));
+            Assert.Equal("St05_1", PlannerNaming.StageText(5, 1));
+            Assert.Equal("St12_10", PlannerNaming.StageText(12, 10));
         }
 
         [Fact]
-        public void MeshName_HyphenSubStage()
+        public void StageNumber_AfterAnUnderscoreAHyphenOrAFullStop()
+        {
+            // phasingNaming.test.ts: "parses a stage token with or without a sub-stage, after an underscore, a hyphen or a dot".
+            foreach (var token in new[] { "03_2", "03-2", "03.2", "01 2", "01__2", "01_ 2" })
+            {
+                int stage;
+                int? subStage;
+                PlannerNaming.ParseStageNumber(token, out stage, out subStage);
+                Assert.True(stage == (token.StartsWith("03", System.StringComparison.Ordinal) ? 3 : 1) && subStage == 2, token);
+            }
+        }
+
+        [Fact]
+        public void MeshName_HyphenSubStageIsTheOldFormStillRead()
         {
             var p = PlannerNaming.ParseMeshName("Ph1_St04-2_IN_Sheet_Pile_6");
             AssertSegment(p.Lead, "PH1", "St04-2", PlannerTaskType.Install);
             Assert.Equal(4, p.Lead.Stage);
             Assert.Equal(2, p.Lead.SubStage.Value);
-            Assert.False(p.Lead.Legacy);
-            Assert.False(p.Legacy);
+            Assert.Equal(PlannerLegacyForm.Hyphen, p.Lead.LegacyForm);
+            Assert.True(p.Lead.Legacy);
+            Assert.True(p.Legacy);
             Assert.Equal("Sheet_Pile_6", p.Description);
 
             var q = PlannerNaming.ParseMeshName("Ph2_St01-8_IN_RC_Hrd_from_PDF_04_Ph6_St05-2_RM");
             AssertSegment(q.Trail, "PH6", "St05-2", PlannerTaskType.Dismantle);
             Assert.Equal(2, q.Trail.SubStage.Value);
+            Assert.Equal(PlannerLegacyForm.Hyphen, q.Trail.LegacyForm);
             Assert.Equal("RC_Hrd_from_PDF_04", q.Description);
+            Assert.Equal(PlannerLegacyForm.Hyphen, PlannerNaming.ParseMeshName("Ph1_St04_2_IN_Pile_Ph2_St05-2_RM").Trail.LegacyForm);
+            Assert.Equal(PlannerLegacyForm.None, PlannerNaming.ParseMeshName("Ph1_St04_2_IN_Pile_Ph2_St05-2_RM").Lead.LegacyForm);
             Assert.Equal(10, PlannerNaming.ParseMeshName("Ph1_St03-10_IN_Kerb").Lead.SubStage.Value);
             Assert.Equal(3, PlannerNaming.ParseMeshName("Ph1_St3-2_IN_Kerb").Lead.Stage);
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St03-_IN_Kerb"));
@@ -316,62 +394,193 @@ namespace Utilities.Tests
         }
 
         [Fact]
-        public void MeshName_TheFullStopStillReadsTheSameAndIsMarked()
+        public void MeshName_AllThreeSpellingsReadTheSameAndTheOldOnesAreMarked()
         {
+            var underscore = PlannerNaming.ParseMeshName("Ph1_St04_2_IN_Sheet_Pile_6");
             var dot = PlannerNaming.ParseMeshName("Ph1_St04.2_IN_Sheet_Pile_6");
             var hyphen = PlannerNaming.ParseMeshName("Ph1_St04-2_IN_Sheet_Pile_6");
-            Assert.Equal(hyphen.Lead.Stage, dot.Lead.Stage);
-            Assert.Equal(hyphen.Lead.SubStage, dot.Lead.SubStage);
-            Assert.Equal(hyphen.Description, dot.Description);
+            foreach (var old in new[] { dot, hyphen })
+            {
+                Assert.Equal(underscore.Lead.Stage, old.Lead.Stage);
+                Assert.Equal(underscore.Lead.SubStage, old.Lead.SubStage);
+                Assert.Equal(underscore.Description, old.Description);
+                Assert.True(PlannerNaming.SameStage(old.Lead.Stage, old.Lead.SubStage, underscore.Lead.Stage, underscore.Lead.SubStage));
+            }
+            Assert.Equal(new[] { PlannerLegacyForm.None, PlannerLegacyForm.Hyphen, PlannerLegacyForm.Dot }, new[] { underscore.Lead.LegacyForm, hyphen.Lead.LegacyForm, dot.Lead.LegacyForm });
             Assert.Equal("St04.2", dot.Lead.ActivityName); // the activity keeps the spelling of the model
-            Assert.True(dot.Lead.Legacy);
             Assert.True(dot.Legacy);
-            Assert.True(PlannerNaming.ParseMeshName("Ph2_St01-8_IN_X_Ph6_St05.2_RM").Legacy); // either tag
-            Assert.False(PlannerNaming.ParseMeshName("Ph2_St01-8_IN_X_Ph6_St05.2_RM").Lead.Legacy);
+            Assert.False(underscore.Legacy);
+            var mixed = PlannerNaming.ParseMeshName("Ph2_St01-8_IN_X_Ph6_St05.2_RM"); // either tag may be an old one
+            Assert.Equal(new[] { PlannerLegacyForm.Hyphen, PlannerLegacyForm.Dot }, new[] { mixed.Lead.LegacyForm, mixed.Trail.LegacyForm });
+            Assert.True(PlannerNaming.ParseMeshName("Ph2_St01_8_IN_X_Ph6_St05.2_RM").Legacy);
+            Assert.False(PlannerNaming.ParseMeshName("Ph2_St01_8_IN_X_Ph6_St05.2_RM").Lead.Legacy);
             Assert.False(PlannerNaming.ParseMeshName("Ph1_St04_IN_1.8_x_2.4_Heras_Panel").Legacy); // full stops in the description are not sub-stages
-            Assert.True(PlannerNaming.SameStage(dot.Lead.Stage, dot.Lead.SubStage, hyphen.Lead.Stage, hyphen.Lead.SubStage));
+            Assert.False(PlannerNaming.ParseMeshName("Ph2_St05_IN_TR_Sub-base_280mm").Legacy);     // nor hyphens
+            Assert.False(PlannerNaming.ParseMeshName("Ph1_St04_IN_Pile").Legacy);
         }
 
         [Fact]
         public void MeshName_ADateIsNeverAStage()
         {
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St17-08-26_IN_Kerb"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St17_08_26_IN_Kerb"));
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St04-2-1_IN_Kerb"));
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St04_2_1_IN_Kerb"));
             Assert.Null(PlannerNaming.ParseMeshName("Ph1_St01_IN_X_Ph2_St17-08-26_RM").Trail);
+            Assert.Null(PlannerNaming.ParseMeshName("Ph1_St01_IN_X_Ph2_St17_08_26_RM").Trail);
         }
 
         [Fact]
-        public void LayerName_HyphenAfterTheStageReadsAsTheFullStopDid()
+        public void LayerName_OneTwoOrThreeNumbers_TheExamplesBothParsersReadAlike()
         {
+            // One number: the stage, the phase from its objects.
+            var one = PlannerNaming.ParseLayerName("05_Hoardings_17-08-26");
+            Assert.Equal(new object[] { "05", null, 5, null, PlannerLegacyForm.None, "Hoardings", "05_Hoardings", "2026-08-17" },
+                new object[] { one.Order, one.Phase, one.Stage, one.SubStage, one.LegacyForm, one.Name, one.Label, PlannerNaming.ToIsoDate(one.Start) });
+            // Two numbers: the phase, then the stage.
+            var two = PlannerNaming.ParseLayerName("02_01_Sheet_Piling_17-08-26");
+            Assert.Equal(new object[] { "02", 2, 1, null, PlannerLegacyForm.None, "Sheet_Piling", "02_01_Sheet_Piling", "2026-08-17" },
+                new object[] { two.Order, two.Phase, two.Stage, two.SubStage, two.LegacyForm, two.Name, two.Label, PlannerNaming.ToIsoDate(two.Start) });
+            // Three numbers: the phase, the stage and its sub-stage.
+            var three = PlannerNaming.ParseLayerName("02_01_2_Retainment_17-08-26");
+            Assert.Equal(new object[] { "02", 2, 1, 2, PlannerLegacyForm.None, "Retainment", "02_01_2_Retainment", false, "2026-08-17", "2026-08-17" },
+                new object[] { three.Order, three.Phase, three.Stage, three.SubStage, three.LegacyForm, three.Name, three.Label, three.Tbc, PlannerNaming.ToIsoDate(three.Start), PlannerNaming.ToIsoDate(three.End) });
+            Assert.Empty(three.Issues);
+        }
+
+        [Fact]
+        public void LayerName_ANumberFollowedByAHyphenEndsNoId()
+        {
+            // A date after the ID stays a date.
+            AssertLayer("02_01_17-08-26_Kerbs", 2, 1, null, "Kerbs", "2026-08-17");
+            Assert.Equal("02_01_Kerbs", PlannerNaming.ParseLayerName("02_01_17-08-26_Kerbs").Label);
+            AssertLayer("01_18-09-26_Kerbs", null, 1, null, "Kerbs", "2026-09-18");
+            AssertLayer("02_01_2-08-26_Kerbs", 2, 1, null, "Kerbs", "2026-08-02"); // a single-digit day straight after the stage
+            var s = PlannerNaming.ParseLayerName("02_01_2_17-08-26_18-08-26");   // the full ID, then the dates, and no name
+            AssertLayer("02_01_2_17-08-26_18-08-26", 2, 1, 2, string.Empty, "2026-08-17");
+            Assert.Equal("02_01_2", s.Label);
+            Assert.Equal("2026-08-18", PlannerNaming.ToIsoDate(s.End));
+            Assert.Equal(new[] { "no activity name" }, s.Issues);
+            AssertLayer("02_01_2-3_X", 2, 1, null, "2-3_X", null);              // a hyphen after the third number ends no ID
+        }
+
+        [Fact]
+        public void LayerName_ThreeNumbersWithTbcProvisionalDatesAndTheDuplicateSuffix()
+        {
+            var tbc = PlannerNaming.ParseLayerName("03_06_3_Hoarding_installation_TBC_06-01-27");
+            AssertLayer("03_06_3_Hoarding_installation_TBC_06-01-27", 3, 6, 3, "Hoarding_installation", "2027-01-06");
+            Assert.True(tbc.Tbc);
+            Assert.Empty(tbc.Issues);
+            var undated = PlannerNaming.ParseLayerName("02_02_12_Hoarding_Install2_TBC");
+            AssertLayer("02_02_12_Hoarding_Install2_TBC", 2, 2, 12, "Hoarding_Install2", null);
+            Assert.True(undated.Tbc);
+            Assert.Empty(undated.Issues);
+            Assert.Equal(PlannerNaming.ParseLayerName("02_01_2_Construction_31-08-26_17-10-26").Label,
+                PlannerNaming.ParseLayerName("02_01_2_Construction_31-08-26_17-10-26 (1)").Label);
+            var bare = PlannerNaming.ParseLayerName("02_01_2");
+            AssertLayer("02_01_2", 2, 1, 2, string.Empty, null);
+            Assert.Equal("02_01_2", bare.Label);
+            Assert.Equal(new[] { "no activity name", "no dates" }, bare.Issues);
+        }
+
+        [Fact]
+        public void LayerName_UnderscoresOrSpacesAnyRunOfThemBetweenTheNumbers()
+        {
+            var spaced = PlannerNaming.ParseLayerName("02 01 2 Construction of Phase1 TM_31-08-26");
+            AssertLayer("02 01 2 Construction of Phase1 TM_31-08-26", 2, 1, 2, "Construction of Phase1 TM", "2026-08-31");
+            Assert.Equal("02_01 2 Construction of Phase1 TM", spaced.Label);
+            var runs = PlannerNaming.ParseLayerName("02__01__2_Kerbs_17-08-26");
+            AssertLayer("02__01__2_Kerbs_17-08-26", 2, 1, 2, "Kerbs", "2026-08-17");
+            Assert.Equal("02_01_2_Kerbs", runs.Label);
+            AssertLayer("02_01_ 2_Kerbs", 2, 1, 2, "Kerbs", null);
+            AssertLayer("2_1_2_Barrier_31-08-26", 2, 1, 2, "Barrier", "2026-08-31"); // single digits
+        }
+
+        [Fact]
+        public void LayerName_ASubStageIsOneOrTwoDigitsFollowedByAnUnderscoreASpaceOrTheEnd()
+        {
+            AssertLayer("02_01_12_X", 2, 1, 12, "X", null);
+            AssertLayer("02_01_123_X", 2, 1, null, "123_X", null);                     // three digits are no sub-stage
+            AssertLayer("02_01_100mm_Kerb_09-02-27", 2, 1, null, "100mm_Kerb", "2027-02-09");
+            AssertLayer("02_01_2.4 High Hoarding_18-09-26", 2, 1, null, "2.4 High Hoarding", "2026-09-18"); // a dimension
+            Assert.False(PlannerNaming.ParseLayerName("02_01_2.4 High Hoarding_18-09-26").Legacy);
+            AssertLayer("02_01_2.4_High_Hoarding_18-09-26", 2, 1, null, "2.4_High_Hoarding", "2026-09-18");
+            AssertLayer("02_02_10_18-09-26_Integration", 2, 2, 10, "Integration", "2026-09-18");
+        }
+
+        [Fact]
+        public void LayerName_TheAcceptedConsequences()
+        {
+            // A bare number after a two-number ID is now the sub-stage (once phase 2, stage 1, named "2_Name"); one after a
+            // one-number ID is the stage (phase 6, stage 2, as since 2026-10-13).
+            AssertLayer("02_01_2_Name_17-08-26", 2, 1, 2, "Name", "2026-08-17");
+            AssertLayer("06_2_Name_17-08-26", 6, 2, null, "Name", "2026-08-17");
+            // A first number of three digits, or an old sub-numbered one, is no phase.
+            AssertLayer("100_01_2_Kerb_09-02-27", null, 100, null, "01_2_Kerb", "2027-02-09");
+            var q = PlannerNaming.ParseLayerName("06-2_01_2_Kerb_09-02-27");
+            AssertLayer("06-2_01_2_Kerb_09-02-27", null, 6, 2, "01_2_Kerb", "2027-02-09");
+            Assert.Equal(PlannerLegacyForm.Hyphen, q.LegacyForm);
+        }
+
+        [Fact]
+        public void LayerName_TheOldFormsReadAsTheThreeNumbersDo()
+        {
+            var underscore = PlannerNaming.ParseLayerName("01_04_2_Phase1_Retainment_Installation_18-09-26_23-10-26");
             var hyphen = PlannerNaming.ParseLayerName("01_04-2_Phase1_Retainment_Installation_18-09-26_23-10-26");
             var dot = PlannerNaming.ParseLayerName("01_04.2_Phase1_Retainment_Installation_18-09-26_23-10-26");
-            Assert.Equal("01", hyphen.Order);
-            Assert.Equal(dot.Order, hyphen.Order);
-            Assert.Equal(1, hyphen.Phase.Value); // phase then stage
-            Assert.Equal(dot.Phase, hyphen.Phase);
-            Assert.Equal(4, hyphen.Stage);
-            Assert.Equal(2, hyphen.SubStage.Value);
-            Assert.Equal(dot.Stage, hyphen.Stage);
-            Assert.Equal(dot.SubStage, hyphen.SubStage);
-            Assert.Equal("Phase1_Retainment_Installation", hyphen.Name); // the name after the ID
-            Assert.Equal("Phase1_Retainment_Installation", dot.Name);
-            Assert.Equal("01_04-2_Phase1_Retainment_Installation", hyphen.Label);
-            Assert.Equal("2026-09-18", PlannerNaming.ToIsoDate(hyphen.Start));
-            Assert.Equal("2026-10-23", PlannerNaming.ToIsoDate(hyphen.End));
-            Assert.Equal(PlannerNaming.ToIsoDate(dot.Start), PlannerNaming.ToIsoDate(hyphen.Start));
-            Assert.Equal(PlannerNaming.ToIsoDate(dot.End), PlannerNaming.ToIsoDate(hyphen.End));
-            Assert.False(hyphen.Tbc);
-            Assert.Equal(dot.Tbc, hyphen.Tbc);
-            Assert.Empty(hyphen.Issues);
-            Assert.Empty(dot.Issues);
-            Assert.False(hyphen.Legacy);
+            Assert.Equal("01", underscore.Order);
+            Assert.Equal(1, underscore.Phase.Value); // phase then stage
+            Assert.Equal(4, underscore.Stage);
+            Assert.Equal(2, underscore.SubStage.Value);
+            Assert.Equal("Phase1_Retainment_Installation", underscore.Name); // the name after the ID
+            Assert.Equal("01_04_2_Phase1_Retainment_Installation", underscore.Label);
+            Assert.Equal("2026-09-18", PlannerNaming.ToIsoDate(underscore.Start));
+            Assert.Equal("2026-10-23", PlannerNaming.ToIsoDate(underscore.End));
+            Assert.False(underscore.Tbc);
+            Assert.Empty(underscore.Issues);
+            foreach (var old in new[] { hyphen, dot })
+            {
+                Assert.Equal(underscore.Order, old.Order);
+                Assert.Equal(underscore.Phase, old.Phase);
+                Assert.Equal(underscore.Stage, old.Stage);
+                Assert.Equal(underscore.SubStage, old.SubStage);
+                Assert.Equal(underscore.Name, old.Name);
+                Assert.Equal(PlannerNaming.ToIsoDate(underscore.Start), PlannerNaming.ToIsoDate(old.Start));
+                Assert.Equal(PlannerNaming.ToIsoDate(underscore.End), PlannerNaming.ToIsoDate(old.End));
+                Assert.Equal(underscore.Tbc, old.Tbc);
+                Assert.Empty(old.Issues);
+            }
+            Assert.Equal("01_04-2_Phase1_Retainment_Installation", hyphen.Label); // the label keeps the spelling
+            Assert.Equal(new[] { PlannerLegacyForm.None, PlannerLegacyForm.Hyphen, PlannerLegacyForm.Dot }, new[] { underscore.LegacyForm, hyphen.LegacyForm, dot.LegacyForm });
+            Assert.False(underscore.Legacy);
+            Assert.True(hyphen.Legacy);
             Assert.True(dot.Legacy);
+
+            // One number with an old sub-stage: the stage, its phase its objects'.
+            var p = PlannerNaming.ParseLayerName("06-2_X_17-08-26");
+            Assert.Equal(new object[] { "06-2", null, 6, 2, PlannerLegacyForm.Hyphen, "X", "06-2_X" }, new object[] { p.Order, p.Phase, p.Stage, p.SubStage, p.LegacyForm, p.Name, p.Label });
+            var q = PlannerNaming.ParseLayerName("06.2_X_17-08-26");
+            Assert.Equal(new object[] { "06.2", null, 6, 2, PlannerLegacyForm.Dot, "X", "06.2_X" }, new object[] { q.Order, q.Phase, q.Stage, q.SubStage, q.LegacyForm, q.Name, q.Label });
+            var r = PlannerNaming.ParseLayerName("02_01-2_X_17-08-26");
+            Assert.Equal(new object[] { "02", 2, 1, 2, PlannerLegacyForm.Hyphen, "X" }, new object[] { r.Order, r.Phase, r.Stage, r.SubStage, r.LegacyForm, r.Name });
+        }
+
+        private static void AssertLayer(string name, int? phase, int stage, int? subStage, string activity, string start)
+        {
+            var p = PlannerNaming.ParseLayerName(name);
+            Assert.True(p != null, name);
+            Assert.True(p.Phase == phase, name + ": phase " + p.Phase);
+            Assert.True(p.Stage == stage, name + ": stage " + p.Stage);
+            Assert.True(p.SubStage == subStage, name + ": sub-stage " + p.SubStage);
+            Assert.True(p.Name == activity, name + ": name " + p.Name);
+            Assert.True(PlannerNaming.ToIsoDate(p.Start) == start, name + ": start " + PlannerNaming.ToIsoDate(p.Start));
         }
 
         [Fact]
         public void LayerName_TwoNumbersArePhaseThenStage()
         {
-            // The convention's layer ID, <PP>_<SS>[-<m>]_<name>_<dates>: phase PP, stage SS (sub-stage m).
+            // The layer ID of the hyphen release, <PP>_<SS>[-<m>]_<name>_<dates>: phase PP, stage SS (sub-stage m), as the
+            // convention's <PP>_<SS>[_<m>] reads.
             var p = PlannerNaming.ParseLayerName("02_01-2_Construction_of_Phase1_TM_31-08-26_17-10-26");
             Assert.Equal(2, p.Phase.Value);
             Assert.Equal(1, p.Stage);
@@ -382,7 +591,7 @@ namespace Utilities.Tests
             Assert.Equal("02", p.Order);
             Assert.Equal("Construction_of_Phase1_TM", p.Name);
             Assert.Equal("02_01-2_Construction_of_Phase1_TM", p.Label);
-            Assert.False(p.Legacy);
+            Assert.Equal(PlannerLegacyForm.Hyphen, p.LegacyForm);
             Assert.Empty(p.Issues);
 
             var dot = PlannerNaming.ParseLayerName("01_04.2_Retainment_18-09-26"); // the old full stop: phase 1, stage 4-2
@@ -470,11 +679,13 @@ namespace Utilities.Tests
         }
 
         [Fact]
-        public void LayerName_DottedOrderTokenIsMarkedLegacy()
+        public void LayerName_SubNumberedOrderTokenIsMarkedLegacy()
         {
-            Assert.True(PlannerNaming.ParseLayerName("05.2_Subbase_B_03-11-26_04-11-26").Legacy);
-            Assert.False(PlannerNaming.ParseLayerName("05-2_Subbase_B_03-11-26_04-11-26").Legacy);
-            Assert.False(PlannerNaming.ParseLayerName("06-1 Temporary Hoarding - Erection_19-10-26_19-10-26").Legacy);
+            Assert.Equal(PlannerLegacyForm.Dot, PlannerNaming.ParseLayerName("05.2_Subbase_B_03-11-26_04-11-26").LegacyForm);
+            Assert.Equal(PlannerLegacyForm.Hyphen, PlannerNaming.ParseLayerName("05-2_Subbase_B_03-11-26_04-11-26").LegacyForm);
+            Assert.Equal(PlannerLegacyForm.Hyphen, PlannerNaming.ParseLayerName("06-1 Temporary Hoarding - Erection_19-10-26_19-10-26").LegacyForm);
+            Assert.False(PlannerNaming.ParseLayerName("05_2_Subbase_B_03-11-26_04-11-26").Legacy); // phase 5, stage 2: no sub-stage
+            Assert.False(PlannerNaming.ParseLayerName("01_Temporary_Road-Road_Marking_18-09-26").Legacy); // a hyphen in the name is no sub-stage
             Assert.False(PlannerNaming.ParseLayerName("01_Sheet_Piling_SA&DS3_17-08-26_18-09-26").Legacy);
             Assert.False(PlannerNaming.ParseLayerName("23_Road_Course_100mm_09-02-27").Legacy);
             Assert.False(PlannerNaming.ParseLayerName("10 Hoarding Install - 63. No posts 6-11-26_12-11-26").Legacy);
@@ -502,15 +713,17 @@ namespace Utilities.Tests
         }
 
         [Fact]
-        public void LayerName_OnlyAFullStopInTheSubStagePositionIsLegacy()
+        public void LayerName_OnlyASubStageInTheStagesPositionIsLegacy()
         {
-            // phasingNaming.test.ts: "flags only a dot in the sub-stage position as legacy, never a dimension".
-            Assert.True(PlannerNaming.ParseLayerName("05.2_Subbase_03-11-26").Legacy);
-            Assert.True(PlannerNaming.ParseLayerName("05.2").Legacy);
-            Assert.True(PlannerNaming.ParseLayerName("01 04.2_Retainment_18-09-26").Legacy); // a space after the phase group
-            Assert.True(PlannerNaming.ParseLayerName("01_04.2_18-09-26").Legacy);
+            // phasingNaming.test.ts: "flags only a sub-stage in the stage's position as legacy, never a dimension elsewhere".
+            Assert.Equal(PlannerLegacyForm.Dot, PlannerNaming.ParseLayerName("05.2_Subbase_03-11-26").LegacyForm);
+            Assert.Equal(PlannerLegacyForm.Dot, PlannerNaming.ParseLayerName("05.2").LegacyForm);
+            Assert.Equal(PlannerLegacyForm.Dot, PlannerNaming.ParseLayerName("01 04.2_Retainment_18-09-26").LegacyForm); // a space after the phase group
+            Assert.Equal(PlannerLegacyForm.Dot, PlannerNaming.ParseLayerName("01_04.2_18-09-26").LegacyForm);
             Assert.False(PlannerNaming.ParseLayerName("05_Subbase_03-11-26").Legacy);
-            Assert.False(PlannerNaming.ParseLayerName("06-1 Temporary Hoarding_19-10-26").Legacy);
+            Assert.False(PlannerNaming.ParseLayerName("01_04_2_Retainment_18-09-26").Legacy); // the current form
+            Assert.Equal(PlannerLegacyForm.Hyphen, PlannerNaming.ParseLayerName("06-1 Temporary Hoarding_19-10-26").LegacyForm);
+            Assert.False(PlannerNaming.ParseLayerName("01_Temporary_Road-Road_Marking_18-09-26").Legacy); // a hyphen in the name is no sub-stage
             Assert.False(PlannerNaming.ParseLayerName("01_2.4 High Hoarding_18-09-26").Legacy); // a dimension, not a sub-stage
             Assert.False(PlannerNaming.ParseLayerName("01_Heras_1.8_x_2.4_18-09-26").Legacy);
             Assert.False(PlannerNaming.ParseLayerName("01_Hoarding_v.02_18-09-26").Legacy);
@@ -520,9 +733,10 @@ namespace Utilities.Tests
             // by an underscore or the end.
             foreach (var name in new[] { "01__04.2_Retainment_18-09-26", "01 _04.2_Name", "01_ 04.2_Name", "01  04.2_Name_18-09-26", "01 04.2_Name_TBC", "05.2__X" })
             {
-                Assert.True(PlannerNaming.ParseLayerName(name).Legacy, name);
+                Assert.True(PlannerNaming.ParseLayerName(name).LegacyForm == PlannerLegacyForm.Dot, name);
             }
-            Assert.False(PlannerNaming.ParseLayerName("01__04-2_Retainment_18-09-26").Legacy);
+            Assert.Equal(PlannerLegacyForm.Hyphen, PlannerNaming.ParseLayerName("01__04-2_Retainment_18-09-26").LegacyForm);
+            Assert.False(PlannerNaming.ParseLayerName("01__04__2_Retainment_18-09-26").Legacy); // the current form
             // A measurement in that place reads like a sub-stage to both parsers; the naming check looks closer.
             Assert.True(PlannerNaming.ParseLayerName("01_1.8_x_2.4_Heras_18-09-26").Legacy);
         }

@@ -35,15 +35,20 @@ namespace Utilities.Planner
         public bool IsShape;
     }
 
-    /// <summary>A layer name read as the fixer reads it: phase, stage and split (see <see cref="PhasingNameFixer.ReadLayerId"/>).</summary>
+    /// <summary>A layer name read as the fixer reads it: phase, stage and split (see <see cref="PhasingNameFixer.ReadLayerId(string)"/>).</summary>
     public sealed class PhasingLayerId
     {
         public int Phase;
         public int Stage;
-        /// <summary>The split ("02_05-2" gives 2), or null.</summary>
+        /// <summary>The split ("02_05_2" gives 2, as do the old "02_05-2" and "02_05.2"), or null.</summary>
         public int? Split;
-        /// <summary>The split is written after a full stop, the old form ("02_05.2").</summary>
-        public bool SplitAfterFullStop;
+        /// <summary>The split is written an old way, after a hyphen ("02_05-2") or a full stop ("02_05.2"); None after the underscore.</summary>
+        public PlannerLegacyForm SplitForm;
+        /// <summary>
+        /// The name is one number with an old sub-stage ("06-2_..."): the phase is the one its objects carry, and the
+        /// convention puts it in front ("03_06_2_...").
+        /// </summary>
+        public bool OneNumber;
     }
 
     /// <summary>
@@ -234,7 +239,7 @@ namespace Utilities.Planner
         public int WrittenStage;
         /// <summary>The stage it gets: the written stage, or the review's override.</summary>
         public int Stage;
-        /// <summary>The split number it gets ("2" for 02_05-2), or null.</summary>
+        /// <summary>The split number it gets ("2" for 02_05_2), or null.</summary>
         public string Split;
         /// <summary>The corrected text after the ID.</summary>
         public string Description;

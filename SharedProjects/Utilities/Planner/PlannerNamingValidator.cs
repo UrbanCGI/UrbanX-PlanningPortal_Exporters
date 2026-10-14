@@ -78,9 +78,10 @@ namespace Utilities.Planner
     /// The rules follow the convention as Fix phasing names (<see cref="PhasingNameFixer"/>) writes it, so a scene
     /// the fixer leaves clean reads clean here. Inside the phasing hierarchy (a dated group directly under a phase
     /// group _&lt;n&gt;_&lt;name&gt; of the phasing top node, or directly under that top node) a group is a layer and its
-    /// name reads as the fixer reads it, &lt;PP&gt;_&lt;SS&gt;[-&lt;split&gt;]_&lt;name&gt;: an object belongs to it when a tag has
-    /// the layer's phase and stage. Any other dated group is read as the Planner reads it: a name that starts with two
-    /// numbers is phase then stage (an object belongs to it when a tag has both), one that starts with one number is a
+    /// name reads as the fixer reads it, &lt;PP&gt;_&lt;SS&gt;[_&lt;split&gt;]_&lt;name&gt; (or one number with an old sub-stage,
+    /// 06-2_&lt;name&gt;, in the phase its objects' tags agree on): an object belongs to it when a tag has the layer's phase
+    /// and stage. Any other dated group is read as the Planner reads it: a name that starts with two or three numbers is
+    /// phase then stage (and sub-stage; an object belongs to it when a tag has both), one that starts with one number is a
     /// stage in the phase the Planner reads off its objects: the phase most of their leading tags with its stage carry,
     /// or, only when no leading tag has its stage, most of their trailing tags with it (an object belongs to it when a
     /// tag has the stage; one whose tag has the stage in another phase is reported when the Planner dates it from another
@@ -92,8 +93,11 @@ namespace Utilities.Planner
     ///             (unfiled, undated, phase or stage mismatch, a tag whose phase and stage no layer has, gathered
     ///             in one warning for removal tags and one for install tags, empty description, case-only twins),
     ///             or the name breaks the convention although it reads (a space anywhere in a tagged object's or a
-    ///             dated group's name; a sub-stage written the old way with a full stop, in object tags
-    ///             or group names, one warning for each with the count and some of the names). Stray
+    ///             dated group's name; a sub-stage written an old way, with a hyphen or a full stop, in object tags
+    ///             or group names, one warning for each with the count and some of the names; a group of one number
+    ///             with such a sub-stage, one warning each, saying the phase it needs and what it becomes; a hyphen
+    ///             anywhere else in a tagged object's name, one warning, as Unreal's Datasmith import turns it into an
+    ///             underscore and the object no longer matches its phasing there). Stray
     ///             underscores at the edge of a description are trimmed by the Planner and not reported.
     ///   Note    - cosmetic or advisory (zero padding, untagged object inside a dated group, odd years, a tag whose
     ///             phase and stage only an undated layer has).
@@ -114,6 +118,9 @@ namespace Utilities.Planner
         private static readonly Regex GroupSubStageFullStop = new Regex(@"^(?:[0-9]+[_ ]+)?[0-9]{2,}\.[0-9]+(?=_|\z)(?!_[xX]_)", RegexOptions.CultureInvariant);
         // A phasing layer's ID with a full stop after the phase ("06.01.2_..."), which the Planner cannot read.
         private static readonly Regex PhaseFullStop = new Regex(@"^[0-9]+\.", RegexOptions.CultureInvariant);
+        // A group of one number with an old sub-stage, as written: groups 1 stage, 2 sub-stage, 3 the rest (from the
+        // separator after the ID on).
+        private static readonly Regex OneNumberId = new Regex(@"^([0-9]+)[.-]([0-9]+)([_ ][\s\S]*)?\z", RegexOptions.CultureInvariant);
 
         public static NamingReport Validate(IEnumerable<SceneNodeInfo> nodes, DateTime today)
         {
@@ -168,18 +175,22 @@ namespace Utilities.Planner
             report.DatedGroups = datedGroups.Count;
             var phasing = PhasingLayers(all, groupNames, phasingTop);
 
-            CheckGroups(datedGroups, phasing, today, report);
-            var legacyObjects = new FullStops();
+            var oneNumber = CheckGroups(datedGroups, phasing, today, report);
+            var legacyObjects = new OldForms();
+            var hyphenObjects = new OldForms();
             var filed = new List<FiledObject>();
+            var keptNames = KeptNames(all, groupNames);
             foreach (var mesh in all.Where(n => n.IsMesh))
             {
-                var placed = CheckMesh(mesh, datedGroups, phasing, report, legacyObjects);
+                var placed = CheckMesh(mesh, datedGroups, phasing, report, legacyObjects, hyphenObjects, keptNames);
                 if (placed != null)
                 {
                     filed.Add(placed);
                 }
             }
-            AddFullStopWarning(report, legacyObjects, "object", "Ph1_St04.2_IN_...", "Ph1_St04-2_IN_...", phasing.FixerTop);
+            AddOldFormWarning(report, legacyObjects, "object", "Ph1_St04-2_IN_...", "Ph1_St04.2_IN_...", "Ph1_St04_2_IN_...", phasing.FixerTop);
+            AddHyphenWarning(report, hyphenObjects, phasing.FixerTop);
+            CheckOneNumberGroups(oneNumber, datedGroups, filed, phasing, report);
             CheckStagesWithoutLayer(filed, datedGroups, phasing, report);
             CheckDuplicates(all, report);
 
@@ -195,10 +206,23 @@ namespace Utilities.Planner
         /// a layer ID, directly under a phase group of a top-level node with "phasing" in its name, or directly under such a
         /// top node (where the fixer moves it into its group). Fix phasing names corrects only the layers of one top node
         /// (see <see cref="Validate(IEnumerable{SceneNodeInfo}, DateTime, string)"/>). A layer ID the Planner cannot read as
-        /// a dated group (a full stop after the phase, "06.01.2_...") still counts: the fixer corrects it.
+        /// a dated group (a full stop after the phase, "06.01.2_...") still counts: the fixer corrects it. So does one number
+        /// with an old sub-stage ("06-2_...") when the objects directly in it agree on its phase, as the fixer reads it.
+        ///
+        /// Where the fixer's top node has its layers, the names it leaves as they are, with why, so that the warnings say
+        /// "rename by hand" with the reason rather than promise a conversion (<see cref="PhasingTree.LeftAlone"/>): a layer
+        /// directly under the top node with no phase group of its phase, or several, to move it into (the fixer's
+        /// "left as it is" Check line), and a name that reads as a layer ID that the fixer cannot read
+        /// (<see cref="PhasingNameFixer.ReadLayerName"/>: one number whose objects directly in it give no phase or several,
+        /// a number of three digits or more, an ID the Planner reads otherwise).
         /// </summary>
         private static PhasingTree PhasingLayers(List<SceneNodeInfo> all, IEnumerable<string> groupNames, string phasingTop)
         {
+            // The tagged objects directly in each group, as the fixer reads a layer's objects.
+            var objectsIn = all.Where(n => n.IsMesh && n.Ancestors.Count > 0 && n.Ancestors[0] != null)
+                .Select(n => new { Parent = n.Ancestors[0], Parsed = PlannerNaming.ParseMeshName(n.Name) })
+                .Where(o => o.Parsed != null)
+                .ToLookup(o => o.Parent, o => o.Parsed, StringComparer.Ordinal);
             // Where each group sits, from the ancestor chains (nearest first): its parent's name, or the scene root.
             var parents = new Dictionary<string, string>(StringComparer.Ordinal);
             var roots = new List<string>();
@@ -222,12 +246,16 @@ namespace Utilities.Planner
             {
                 tree.FixerTop = null;
             }
+            // The phases of the phase groups directly under the fixer's top node, once for each group, where it moves the
+            // layers directly under that top node.
+            var groupPhases = parents.Where(p => p.Value == tree.FixerTop)
+                .Select(p => { int phase; return PhasingNameFixer.TryReadPhaseGroup(p.Key, out phase) ? phase : (int?)null; })
+                .Where(p => p.HasValue).Select(p => p.Value).ToList();
             foreach (var groupName in groupNames)
             {
-                var id = PhasingNameFixer.ReadLayerId(groupName);
                 string parent, grandparent;
                 int phase;
-                if (id == null || !parents.TryGetValue(groupName, out parent))
+                if (!parents.TryGetValue(groupName, out parent))
                 {
                     continue;
                 }
@@ -240,13 +268,55 @@ namespace Utilities.Planner
                 {
                     top = grandparent;
                 }
-                if (top != null)
+                if (top == null)
                 {
-                    tree.Layers[groupName] = id;
-                    tree.TopOf[groupName] = top;
+                    continue;
+                }
+                var read = PhasingNameFixer.ReadLayerName(groupName, objectsIn[groupName]);
+                if (read.Id == null)
+                {
+                    if (read.Left != PhasingNameFixer.LayerLeft.None && top == tree.FixerTop)
+                    {
+                        tree.LeftAlone[groupName] = LeftWhy(read);
+                    }
+                    continue;
+                }
+                tree.Layers[groupName] = read.Id;
+                tree.TopOf[groupName] = top;
+                if (top == tree.FixerTop && parent == top)
+                {
+                    // Directly under the top node, the fixer moves a layer into the one phase group of its phase; with none,
+                    // or several, it leaves the layer, and its objects, as they are.
+                    var homes = groupPhases.Count(p => p == read.Id.Phase);
+                    if (homes != 1)
+                    {
+                        tree.LeftAlone[groupName] = string.Format(CultureInfo.InvariantCulture, homes == 0
+                            ? "it is directly under '{0}', with no phase group _{1:00}_<name> to move it into"
+                            : "it is directly under '{0}', and {2} phase groups there have phase {1}", top, read.Id.Phase, homes);
+                    }
                 }
             }
             return tree;
+        }
+
+        // Why Fix phasing names leaves a name that reads as a layer ID as it is (PhasingNameFixer.ReadLayerName), as the
+        // naming check words it.
+        private static string LeftWhy(PhasingNameFixer.LayerRead read)
+        {
+            switch (read.Left)
+            {
+                case PhasingNameFixer.LayerLeft.NoPhase:
+                case PhasingNameFixer.LayerLeft.SeveralPhases:
+                    var stageText = read.One.Stage.ToString("00", CultureInfo.InvariantCulture) + "_" + read.One.SplitText;
+                    return read.Left == PhasingNameFixer.LayerLeft.NoPhase
+                        ? "Fix phasing names\u2026 reads only the objects directly in the layer, and none of them has a tag of stage " + stageText
+                        : "Fix phasing names\u2026 reads only the objects directly in the layer, and their tags of stage " + stageText + " carry phases "
+                          + Joined(read.One.Phases.Select(p => p.ToString(CultureInfo.InvariantCulture)).ToList());
+                case PhasingNameFixer.LayerLeft.LongNumber:
+                    return "the convention writes each number of a layer ID with one or two digits";
+                default:
+                    return "the Planner reads its ID as " + PhasingNameFixer.PlannerIdText(read.Planner) + ", which Fix phasing names\u2026 does not";
+            }
         }
 
         // The first place a name is seen in wins.
@@ -267,9 +337,43 @@ namespace Utilities.Planner
             }
         }
 
+        // The names Fix phasing names leaves as they are, which it never renames another object into: every group's (an
+        // object's corrected name has no hyphen, a dated group's has), every untagged object's, and every tagged object's
+        // with no hyphen and no tag's sub-stage written with a full stop (one the fixer gives another tag, its layer's, is
+        // taken to keep its name: the naming check does not work out the fixer's tags).
+        private static HashSet<string> KeptNames(List<SceneNodeInfo> all, IEnumerable<string> groupNames)
+        {
+            var kept = new HashSet<string>(groupNames, StringComparer.Ordinal);
+            foreach (var node in all.Where(n => n.IsMesh))
+            {
+                var parsed = PlannerNaming.ParseMeshName(node.Name);
+                if (parsed == null || Underscored(node.Name, parsed) == node.Name)
+                {
+                    kept.Add(node.Name);
+                }
+            }
+            return kept;
+        }
+
+        // A tagged object's name with the underscores Fix phasing names gives it: for every hyphen, and for the full stop
+        // before a tag's sub-stage ("Ph1_St04.2_IN_Kerb-1" gives "Ph1_St04_2_IN_Kerb_1").
+        private static string Underscored(string name, PlannerMeshName parsed)
+        {
+            var text = name.Replace('-', '_');
+            foreach (var segment in new[] { parsed.Lead, parsed.Trail })
+            {
+                if (segment != null && segment.LegacyForm == PlannerLegacyForm.Dot)
+                {
+                    text = text.Replace("_St" + segment.StageToken + "_", "_St" + segment.StageToken.Replace('.', '_') + "_");
+                }
+            }
+            return text;
+        }
+
         /// <returns>The object and its dated group when it carries a tag and sits in one, else null.</returns>
+        /// <param name="keptNames">The names Fix phasing names leaves as they are (<see cref="KeptNames"/>).</param>
         private static FiledObject CheckMesh(SceneNodeInfo mesh, Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing,
-            NamingReport report, FullStops legacyObjects)
+            NamingReport report, OldForms legacyObjects, OldForms hyphenObjects, HashSet<string> keptNames)
         {
             var name = mesh.Name;
             var parsed = PlannerNaming.ParseMeshName(name);
@@ -287,18 +391,20 @@ namespace Utilities.Planner
             }
             // Fix phasing names corrects an object directly in a layer of its top node (also one whose ID the Planner cannot
             // read as a dated group); one linked under another node inside the layer (a Max group, an object), or in a layer
-            // of another top node with "phasing" in its name, it leaves as it is.
+            // of another top node with "phasing" in its name, it leaves as it is, as it does the objects of a layer it leaves
+            // as it is (PhasingTree.LeftAlone).
             PhasingLayerId layerId = null;
             bool inPhasingLayer = datedGroupName != null && phasing.Layers.TryGetValue(datedGroupName, out layerId);
-            bool underFixerTop = inPhasingLayer && phasing.Corrects(datedGroupName);
-            bool fixerCorrects = mesh.Ancestors.Count > 0 && mesh.Ancestors[0] != null && phasing.Corrects(mesh.Ancestors[0]);
+            bool underFixerTop = inPhasingLayer && phasing.UnderFixerTop(datedGroupName);
+            var parent = mesh.Ancestors.Count > 0 ? mesh.Ancestors[0] : null;
+            bool fixerCorrects = parent != null && phasing.Corrects(parent);
 
             if (parsed == null)
             {
                 if (LooksTagged.IsMatch(name))
                 {
                     Add(report, NamingSeverity.Error, name, string.Format(
-                        "'{0}': the leading tag is malformed. Objects are tagged Ph<n>_St<nn>_IN|RM_<description>, with an optional sub-stage St<nn>-<m>, e.g. Ph1_St03_IN_Sheet_Pile_1 or Ph1_St03-2_IN_Sheet_Pile_1.", name));
+                        "'{0}': the leading tag is malformed. Objects are tagged Ph<n>_St<nn>_IN|RM_<description>, with an optional sub-stage St<nn>_<m>, e.g. Ph1_St03_IN_Sheet_Pile_1 or Ph1_St03_2_IN_Sheet_Pile_1.", name));
                 }
                 else if (datedGroup != null)
                 {
@@ -309,9 +415,31 @@ namespace Utilities.Planner
             }
 
             report.TaggedObjects++;
-            if (parsed.Legacy)
+            // Where the fixer would convert the name, it does not when the name it would take is one that another node keeps
+            // (KeepTakenNames: "Kerb-1" beside "Kerb_1"). The name it takes is told here by its underscores only: the fixer
+            // also gives the object its layer's tag, which may differ, but a clash that the underscores alone make is the
+            // one that matters ("Kerb-1" and "Kerb_1" in the same layer).
+            var converts = fixerCorrects;
+            var byHandWhy = phasing.ObjectsLeftWhy(parent);
+            var underscored = Underscored(name, parsed);
+            if (converts && underscored != name && keptNames.Contains(underscored))
             {
-                legacyObjects.Add(name, fixerCorrects);
+                converts = false;
+                byHandWhy = "Fix phasing names\u2026 leaves a name as it is when the one it would take with underscores is already another node's";
+            }
+            foreach (var segment in new[] { parsed.Lead, parsed.Trail })
+            {
+                if (segment != null && segment.Legacy)
+                {
+                    legacyObjects.Add(name, converts, segment.LegacyForm, byHandWhy);
+                }
+            }
+            // Unreal's Datasmith import turns every hyphen in an object's name into an underscore. A hyphen before a tag's
+            // sub-stage is told with the old forms above; any other is told here.
+            int tagHyphens = new[] { parsed.Lead, parsed.Trail }.Count(s => s != null && s.LegacyForm == PlannerLegacyForm.Hyphen);
+            if (name.Count(c => c == '-') > tagHyphens)
+            {
+                hyphenObjects.Add(name, converts, PlannerLegacyForm.None, byHandWhy);
             }
 
             // The convention allows no spaces at all, even though the parser tolerates them (a space after the order
@@ -325,7 +453,7 @@ namespace Utilities.Planner
             if (parsed.Trail == null && StrayTrail.IsMatch(parsed.Description))
             {
                 Add(report, NamingSeverity.Error, name, string.Format(
-                    "'{0}': the text after the description looks like a second Ph/St tag but does not read as one. A trailing tag must be _Ph<n>_St<nn>[-<m>]_IN|RM at the very end of the name (notes go after a space).", name));
+                    "'{0}': the text after the description looks like a second Ph/St tag but does not read as one. A trailing tag must be _Ph<n>_St<nn>[_<m>]_IN|RM at the very end of the name (notes go after a space).", name));
             }
 
             // A stray underscore at the description's edge ("..._C_") is trimmed by the Planner and is deliberately
@@ -339,7 +467,7 @@ namespace Utilities.Planner
             if (NeedsPadding(parsed.Lead) || NeedsPadding(parsed.Trail))
             {
                 Add(report, NamingSeverity.Note, name, string.Format(
-                    "'{0}': write stage numbers with two digits (St01, St06, St06-1) so names read and sort consistently.", name));
+                    "'{0}': write stage numbers with two digits (St01, St06, St06_1) so names read and sort consistently.", name));
             }
 
             if (datedGroup == null)
@@ -356,7 +484,8 @@ namespace Utilities.Planner
                         phasing.Corrects(unreadLayer)
                             ? "Fix phasing names\u2026 on the exporter window corrects it."
                             : "rename it by hand to " + LayerIdText(phasing.Layers[unreadLayer]) + "_<name>_DD-MM-YY[_DD-MM-YY] ("
-                              + (phasing.FixerTop != null ? "Fix phasing names\u2026 corrects only the layers under '" + phasing.FixerTop + "'" : "Fix phasing names\u2026 does not correct it")
+                              + (phasing.LeftWhy(unreadLayer)
+                                 ?? (phasing.FixerTop != null ? "Fix phasing names\u2026 corrects only the layers under '" + phasing.FixerTop + "'" : "Fix phasing names\u2026 does not correct it"))
                               + ").");
                 }
                 else if (mesh.Ancestors.Count > 0)
@@ -395,6 +524,11 @@ namespace Utilities.Planner
                                 : "The layer is under '{0}', which Fix phasing names\u2026 does not correct: correct the Ph and St numbers by hand, or move the object to the layer for its stage.",
                             phasing.TopOf[datedGroupName], phasing.FixerTop);
                     }
+                    else if (phasing.LeftWhy(datedGroupName) != null)
+                    {
+                        advice = string.Format("Fix phasing names\u2026 leaves the layer as it is ({0}): correct the Ph and St numbers by hand, or move the object to the layer for its stage.",
+                            phasing.LeftWhy(datedGroupName));
+                    }
                     else
                     {
                         advice = string.Format("It is linked under '{0}' inside the layer, and Fix phasing names\u2026 leaves such objects as they are: correct the Ph and St numbers by hand, or move the object to the layer for its stage.", mesh.Ancestors[0]);
@@ -407,7 +541,7 @@ namespace Utilities.Planner
             bool trailMatches = parsed.Trail != null && MatchesGroup(parsed.Trail, datedGroup);
             if (!leadMatches && !trailMatches)
             {
-                // A group named phase then stage ("02_01-2_...") owns the work of that phase and stage; a group named with one
+                // A group named phase then stage ("02_01_2_...") owns the work of that phase and stage; a group named with one
                 // number owns its stage, in the phase its objects' tags of that stage give (GroupPhase), which only the whole
                 // group shows: a tag of its stage in another phase is looked at after every object is read
                 // (CheckStagesWithoutLayer).
@@ -643,6 +777,108 @@ namespace Utilities.Planner
             return "Check the Ph numbers, or move the object to the group for its phase and stage.";
         }
 
+        /// <summary>
+        /// One warning for each group of one number whose sub-stage is written an old way ("06-2_Hoarding_...",
+        /// "05.2_Subbase_..."): the convention writes a sub-stage only in an ID of three numbers, so the group needs its
+        /// phase in front ("03_06_2_Hoarding_..."). The phase is the one its objects' tags with its stage agree on
+        /// (<see cref="PhasingNameFixer.OneNumberPhase"/>): for a phasing layer, the objects directly in it, as Fix phasing
+        /// names reads them, which then renames it (in the layers of its top node); for any other group, the tagged objects
+        /// it is the nearest dated group of, as the Planner files them, and it is renamed by hand. When they give no phase,
+        /// or several, the warning says so; when the fixer leaves it for another reason (<see cref="PhasingTree.LeftAlone"/>),
+        /// the warning says why. The new name is given in full only when the fixer will write it so: when another layer of
+        /// the fixer's has the same phase and stage, the fixer numbers the stage's layers 1, 2, ... in start-date order, so
+        /// the sub-stage is not known yet. A number of three digits or more has no place in the convention's ID, which the
+        /// warning says instead.
+        /// </summary>
+        private static void CheckOneNumberGroups(List<string> groups, Dictionary<string, PlannerLayerName> datedGroups, List<FiledObject> filed,
+            PhasingTree phasing, NamingReport report)
+        {
+            var members = filed.ToLookup(f => f.Group, f => f.Parsed, StringComparer.Ordinal);
+            foreach (var name in groups)
+            {
+                var parsed = datedGroups[name];
+                var written = OneNumberId.Match(name);
+                if (written.Success && (written.Groups[1].Length > 2 || written.Groups[2].Length > 2))
+                {
+                    Add(report, NamingSeverity.Warning, name, string.Format(CultureInfo.InvariantCulture,
+                        "Group '{0}' is one number with a sub-stage written the old way ({1}), and the convention writes each number of a layer ID with one or two digits, so Fix phasing names\u2026 leaves it: rename it by hand, with its phase in front and a sub-stage of one or two digits (<phase>_{2:00}_<m>_<name>).",
+                        name, parsed.Order, parsed.Stage));
+                    continue;
+                }
+                PhasingLayerId layerId;
+                bool fixer = phasing.Layers.TryGetValue(name, out layerId) && phasing.Corrects(name);
+                List<int> phases;
+                int? phase;
+                if (layerId != null)
+                {
+                    phase = layerId.Phase;
+                    phases = new List<int> { layerId.Phase };
+                }
+                else
+                {
+                    phase = PhasingNameFixer.OneNumberPhase(parsed.Stage, parsed.SubStage, members[name], out phases);
+                }
+                var stageText = parsed.Stage.ToString("00", CultureInfo.InvariantCulture) + "_"
+                    + (parsed.SubStage.HasValue ? parsed.SubStage.Value.ToString(CultureInfo.InvariantCulture) : "<m>");
+                var text = string.Format(CultureInfo.InvariantCulture,
+                    "Group '{0}' is one number with a sub-stage written the old way ({1}). An ID of one number cannot carry a sub-stage, so the phase goes in front: <phase>_{2}_<name>. ",
+                    name, parsed.Order, stageText);
+                // The fixer's other layers of the same phase and stage: with any, it numbers them all again.
+                var shared = fixer && phasing.Layers.Any(l => l.Key != name && l.Value.Phase == layerId.Phase && l.Value.Stage == layerId.Stage && phasing.Corrects(l.Key));
+                if (shared)
+                {
+                    var stageId = layerId.Phase.ToString("00", CultureInfo.InvariantCulture) + "_" + layerId.Stage.ToString("00", CultureInfo.InvariantCulture);
+                    text += string.Format(CultureInfo.InvariantCulture,
+                        "Its objects' tags say phase {0}, so it becomes {1}: stage {2} has other layers, and Fix phasing names\u2026 on the exporter window renames it with them, numbering the stage's layers 1, 2, ... in start-date order.",
+                        phase.Value, OneNumberRename(name, phase.Value, "<m>") ?? stageId + "_<m>_<name>", stageId);
+                }
+                else if (phase.HasValue)
+                {
+                    var renamed = OneNumberRename(name, phase.Value, null) ?? phase.Value.ToString("00", CultureInfo.InvariantCulture) + "_" + stageText + "_<name>";
+                    text += string.Format(CultureInfo.InvariantCulture, "Its objects' tags say phase {0}, so it becomes {1}", phase.Value, renamed);
+                    text += fixer
+                        ? ": Fix phasing names\u2026 on the exporter window renames it."
+                        : string.Format(": rename it by hand ({0}).", phasing.LeftWhy(name) ?? (phasing.FixerTop != null
+                            ? "Fix phasing names\u2026 renames only the phasing layers under '" + phasing.FixerTop + "'"
+                            : "Fix phasing names\u2026 renames only the phasing layers"));
+                }
+                else
+                {
+                    text += (phases.Count == 0
+                            ? "None of its objects has a tag of stage " + stageText + " to give the phase"
+                            : "Its objects' tags of that stage carry phases " + Joined(phases.Select(p => p.ToString(CultureInfo.InvariantCulture)).ToList()))
+                        + ", so rename it by hand with the phase it belongs to.";
+                }
+                Add(report, NamingSeverity.Warning, name, text);
+            }
+        }
+
+        // The name a group of one number with an old sub-stage gets with its phase in front ("06-2_Hoarding_17-08-26" with
+        // phase 3 gives "03_06_2_Hoarding_17-08-26", the stage with two digits, the rest as it is), as Fix phasing names
+        // writes it before any word fix, with the sub-stage given (a placeholder such as "<m>") or, when null, as written;
+        // null when the name does not start so.
+        private static string OneNumberRename(string name, int phase, string subStage)
+        {
+            var one = OneNumberId.Match(name);
+            int stage;
+            if (!one.Success || !int.TryParse(one.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out stage))
+            {
+                return null;
+            }
+            return phase.ToString("00", CultureInfo.InvariantCulture) + "_" + stage.ToString("00", CultureInfo.InvariantCulture) + "_" + (subStage ?? one.Groups[2].Value)
+                + one.Groups[3].Value;
+        }
+
+        // "a", "a and b", "a, b and c".
+        private static string Joined(IList<string> parts)
+        {
+            if (parts.Count < 2)
+            {
+                return string.Join(string.Empty, parts.ToArray());
+            }
+            return string.Join(", ", parts.Take(parts.Count - 1).ToArray()) + " and " + parts[parts.Count - 1];
+        }
+
         // Object names in quotes, "'a', 'b' and 'c'", five at most, then how many more.
         private static string Quoted(IList<string> names)
         {
@@ -676,7 +912,7 @@ namespace Utilities.Planner
             return segment.Phase == 0 ? "at the start of the project" : "at the start of the project, marked TBC";
         }
 
-        // A tag's phase and stage as the messages write them: "Ph2_St06-2".
+        // A tag's phase and stage as the messages write them: "Ph2_St06_2".
         private static string TagText(PlannerMeshSegment segment)
         {
             return "Ph" + segment.Phase.ToString(CultureInfo.InvariantCulture) + "_" + PlannerNaming.StageText(segment.Stage, segment.SubStage);
@@ -808,36 +1044,52 @@ namespace Utilities.Planner
                 where, PhasingFixScript.FirstNames(missing.Objects, NamesShown)));
         }
 
-        // A phasing layer's ID as the convention writes it: "06_01-2".
+        // A phasing layer's ID as the convention writes it: "06_01_2".
         private static string LayerIdText(PhasingLayerId id)
         {
             return id.Phase.ToString("00", CultureInfo.InvariantCulture) + "_" + id.Stage.ToString("00", CultureInfo.InvariantCulture)
-                + (id.Split.HasValue ? "-" + id.Split.Value.ToString(CultureInfo.InvariantCulture) : string.Empty);
+                + (id.Split.HasValue ? "_" + id.Split.Value.ToString(CultureInfo.InvariantCulture) : string.Empty);
         }
 
-        private static void CheckGroups(Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing, DateTime today, NamingReport report)
+        /// <returns>The groups of one number with a sub-stage written an old way, which <see cref="CheckOneNumberGroups"/> tells about once their objects are read.</returns>
+        private static List<string> CheckGroups(Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing, DateTime today, NamingReport report)
         {
-            var legacy = new FullStops();
+            var legacy = new OldForms();
+            var oneNumber = new List<string>();
             foreach (var entry in datedGroups.OrderBy(e => e.Key, StringComparer.Ordinal))
             {
                 var name = entry.Key;
                 var parsed = entry.Value;
-                // A phasing layer's full stop is a sub-stage only after its stage (02_05.1), and Fix phasing names
-                // converts it (in the layers of the top node it corrects; those of another top node are renamed by hand);
-                // after the phase (6.06) it is a slip that the fixer corrects with the rest of the ID. Any other group is
-                // renamed by hand, and its full stop counts only after a two-digit stage, not before "_x_"
-                // (GroupSubStageFullStop).
+                // A phasing layer's hyphen or full stop is a sub-stage only after its stage (02_05-1, 02_05.1), and Fix
+                // phasing names converts it (in the layers of the top node it corrects; those of another top node are
+                // renamed by hand); a full stop after the phase (6.06) is a slip that the fixer corrects with the rest of the
+                // ID. Any other group is renamed by hand, and its full stop counts only after a two-digit stage, not before
+                // "_x_" (GroupSubStageFullStop). A group of one number with an old sub-stage (06-2_..., 05.2_...) needs its
+                // phase in front as well, which is told on its own.
+                // Where the fixer's top node has its layers, a name it leaves as it is (a layer it cannot move into its phase
+                // group, an ID with a number of three digits or more) is renamed by hand for that reason.
                 PhasingLayerId layerId;
                 if (phasing.Layers.TryGetValue(name, out layerId))
                 {
-                    if (layerId.SplitAfterFullStop)
+                    if (layerId.OneNumber)
                     {
-                        legacy.Add(name, phasing.Corrects(name));
+                        oneNumber.Add(name);
+                    }
+                    else if (layerId.SplitForm != PlannerLegacyForm.None)
+                    {
+                        legacy.Add(name, phasing.Corrects(name), layerId.SplitForm, phasing.LeftWhy(name));
                     }
                 }
-                else if (parsed.Legacy && GroupSubStageFullStop.IsMatch(name))
+                else if (parsed.LegacyForm == PlannerLegacyForm.Hyphen || (parsed.LegacyForm == PlannerLegacyForm.Dot && GroupSubStageFullStop.IsMatch(name)))
                 {
-                    legacy.Add(name, false);
+                    if (parsed.Phase.HasValue)
+                    {
+                        legacy.Add(name, false, parsed.LegacyForm, phasing.LeftWhy(name));
+                    }
+                    else
+                    {
+                        oneNumber.Add(name);
+                    }
                 }
                 if (ContainsWhitespace(name))
                 {
@@ -880,7 +1132,7 @@ namespace Utilities.Planner
                     }
                 }
             }
-            AddFullStopWarning(report, legacy, "group", "01_04.2_... or 05.2_...", "01_04-2_..., 05-2_...", phasing.FixerTop);
+            AddOldFormWarning(report, legacy, "group", "01_04-2_...", "01_04.2_...", "01_04_2_...", phasing.FixerTop);
 
             // Labels that differ only by letter case are almost always the same work typed twice.
             foreach (var twins in datedGroups.Values.GroupBy(p => p.Label.ToLowerInvariant()))
@@ -893,6 +1145,7 @@ namespace Utilities.Planner
                         string.Join(" and ", labels.Select(l => "'" + l + "'").ToArray())));
                 }
             }
+            return oneNumber;
         }
 
         private static void CheckDuplicates(List<SceneNodeInfo> all, NamingReport report)
@@ -925,14 +1178,14 @@ namespace Utilities.Planner
             return segment.Phase == layer.Phase && PlannerNaming.SameStage(segment.Stage, segment.SubStage, layer.Stage, layer.Split);
         }
 
-        // "St6" and "St6-1" want a zero; the digits before any sub-stage are what is padded.
+        // "St6" and "St6_1" want a zero; the digits before any sub-stage are what is padded.
         private static bool NeedsPadding(PlannerMeshSegment segment)
         {
             if (segment == null || segment.Stage >= 10)
             {
                 return false;
             }
-            int split = segment.StageToken.IndexOfAny(new[] { '-', '.' });
+            int split = segment.StageToken.IndexOfAny(new[] { '_', '-', '.' });
             return (split < 0 ? segment.StageToken.Length : split) < 2;
         }
 
@@ -941,19 +1194,55 @@ namespace Utilities.Planner
             return text.Any(char.IsWhiteSpace);
         }
 
-        // One warning for the names of a kind that write a sub-stage with a full stop: those Fix phasing names converts
-        // and those to rename by hand, each with some of the names. The fixer converts only the layers of its top node
-        // (fixerTop) and the objects directly in them.
-        private static void AddFullStopWarning(NamingReport report, FullStops names, string kind, string oldForm, string newForm, string fixerTop)
+        // One warning for the names of a kind that write a sub-stage an old way, with a hyphen or a full stop: those Fix
+        // phasing names converts and those to rename by hand, each with some of the names. The fixer converts only the
+        // layers of its top node (fixerTop) and the objects directly in them. An object's hyphen also breaks its match in
+        // Unreal, whose Datasmith import turns it into an underscore; a layer name keeps its hyphens there.
+        private static void AddOldFormWarning(NamingReport report, OldForms names, string kind, string hyphenForm, string fullStopForm, string newForm,
+            string fixerTop)
         {
-            int total = names.Converted.Count + names.ByHand.Count;
-            if (total == 0)
+            if (names.Total == 0)
             {
                 return;
             }
+            string with;
+            if (names.Hyphen && names.Dot)
+            {
+                with = "with a hyphen or a full stop (" + hyphenForm + ", " + fullStopForm + ")";
+            }
+            else
+            {
+                with = names.Hyphen ? "with a hyphen (" + hyphenForm + ")" : "with a full stop (" + fullStopForm + ")";
+            }
             var text = string.Format(CultureInfo.InvariantCulture,
-                "{0} {1} name(s) write the sub-stage with a full stop, the old form ({2}); the convention now writes a hyphen ({3}). The Planner reads both the same. ",
-                total, kind, oldForm, newForm);
+                "{0} {1} name(s) write the sub-stage the old way, {2}; the convention now writes an underscore ({3}). The Planner reads {4} the same",
+                names.Total, kind, with, newForm, names.Hyphen && names.Dot ? "them all" : "both");
+            text += names.Hyphen && kind == "object"
+                ? ", but Unreal's Datasmith import turns a hyphen in an object's name into an underscore, so the names would not match between the Planner and Unreal. "
+                : ". ";
+            AddConversion(report, names, text, fixerTop);
+        }
+
+        // One warning for the tagged objects with a hyphen in their names other than before a tag's sub-stage (those are
+        // told with the old forms): Unreal's Datasmith import turns every hyphen in an object's name into an underscore,
+        // so the object would carry another name in Unreal than in the Planner. Fix phasing names replaces them in the
+        // objects directly in the phasing layers of its top node.
+        private static void AddHyphenWarning(NamingReport report, OldForms names, string fixerTop)
+        {
+            if (names.Total == 0)
+            {
+                return;
+            }
+            AddConversion(report, names, string.Format(CultureInfo.InvariantCulture,
+                "{0} object name(s) contain a hyphen. Unreal's Datasmith import turns every hyphen in an object's name into an underscore, so these names would not match between the Planner and Unreal: use underscores instead. ",
+                names.Total), fixerTop);
+        }
+
+        // A gathered warning: its text, then the names Fix phasing names converts and those to rename by hand, with why the
+        // fixer leaves them: outside what it corrects (the layers of its top node and the objects directly in them), or the
+        // reason given with the name (OldForms.Why), one list for each reason.
+        private static void AddConversion(NamingReport report, OldForms names, string text, string fixerTop)
+        {
             var scope = "Fix phasing names\u2026 converts only the phasing layers" + (fixerTop != null ? " under '" + fixerTop + "'" : string.Empty)
                 + " and the objects directly in them";
             if (names.ByHand.Count == 0)
@@ -962,16 +1251,43 @@ namespace Utilities.Planner
             }
             else if (names.Converted.Count == 0)
             {
-                text += "Rename them by hand (" + scope + "): " + PhasingFixScript.FirstNames(names.ByHand, NamesShown) + ".";
+                text += "Rename them by hand" + ByHandList(names, scope, NamesShown) + ".";
             }
             else
             {
                 text += string.Format(CultureInfo.InvariantCulture,
-                    "Fix phasing names\u2026 on the exporter window converts {0} of them: {1}; rename the other {2} by hand ({3}): {4}.",
+                    "Fix phasing names\u2026 on the exporter window converts {0} of them: {1}; rename the other {2} by hand{3}.",
                     names.Converted.Count, PhasingFixScript.FirstNames(names.Converted, NamesShown / 2),
-                    names.ByHand.Count, scope, PhasingFixScript.FirstNames(names.ByHand, NamesShown / 2));
+                    names.ByHand.Count, ByHandList(names, scope, NamesShown / 2));
             }
             Add(report, NamingSeverity.Warning, names.First, text);
+        }
+
+        // The names to rename by hand after their reason, " (reason): a, b", or, with several reasons, each list followed by
+        // its own: ": a, b (reason); c (another reason)".
+        private static string ByHandList(OldForms names, string scope, int shown)
+        {
+            var lists = new List<KeyValuePair<string, List<string>>>();
+            foreach (var name in names.ByHand)
+            {
+                string why;
+                if (!names.Why.TryGetValue(name, out why))
+                {
+                    why = scope;
+                }
+                var list = lists.FirstOrDefault(l => l.Key == why).Value;
+                if (list == null)
+                {
+                    list = new List<string>();
+                    lists.Add(new KeyValuePair<string, List<string>>(why, list));
+                }
+                list.Add(name);
+            }
+            if (lists.Count == 1)
+            {
+                return " (" + lists[0].Key + "): " + PhasingFixScript.FirstNames(lists[0].Value, shown);
+            }
+            return ": " + string.Join("; ", lists.Select(l => PhasingFixScript.FirstNames(l.Value, shown) + " (" + l.Key + ")").ToArray());
         }
 
         private static void Add(NamingReport report, NamingSeverity severity, string subject, string message)
@@ -979,19 +1295,33 @@ namespace Utilities.Planner
             report.Issues.Add(new NamingIssue { Severity = severity, Subject = subject, Message = message });
         }
 
-        /// <summary>Names that write a sub-stage with a full stop, each once, in the order found.</summary>
-        private sealed class FullStops
+        /// <summary>
+        /// Names to correct for one reason (a sub-stage written an old way, or a hyphen), each once, in the order found,
+        /// with the old forms seen.
+        /// </summary>
+        private sealed class OldForms
         {
             /// <summary>Fix phasing names converts these.</summary>
             public readonly List<string> Converted = new List<string>();
             /// <summary>These are renamed by hand.</summary>
             public readonly List<string> ByHand = new List<string>();
+            /// <summary>Why a name renamed by hand is left by the fixer, when it is not that it is outside what the fixer corrects.</summary>
+            public readonly Dictionary<string, string> Why = new Dictionary<string, string>(StringComparer.Ordinal);
             /// <summary>The first name found.</summary>
             public string First;
+            /// <summary>A sub-stage after a hyphen was seen.</summary>
+            public bool Hyphen;
+            /// <summary>A sub-stage after a full stop was seen.</summary>
+            public bool Dot;
             private readonly HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
 
-            public void Add(string name, bool converted)
+            public int Total { get { return Converted.Count + ByHand.Count; } }
+
+            /// <param name="why">For a name renamed by hand, why the fixer leaves it, or null: it is outside what the fixer corrects.</param>
+            public void Add(string name, bool converted, PlannerLegacyForm form, string why = null)
             {
+                Hyphen |= form == PlannerLegacyForm.Hyphen;
+                Dot |= form == PlannerLegacyForm.Dot;
                 if (!seen.Add(name))
                 {
                     return;
@@ -1001,6 +1331,10 @@ namespace Utilities.Planner
                     First = name;
                 }
                 (converted ? Converted : ByHand).Add(name);
+                if (!converted && why != null)
+                {
+                    Why[name] = why;
+                }
             }
         }
 
@@ -1013,12 +1347,41 @@ namespace Utilities.Planner
             public readonly Dictionary<string, string> TopOf = new Dictionary<string, string>(StringComparer.Ordinal);
             /// <summary>The top node whose layers the fixer corrects, or null when there is none.</summary>
             public string FixerTop;
+            /// <summary>
+            /// Where the fixer's top node has its layers, the names the fixer leaves as they are, with why, worded to follow
+            /// "rename it by hand (...)": a layer it cannot move into its phase group (also in <see cref="Layers"/>), or a
+            /// name that reads as a layer ID it cannot read (not in <see cref="Layers"/>).
+            /// </summary>
+            public readonly Dictionary<string, string> LeftAlone = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            /// <summary>The layer is under the fixer's top node.</summary>
+            public bool UnderFixerTop(string layer)
+            {
+                string top;
+                return FixerTop != null && TopOf.TryGetValue(layer, out top) && top == FixerTop;
+            }
 
             /// <summary>The fixer corrects this layer (and the objects directly in it).</summary>
             public bool Corrects(string layer)
             {
-                string top;
-                return FixerTop != null && TopOf.TryGetValue(layer, out top) && top == FixerTop;
+                return UnderFixerTop(layer) && !LeftAlone.ContainsKey(layer);
+            }
+
+            /// <summary>Why the fixer leaves this group as it is, or null.</summary>
+            public string LeftWhy(string group)
+            {
+                string why;
+                return group != null && LeftAlone.TryGetValue(group, out why) ? why : null;
+            }
+
+            /// <summary>
+            /// Why the fixer leaves the objects directly in this group as they are when it leaves the group (a layer it
+            /// cannot correct), or null.
+            /// </summary>
+            public string ObjectsLeftWhy(string group)
+            {
+                var why = LeftWhy(group);
+                return why == null ? null : "Fix phasing names\u2026 leaves their layer '" + group + "' as it is: " + why + "; once the layer is corrected, it converts them";
             }
         }
 
