@@ -15,18 +15,25 @@ namespace Utilities.Planner
     ///   - the phasing top node is the first top-level node with "phasing" in its name;
     ///   - its children named _&lt;n&gt;_&lt;name&gt; are the phase groups; a child that reads as a layer is moved into
     ///     the group of its phase;
-    ///   - the groups' children are the layers, &lt;PP&gt;_&lt;SS&gt;[.&lt;split&gt;]_&lt;name&gt;: the phase is written with two
-    ///     digits and an underscore, a stage with several layers is split .1, .2, ... in start-date order, and the
+    ///   - the groups' children are the layers, &lt;PP&gt;_&lt;SS&gt;[-&lt;split&gt;]_&lt;name&gt;: the phase is written with two
+    ///     digits and an underscore, a stage with several layers is split -1, -2, ... in start-date order, and the
     ///     review can set any layer's stage;
     ///   - the layers' children are the objects: the leading Ph/St tag becomes the layer's, and a trailing
     ///     removal tag follows the layer it points at to its new ID;
     ///   - names get the project's word fixes (again until they settle) and lose their spaces; dates and TBC are
     ///     never changed, and a word fix that would leave a name unreadable is not used on it.
-    /// Anything that does not read is left as it is and listed for a person to check.
+    /// A sub-stage is written after a hyphen (02_05-1, Ph2_St05-1). The old spelling with a full stop (02_05.1,
+    /// Ph2_St05.1) reads as the same stage and is written with the hyphen; no other full stop is touched. Since the
+    /// hyphen came in, this is no longer the reference clean-up rule for rule: the reference writes the full stop.
+    /// Anything that does not read is left as it is and listed for a person to check. A shape (a spline such as a
+    /// RailClone path) that nothing exported is linked under never reaches the export, so it is not listed, renamed or
+    /// counted; one that holds something exported is an empty node in the export, and is treated like a helper.
     /// </summary>
     public static class PhasingNameFixer
     {
         public const string NothingToDo = "No top-level node has \"phasing\" in its name, so there are no phasing names to fix.";
+        /// <summary>The reason given when a sub-stage written with a full stop gets the hyphen.</summary>
+        public const string HyphenReason = "hyphen before the sub-stage number, not a full stop";
 
         private const RegexOptions Options = RegexOptions.CultureInvariant;
         private const RegexOptions OptionsIgnoreCase = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
@@ -35,14 +42,20 @@ namespace Utilities.Planner
         // before a final line feed), and JavaScript's own sets for \s and . (.NET's \s leaves out U+FEFF but takes
         // U+0085, and its . also takes \r, U+2028 and U+2029), so these read exactly what the reference's
         // JavaScript patterns read.
-        private const string Space = @"[\t\n\u000B\f\r \u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]";
+        private const string Space = PlannerNaming.JavaScriptSpace;
         private const string NotLineEnd = @"[^\n\r\u2028\u2029]";
         private static readonly Regex GroupPattern = new Regex(@"^_([0-9]+)_(" + NotLineEnd + @"+)\z", Options);
-        private static readonly Regex LayerPattern = new Regex(@"^([0-9]+)[._]([0-9]+)(?:\.([0-9]+))?_(" + NotLineEnd + @"+)\z", Options);
+        // <phase>[._]<stage>[-<split>]_<name>, the split also after a full stop as it was written before. Groups: 1 phase,
+        // 2 the character after it, 3 stage, 4 the character before the split, 5 split, 6 the rest.
+        private static readonly Regex LayerPattern = new Regex(@"^([0-9]+)([._])([0-9]+)(?:([.-])([0-9]+))?_(" + NotLineEnd + @"+)\z", Options);
         // The first DD-MM-YY token of a layer's description: its start date.
         private static readonly Regex DatePattern = new Regex(@"(?:^|_)([0-9]{2})-([0-9]{2})-([0-9]{2})(?=_|\z)", Options);
-        private static readonly Regex LeadPattern = new Regex(@"^Ph([0-9]+)_St([0-9]+)(?:\.([0-9]+))?_(IN|RM)(?=_|\z)", OptionsIgnoreCase);
-        private static readonly Regex TrailPattern = new Regex(@"_Ph([0-9]+)_St([0-9]+)(?:\.([0-9]+))?_RM\z", OptionsIgnoreCase);
+        // Groups: 1 phase, 2 stage, 3 the character before the split, 4 split, 5 type.
+        private static readonly Regex LeadPattern = new Regex(@"^Ph([0-9]+)_St([0-9]+)(?:([.-])([0-9]+))?_(IN|RM)(?=_|\z)", OptionsIgnoreCase);
+        // Groups: 1 phase, 2 stage, 3 the character before the split, 4 split.
+        private static readonly Regex TrailPattern = new Regex(@"_Ph([0-9]+)_St([0-9]+)(?:([.-])([0-9]+))?_RM\z", OptionsIgnoreCase);
+        // A tag closing a text with its sub-stage after a full stop ("..._Ph3_St07.2_IN"): the full stop becomes a hyphen.
+        private static readonly Regex ClosingTagSplitDot = new Regex(@"(_Ph[0-9]+_St[0-9]+)\.(?=[0-9]+_(?:IN|RM)\z)", OptionsIgnoreCase);
         private static readonly Regex TagType = new Regex(@"_(IN|RM)\z", OptionsIgnoreCase);
         // Leading zeros of a removal tag's phase ("_Ph06" gives "_Ph6"), keeping the last digit ("_Ph0" stays).
         private static readonly Regex TrailPhaseZeros = new Regex(@"^_Ph0+(?=[0-9])", Options);
@@ -82,6 +95,37 @@ namespace Utilities.Planner
                 return "the new text contains the text it replaces, so every run would change the names again";
             }
             return null;
+        }
+
+        /// <summary>
+        /// Reads a name as a layer the way the fixer does, <c>&lt;PP&gt;_&lt;SS&gt;[-&lt;split&gt;]_&lt;name&gt;</c> (the split also
+        /// after a full stop, the old form), or returns null. Where the node sits is not looked at: in the phasing
+        /// hierarchy a layer is a child of a phase group (<see cref="TryReadPhaseGroup"/>).
+        /// </summary>
+        public static PhasingLayerId ReadLayerId(string name)
+        {
+            var match = LayerPattern.Match(name ?? string.Empty);
+            int phase, stage, split = 0;
+            if (!match.Success || !TryNumber(match.Groups[1].Value, out phase) || !TryNumber(match.Groups[3].Value, out stage)
+                || (match.Groups[5].Success && !TryNumber(match.Groups[5].Value, out split)))
+            {
+                return null;
+            }
+            return new PhasingLayerId
+            {
+                Phase = phase,
+                Stage = stage,
+                Split = match.Groups[5].Success ? split : (int?)null,
+                SplitAfterFullStop = match.Groups[4].Success && match.Groups[4].Value == "."
+            };
+        }
+
+        /// <summary>Reads a name as a phase group, <c>_&lt;n&gt;_&lt;name&gt;</c>, giving its phase.</summary>
+        public static bool TryReadPhaseGroup(string name, out int phase)
+        {
+            phase = 0;
+            var match = GroupPattern.Match(name ?? string.Empty);
+            return match.Success && TryNumber(match.Groups[1].Value, out phase);
         }
 
         /// <summary>
@@ -257,11 +301,13 @@ namespace Utilities.Planner
             }
             var overrides = stageOverrides ?? new Dictionary<long, int>();
             var scene = new Scene(nodes);
+            var maxLayerList = (maxLayers ?? Enumerable.Empty<PhasingMaxLayer>()).ToList();
             var checks = new List<Func<PhasingFixRow>>();
             var notes = new TextFixNotes();
 
-            // Rule 1: the phasing top node.
-            var tops = scene.Roots.Where(n => NameOf(n).IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            // Rule 1: the phasing top node. Shapes the export leaves out (splines such as RailClone paths) are not
+            // listed, renamed or counted anywhere: the Planner never sees them.
+            var tops = scene.Roots.Where(n => !scene.LeftOut(n) && NameOf(n).IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
             if (tops.Count == 0)
             {
                 plan.Message = NothingToDo;
@@ -273,6 +319,7 @@ namespace Utilities.Planner
             CheckUnreadable(top, topFix, top, checks);
             plan.TopKey = top.Node.Key;
             plan.TopName = top.OldName;
+            plan.Counts = Count(scene, top.Node, maxLayerList);
             foreach (var other in tops.Skip(1))
             {
                 var otherNode = other;
@@ -286,7 +333,7 @@ namespace Utilities.Planner
             {
                 var match = GroupPattern.Match(NameOf(child));
                 int phase;
-                if (!match.Success || !TryNumber(match.Groups[1].Value, out phase))
+                if (scene.LeftOut(child) || !match.Success || !TryNumber(match.Groups[1].Value, out phase))
                 {
                     continue;
                 }
@@ -306,7 +353,7 @@ namespace Utilities.Planner
             var unplaced = new List<LayerWork>();
             foreach (var child in scene.ChildrenOf(top.Node))
             {
-                if (groupKeys.Contains(child.Key))
+                if (groupKeys.Contains(child.Key) || scene.LeftOut(child))
                 {
                     continue;
                 }
@@ -314,7 +361,7 @@ namespace Utilities.Planner
                 var layer = ReadLayer(child);
                 if (layer == null)
                 {
-                    checks.Add(() => CheckRow(scene.HasChildren(node) ? PhasingFixItem.Group : PhasingFixItem.Object, top.NewName, NameOf(node), NameOf(node), node.Key,
+                    checks.Add(() => CheckRow(scene.HasExportedChildren(node) ? PhasingFixItem.Group : PhasingFixItem.Object, top.NewName, NameOf(node), NameOf(node), node.Key,
                         "neither a phase group (_<n>_<name>) nor a layer (<phase>_<stage>_<name>); left as it is"));
                     continue;
                 }
@@ -339,13 +386,17 @@ namespace Utilities.Planner
             {
                 foreach (var child in scene.ChildrenOf(group.Node))
                 {
+                    if (scene.LeftOut(child))
+                    {
+                        continue;
+                    }
                     var node = child;
                     var home = group;
                     var layer = ReadLayer(child);
                     if (layer == null)
                     {
-                        checks.Add(() => CheckRow(scene.HasChildren(node) ? PhasingFixItem.Layer : PhasingFixItem.Object, home.NewName, NameOf(node), NameOf(node), node.Key,
-                            "does not read as a layer (<phase>_<stage>[.<split>]_<name>); left as it is"));
+                        checks.Add(() => CheckRow(scene.HasExportedChildren(node) ? PhasingFixItem.Layer : PhasingFixItem.Object, home.NewName, NameOf(node), NameOf(node), node.Key,
+                            "does not read as a layer (<phase>_<stage>[-<split>]_<name>); left as it is"));
                         continue;
                     }
                     layer.Order = layers.Count;
@@ -382,10 +433,14 @@ namespace Utilities.Planner
             Renumber(layers);
             foreach (var layer in layers)
             {
-                var split = layer.Split != null ? "." + layer.Split : string.Empty;
+                var split = layer.Split != null ? "-" + layer.Split : string.Empty;
                 layer.Id = Pad2(layer.Phase) + "_" + Pad2(layer.Stage) + split;
                 layer.NewName = layer.Id + "_" + layer.Description;
                 layer.Tag = "Ph" + layer.Phase.ToString(CultureInfo.InvariantCulture) + "_St" + Pad2(layer.Stage) + split;
+                if (layer.OldSplitAfterFullStop && layer.Split != null)
+                {
+                    layer.Why.Add(HyphenReason);
+                }
                 if (layer.Moved)
                 {
                     layer.Why.Add("moved into " + layer.Group.NewName + ": it is stage " + layer.Stage.ToString(CultureInfo.InvariantCulture) + " of " + layer.Group.Description);
@@ -393,15 +448,20 @@ namespace Utilities.Planner
             }
             KeepOutsideNames(layers, outsideNames, top, checks);
 
-            // Rule 8: the objects.
+            // Rule 8: the objects (a shape the export leaves out is not one).
             var objects = new List<ObjectWork>();
+            var outside = new OutsideLayers(scene, layers.Concat(unplaced).Select(l => l.Node.Key));
             foreach (var layer in layers)
             {
                 foreach (var child in scene.ChildrenOf(layer.Node))
                 {
-                    var work = ReadObject(child, layer, layers, unplaced, fixes, notes, checks);
+                    if (scene.LeftOut(child))
+                    {
+                        continue;
+                    }
+                    var work = ReadObject(child, layer, layers, unplaced, outside, fixes, notes, checks);
                     objects.Add(work);
-                    if (scene.HasChildren(child))
+                    if (scene.HasExportedChildren(child))
                     {
                         checks.Add(() => CheckRow(PhasingFixItem.Object, work.Layer.NewName, work.OldName, work.NewName, work.Node.Key,
                             "has objects linked under it; its own name is corrected, the objects under it are left as they are"));
@@ -479,10 +539,10 @@ namespace Utilities.Planner
             }
 
             // Rule 10: the 3ds Max layers that carry the same names.
-            var containers = new List<Container> { new Container(PhasingFixItem.TopLayer, top.OldName, top.NewName, string.Empty) };
-            containers.AddRange(groups.Select(g => new Container(PhasingFixItem.Group, g.OldName, g.NewName, top.NewName)));
-            containers.AddRange(layerOrder.Select(l => new Container(PhasingFixItem.Layer, l.OldName, l.NewName, l.Group.NewName)));
-            PlanMaxLayers(plan, maxLayers, containers, layers.Where(l => l.Moved).ToList(), checks);
+            var containers = new List<Container> { new Container(PhasingFixItem.TopLayer, top.Node.Key, top.OldName, top.NewName, string.Empty) };
+            containers.AddRange(groups.Select(g => new Container(PhasingFixItem.Group, g.Node.Key, g.OldName, g.NewName, top.NewName)));
+            containers.AddRange(layerOrder.Select(l => new Container(PhasingFixItem.Layer, l.Node.Key, l.OldName, l.NewName, l.Group.NewName)));
+            PlanMaxLayers(plan, maxLayerList, containers, layers.Where(l => l.Moved).ToList(), checks);
 
             foreach (var check in checks)
             {
@@ -490,6 +550,92 @@ namespace Utilities.Planner
             }
             AddTextNotes(plan, notes, fixes);
             return plan;
+        }
+
+        // The counts for the layer / activity matrix: the Max layers in the top layer's tree, and the helper nodes and
+        // tagged objects under the top node at any depth (the top layer and the top node themselves not counted). The
+        // top layer is the Max layer named like the top node (in any capitals), else the first top-level Max layer with
+        // "phasing" in its name. A shape the export leaves out is not counted at all; one that holds something exported
+        // is an empty node in the export, and counts as a helper.
+        private static PhasingCounts Count(Scene scene, PhasingSceneNode top, List<PhasingMaxLayer> maxLayers)
+        {
+            var counts = new PhasingCounts { TopName = NameOf(top) };
+            var helpers = new List<string>();
+            var seen = new HashSet<long> { top.Key };
+            // Depth first, in the scene's order.
+            var pending = new Stack<PhasingSceneNode>(Enumerable.Reverse(scene.ChildrenOf(top)));
+            while (pending.Count > 0)
+            {
+                var node = pending.Pop();
+                if (!seen.Add(node.Key))
+                {
+                    continue;
+                }
+                if (scene.LeftOut(node))
+                {
+                    // Not exported: nothing under it is either.
+                    continue;
+                }
+                if (node.IsHelper || node.IsShape)
+                {
+                    helpers.Add(NameOf(node));
+                }
+                else if (PlannerNaming.ParseMeshName(NameOf(node)) != null)
+                {
+                    counts.TaggedObjects++;
+                }
+                foreach (var child in Enumerable.Reverse(scene.ChildrenOf(node)))
+                {
+                    pending.Push(child);
+                }
+            }
+            counts.Helpers = helpers.Count;
+
+            // 3ds Max layer names ignore case: the first of a name stands for it, as in rule 10.
+            var byName = new Dictionary<string, PhasingMaxLayer>(StringComparer.OrdinalIgnoreCase);
+            var order = new List<PhasingMaxLayer>();
+            foreach (var maxLayer in maxLayers)
+            {
+                if (maxLayer != null && maxLayer.Name != null && !byName.ContainsKey(maxLayer.Name))
+                {
+                    byName[maxLayer.Name] = maxLayer;
+                    order.Add(maxLayer);
+                }
+            }
+            PhasingMaxLayer topLayer;
+            if (!byName.TryGetValue(counts.TopName, out topLayer))
+            {
+                topLayer = order.FirstOrDefault(l => l.ParentName == null && l.Name.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0);
+            }
+            if (topLayer == null)
+            {
+                return counts;
+            }
+            counts.TopLayerName = topLayer.Name;
+            var children = order.Where(l => l.ParentName != null).ToLookup(l => l.ParentName, StringComparer.OrdinalIgnoreCase);
+            var layers = new List<string>();
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { topLayer.Name };
+            var waiting = new Stack<PhasingMaxLayer>(Enumerable.Reverse(children[topLayer.Name]));
+            while (waiting.Count > 0)
+            {
+                var maxLayer = waiting.Pop();
+                if (!visited.Add(maxLayer.Name))
+                {
+                    continue;
+                }
+                layers.Add(maxLayer.Name);
+                foreach (var child in Enumerable.Reverse(children[maxLayer.Name]))
+                {
+                    waiting.Push(child);
+                }
+            }
+            counts.Layers = layers.Count;
+
+            var helperNames = new HashSet<string>(helpers, StringComparer.OrdinalIgnoreCase);
+            var layerNames = new HashSet<string>(layers, StringComparer.OrdinalIgnoreCase);
+            counts.LayersWithoutHelper.AddRange(layers.Where(n => !helperNames.Contains(n)));
+            counts.HelpersWithoutLayer.AddRange(helpers.Where(n => !layerNames.Contains(n)).Distinct(StringComparer.Ordinal));
+            return counts;
         }
 
         // Rule 4's notes: word fixes held back from a date or TBC, and word fixes that never settle.
@@ -534,7 +680,7 @@ namespace Utilities.Planner
         private static bool ReadsAsLayer(string id, string description)
         {
             var match = LayerPattern.Match(id + "_" + description);
-            return match.Success && !match.Groups[3].Success && match.Groups[4].Value == description;
+            return match.Success && !match.Groups[5].Success && match.Groups[6].Value == description;
         }
 
         // Layers
@@ -544,8 +690,8 @@ namespace Utilities.Planner
             var name = NameOf(node);
             var match = LayerPattern.Match(name);
             int phase, stage, splitValue;
-            if (!match.Success || !TryNumber(match.Groups[1].Value, out phase) || !TryNumber(match.Groups[2].Value, out stage)
-                || (match.Groups[3].Success && !TryNumber(match.Groups[3].Value, out splitValue)))
+            if (!match.Success || !TryNumber(match.Groups[1].Value, out phase) || !TryNumber(match.Groups[3].Value, out stage)
+                || (match.Groups[5].Success && !TryNumber(match.Groups[5].Value, out splitValue)))
             {
                 return null;
             }
@@ -556,22 +702,23 @@ namespace Utilities.Planner
                 Phase = phase,
                 OldStage = stage,
                 Stage = stage,
-                OldSplit = match.Groups[3].Success ? match.Groups[3].Value : null
+                OldSplit = match.Groups[5].Success ? match.Groups[5].Value : null,
+                OldSplitAfterFullStop = match.Groups[4].Success && match.Groups[4].Value == "."
             };
             var phaseText = match.Groups[1].Value;
             if (phaseText != Pad2(phase))
             {
                 layer.Why.Add("phase number written as two digits, like the other phases");
             }
-            if (name[phaseText.Length] == '.')
+            if (match.Groups[2].Value == ".")
             {
                 layer.Why.Add("underscore after the phase number, not a full stop");
             }
-            if (match.Groups[2].Value != Pad2(stage))
+            if (match.Groups[3].Value != Pad2(stage))
             {
                 layer.Why.Add("stage number written as two digits");
             }
-            layer.Rest = match.Groups[4].Value;
+            layer.Rest = match.Groups[6].Value;
             return layer;
         }
 
@@ -586,8 +733,9 @@ namespace Utilities.Planner
             layer.Start = date.Success ? "20" + date.Groups[3].Value + "-" + date.Groups[2].Value + "-" + date.Groups[1].Value : NoDate;
         }
 
-        // Rule 7: a stage with more than one layer gets .1, .2, ... by start date, then old split, then order;
+        // Rule 7: a stage with more than one layer gets -1, -2, ... by start date, then old split, then order;
         // a lone layer keeps its split (or none), unless the review moved it there: that split was its old stage's.
+        // IDs are compared and named in today's spelling, so 02_05.1 and 02_05-1 are the same ID.
         private static void Renumber(List<LayerWork> layers)
         {
             var stages = new List<List<LayerWork>>();
@@ -612,14 +760,14 @@ namespace Utilities.Planner
                     continue;
                 }
                 var list = stage.OrderBy(l => l.Start, StringComparer.Ordinal).ThenBy(l => SplitNumber(l.OldSplit)).ThenBy(l => l.Order).ToList();
-                var oldIds = list.Select(l => Pad2(l.Phase) + "_" + Pad2(l.OldStage) + (l.OldSplit != null ? "." + l.OldSplit : string.Empty)).ToList();
+                var oldIds = list.Select(l => Pad2(l.Phase) + "_" + Pad2(l.OldStage) + (l.OldSplit != null ? "-" + l.OldSplit : string.Empty)).ToList();
                 var repeated = new HashSet<string>(oldIds.Where((id, i) => oldIds.IndexOf(id) != i), StringComparer.Ordinal);
                 for (int i = 0; i < list.Count; i++)
                 {
                     var layer = list[i];
                     layer.Split = (i + 1).ToString(CultureInfo.InvariantCulture);
                     var stageId = Pad2(layer.Phase) + "_" + Pad2(layer.Stage);
-                    if (oldIds[i] == stageId + "." + layer.Split)
+                    if (oldIds[i] == stageId + "-" + layer.Split)
                     {
                         continue;
                     }
@@ -669,8 +817,8 @@ namespace Utilities.Planner
 
         // Objects
 
-        private static ObjectWork ReadObject(PhasingSceneNode node, LayerWork layer, List<LayerWork> layers, List<LayerWork> unplaced, List<PhasingWordFix> fixes,
-            TextFixNotes notes, List<Func<PhasingFixRow>> checks)
+        private static ObjectWork ReadObject(PhasingSceneNode node, LayerWork layer, List<LayerWork> layers, List<LayerWork> unplaced, OutsideLayers outside,
+            List<PhasingWordFix> fixes, TextFixNotes notes, List<Func<PhasingFixRow>> checks)
         {
             var work = new ObjectWork { Node = node, OldName = NameOf(node), Layer = layer };
             work.NewName = work.OldName;
@@ -680,15 +828,19 @@ namespace Utilities.Planner
                 checks.Add(() => CheckRow(PhasingFixItem.Object, work.Layer.NewName, work.OldName, work.NewName, work.Node.Key, "no Ph/St tag at the start of the name"));
                 return work;
             }
-            var kind = lead.Groups[4].Value.ToUpperInvariant();
+            var kind = lead.Groups[5].Value.ToUpperInvariant();
             var body = work.OldName.Substring(lead.Length);
             var tail = string.Empty;
             var trail = kind == "IN" ? TrailPattern.Match(body) : Match.Empty;
             if (trail.Success)
             {
                 body = body.Substring(0, trail.Index);
-                var split = trail.Groups[3].Success ? trail.Groups[3].Value : null;
-                var oldTag = "Ph" + NumberText(trail.Groups[1].Value) + "_St" + trail.Groups[2].Value + (split != null ? "." + split : string.Empty);
+                var split = trail.Groups[4].Success ? trail.Groups[4].Value : null;
+                var splitAfterFullStop = trail.Groups[3].Success && trail.Groups[3].Value == ".";
+                var tagStart = "Ph" + NumberText(trail.Groups[1].Value) + "_St" + trail.Groups[2].Value;
+                // The tag as written (its phase without leading zeros, as before), and in today's spelling.
+                var oldTag = tagStart + (split != null ? trail.Groups[3].Value + split : string.Empty);
+                var sameTag = tagStart + (split != null ? "-" + split : string.Empty);
                 List<LayerWork> ambiguous = null;
                 int phase, stage;
                 // "&", not "&&": both numbers are read, so both are set.
@@ -700,22 +852,48 @@ namespace Utilities.Planner
                     if (tail != trail.Value)
                     {
                         // "_Ph06_St40_RM": the tag between the leading "_" and the trailing "_RM".
-                        work.Why.Add("removal tag " + trail.Value.Substring(1, trail.Value.Length - 4) + " written " + oldTag + ", like the other tags");
+                        work.Why.Add("removal tag " + trail.Value.Substring(1, trail.Value.Length - 4) + " written " + tail.Substring(1, tail.Length - 4) + ", like the other tags");
+                    }
+                    var hyphened = ClosingTagSplitDot.Replace(tail, "$1-");
+                    if (hyphened != tail)
+                    {
+                        tail = hyphened;
+                        work.Why.Add(HyphenReason);
                     }
                     List<LayerWork> strays;
                     var stray = readable ? ResolveOld(unplaced, phase, stage, split, out strays) : null;
+                    // A group elsewhere in the scene that the Planner reads as the layer of that stage (at the scene root,
+                    // under another top node, ...): the Planner reads the removal as its work (and dates it from it once it has
+                    // dates), so the stage has a layer. The scene model does not say what the export leaves out (hidden
+                    // nodes, export layers, selected only: the export's settings, not the scene's), so the line says the group
+                    // counts only if it is exported, as the export's naming check finds.
+                    int splitValue;
+                    var elsewhere = readable && stray == null
+                        ? outside.Find(phase, stage, split != null && TryNumber(split, out splitValue) ? splitValue : (int?)null)
+                        : null;
+                    // The tag stays, but its spelling may be corrected (the phase's zeros, the hyphen), which the object's
+                    // Changed line gives: this line says so rather than "left as it is".
+                    var respelt = tail != trail.Value;
+                    var kept = "tag kept" + (respelt ? ", only its spelling corrected" : string.Empty);
                     checks.Add(() => CheckRow(PhasingFixItem.Object, work.Layer.NewName, work.OldName, work.NewName, work.Node.Key, stray != null
-                        ? "removal tag " + oldTag + " points at " + stray.OldName + ", which is left where it is (see its own row); tag kept"
-                        : "removal tag " + oldTag + " names a stage that has no layer in this file; left as it is - needs the stage it comes out at"));
+                        ? "removal tag " + sameTag + " points at " + stray.OldName + ", which is left where it is (see its own row); " + kept
+                        : elsewhere != null
+                        ? "removal tag " + sameTag + " points at " + elsewhere.Name + ", outside the phasing layers" + (elsewhere.Start.HasValue ? string.Empty : ", which has no dates yet") + "; " + kept
+                          + " - the Planner dates the removal from that group " + (elsewhere.Start.HasValue ? string.Empty : "once it has dates, and ") + "only if the group is exported"
+                        : "removal tag " + sameTag + " names a stage that has no layer in this file; " + (respelt ? kept : "left as it is") + " - needs the stage it comes out at"));
                 }
                 else
                 {
                     tail = "_" + target.Tag + "_RM";
-                    if (target.Tag != oldTag)
+                    if (target.Tag != sameTag)
                     {
                         // The layer's current name with its first date dropped, as the reference words it.
                         var layerText = TrailingUnderscores.Replace(DatePattern.Replace(target.OldName, string.Empty, 1), string.Empty);
                         work.Why.Add("removal tag " + oldTag + " follows its layer " + layerText + " to its new ID " + target.Id);
+                    }
+                    else if (splitAfterFullStop)
+                    {
+                        work.Why.Add(HyphenReason);
                     }
                     if (ambiguous != null)
                     {
@@ -736,9 +914,22 @@ namespace Utilities.Planner
             }, notes, work.OldName);
             work.Body = bodyFix.Text;
             CheckUnreadable(work, bodyFix, null, checks);
+            // A tag still closing the text (an RM object's trailing tag, or a second IN) gets the hyphen too.
+            var closingTag = ClosingTagSplitDot.Replace(work.Body, "$1-");
+            if (closingTag != work.Body)
+            {
+                work.Body = closingTag;
+                work.Why.Add(HyphenReason);
+            }
             if (lead.Value != work.Lead)
             {
-                work.Why.Insert(0, "tag " + TagType.Replace(lead.Value, string.Empty) + " changed to its layer's " + layer.Tag);
+                // Only the full stop before the split differs: say just that.
+                var hyphened = lead.Groups[3].Success && lead.Groups[3].Value == "."
+                    ? lead.Value.Substring(0, lead.Groups[3].Index) + "-" + lead.Value.Substring(lead.Groups[3].Index + 1)
+                    : lead.Value;
+                work.Why.Insert(0, hyphened == work.Lead
+                    ? HyphenReason
+                    : "tag " + TagType.Replace(lead.Value, string.Empty) + " changed to its layer's " + layer.Tag);
             }
             work.Tail = tail;
             work.NewName = work.Lead + work.Body + tail;
@@ -857,24 +1048,40 @@ namespace Utilities.Planner
                 }
             }
 
+            // The Max layer of a node's name: the same name in any capitals, else, for a layer ID, the same name with its
+            // split still after the old full stop, when no node has that name (a Max layer 02_05.1_... goes with a node
+            // already named 02_05-1_...).
+            var nodeNames = new HashSet<string>(containers.Select(c => c.OldName), StringComparer.OrdinalIgnoreCase);
+            Func<string, PhasingMaxLayer> find = name =>
+            {
+                PhasingMaxLayer found;
+                if (byName.TryGetValue(name, out found))
+                {
+                    return found;
+                }
+                var dotted = SplitAfterFullStop(name);
+                return dotted != null && !nodeNames.Contains(dotted) && byName.TryGetValue(dotted, out found) ? found : null;
+            };
+
             // A moved layer's Max layer goes under its group's Max layer, when both exist (current names).
             foreach (var layer in moved)
             {
-                PhasingMaxLayer own, parent;
-                if (byName.TryGetValue(layer.OldName, out own) && byName.TryGetValue(layer.Group.OldName, out parent)
-                    && !string.Equals(own.ParentName, parent.Name, StringComparison.OrdinalIgnoreCase))
+                var own = find(layer.OldName);
+                var parent = find(layer.Group.OldName);
+                if (own != null && parent != null && !string.Equals(own.ParentName, parent.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     plan.MaxLayerMoves.Add(new PhasingMaxLayerMove { Name = own.Name, NewParentName = parent.Name });
                 }
             }
 
             // A Max layer named like a top node, group or layer that is renamed is renamed the same way, unless the
-            // nodes that share its name are going different ways.
+            // nodes that share its name are going different ways. A Max layer still written with the old full stop is
+            // renamed to its node's name even when the node keeps it.
             var wanted = new List<KeyValuePair<Container, PhasingMaxLayer>>();
             foreach (var sameName in containers.GroupBy(c => c.OldName, StringComparer.OrdinalIgnoreCase))
             {
-                PhasingMaxLayer maxLayer;
-                if (!byName.TryGetValue(sameName.Key, out maxLayer) || sameName.All(c => c.NewName == c.OldName))
+                var maxLayer = find(sameName.Key);
+                if (maxLayer == null || (byName.ContainsKey(sameName.Key) && sameName.All(c => c.NewName == c.OldName)))
                 {
                     continue;
                 }
@@ -920,7 +1127,26 @@ namespace Utilities.Planner
             foreach (var rename in wanted.Where(w => !dropped.Contains(w.Value.Name)))
             {
                 plan.MaxLayerRenames.Add(new PhasingMaxLayerRename { OldName = rename.Value.Name, NewName = rename.Key.NewName, Item = rename.Key.Item });
+                if (rename.Key.NewName == rename.Key.OldName)
+                {
+                    // The node keeps its name, so it has no row of its own: the Max layer's change is listed instead.
+                    plan.Rows.Add(ChangedRow(rename.Key.Item, rename.Key.LayerText, rename.Value.Name, rename.Key.NewName, rename.Key.Key,
+                        new[] { "the Max layer takes its node's name: " + HyphenReason }));
+                }
             }
+        }
+
+        // The name with its layer ID's split after a full stop instead of the hyphen (02_05-1_... gives 02_05.1_...), or
+        // null when it has no split after a hyphen.
+        private static string SplitAfterFullStop(string name)
+        {
+            var match = LayerPattern.Match(name ?? string.Empty);
+            if (!match.Success || !match.Groups[4].Success || match.Groups[4].Value != "-")
+            {
+                return null;
+            }
+            var at = match.Groups[4].Index;
+            return name.Substring(0, at) + "." + name.Substring(at + 1);
         }
 
         // Helpers
@@ -1018,6 +1244,8 @@ namespace Utilities.Planner
             public int Phase;
             public int OldStage;
             public string OldSplit;
+            /// <summary>The name writes its split after a full stop, the old form.</summary>
+            public bool OldSplitAfterFullStop;
             public int Stage;
             public string Split;
             public bool StageOverridden;
@@ -1031,7 +1259,7 @@ namespace Utilities.Planner
             public GroupWork Group;
             public bool Moved;
             public string Id;
-            /// <summary>The object tag form of the new ID, e.g. Ph2_St05.1.</summary>
+            /// <summary>The object tag form of the new ID, e.g. Ph2_St05-1.</summary>
             public string Tag;
 
             public override PhasingFixItem Item
@@ -1080,17 +1308,128 @@ namespace Utilities.Planner
         private sealed class Container
         {
             public readonly PhasingFixItem Item;
+            public readonly long Key;
             public readonly string OldName;
             public readonly string NewName;
             public readonly string LayerText;
 
-            public Container(PhasingFixItem item, string oldName, string newName, string layerText)
+            public Container(PhasingFixItem item, long key, string oldName, string newName, string layerText)
             {
                 Item = item;
+                Key = key;
                 OldName = oldName;
                 NewName = newName;
                 LayerText = layerText;
             }
+        }
+
+        /// <summary>
+        /// The groups that are not phasing layers of the fixer's top node but that the Planner reads as layers: a name the
+        /// Planner reads as a dated group (<see cref="PlannerNaming.ParseLayerName"/>) that is the nearest such group of
+        /// a tagged object, anywhere in the scene (at the root, under another top node, under a phase group without
+        /// reading as a layer there). Read on first use. Every node of the scene counts, exported or not: what the export
+        /// leaves out depends on its settings, which the fixer does not have, so the Check line says so.
+        /// </summary>
+        private sealed class OutsideLayers
+        {
+            private readonly Scene scene;
+            private readonly HashSet<long> phasingLayers;
+            private List<OutsideLayer> found;
+
+            public OutsideLayers(Scene scene, IEnumerable<long> phasingLayerKeys)
+            {
+                this.scene = scene;
+                phasingLayers = new HashSet<long>(phasingLayerKeys);
+            }
+
+            /// <summary>
+            /// The layer the Planner reads as that phase and stage (sub-stages as <see cref="PlannerNaming.SameStage"/>), or null:
+            /// a dated one first, then the one for that very sub-stage, then the earliest start, then the scene's order.
+            /// </summary>
+            public OutsideLayer Find(int phase, int stage, int? split)
+            {
+                if (found == null)
+                {
+                    found = Read();
+                }
+                return found.Where(l => l.Phase == phase && PlannerNaming.SameStage(l.Stage, l.SubStage, stage, split))
+                    .OrderBy(l => l.Start.HasValue ? 0 : 1)
+                    .ThenBy(l => l.SubStage == split ? 0 : 1)
+                    .ThenBy(l => l.Start ?? DateTime.MaxValue)
+                    .ThenBy(l => l.Order)
+                    .FirstOrDefault();
+            }
+
+            private List<OutsideLayer> Read()
+            {
+                var byKey = scene.All.ToDictionary(n => n.Key);
+                var groups = new Dictionary<long, PlannerLayerName>();
+                foreach (var node in scene.All.Where(n => !scene.LeftOut(n)))
+                {
+                    var parsed = PlannerNaming.ParseLayerName(NameOf(node));
+                    if (parsed != null)
+                    {
+                        groups[node.Key] = parsed;
+                    }
+                }
+                // Each tagged object (geometry) under its nearest group, as the Planner files it.
+                var members = new Dictionary<long, List<PlannerMeshName>>();
+                foreach (var node in scene.All.Where(n => !n.IsHelper && !n.IsShape))
+                {
+                    var mesh = PlannerNaming.ParseMeshName(NameOf(node));
+                    if (mesh == null)
+                    {
+                        continue;
+                    }
+                    var seen = new HashSet<long>();
+                    var at = node.ParentKey;
+                    while (at.HasValue && !groups.ContainsKey(at.Value) && seen.Add(at.Value))
+                    {
+                        PhasingSceneNode parent;
+                        at = byKey.TryGetValue(at.Value, out parent) ? parent.ParentKey : null;
+                    }
+                    if (!at.HasValue || !groups.ContainsKey(at.Value) || phasingLayers.Contains(at.Value))
+                    {
+                        continue;
+                    }
+                    List<PlannerMeshName> list;
+                    if (!members.TryGetValue(at.Value, out list))
+                    {
+                        list = new List<PlannerMeshName>();
+                        members[at.Value] = list;
+                    }
+                    list.Add(mesh);
+                }
+                var result = new List<OutsideLayer>();
+                for (int i = 0; i < scene.All.Count; i++)
+                {
+                    var node = scene.All[i];
+                    List<PlannerMeshName> list;
+                    if (!members.TryGetValue(node.Key, out list))
+                    {
+                        continue;
+                    }
+                    var group = groups[node.Key];
+                    var phase = PlannerNamingValidator.GroupPhase(group, list);
+                    if (phase.HasValue)
+                    {
+                        result.Add(new OutsideLayer { Name = NameOf(node), Phase = phase.Value, Stage = group.Stage, SubStage = group.SubStage, Start = group.Start, Order = i });
+                    }
+                }
+                return result;
+            }
+        }
+
+        private sealed class OutsideLayer
+        {
+            public string Name;
+            public int Phase;
+            public int Stage;
+            public int? SubStage;
+            /// <summary>Its first date; null when it has none (TBC).</summary>
+            public DateTime? Start;
+            /// <summary>Its place in the scene's list.</summary>
+            public int Order;
         }
 
         private sealed class Scene
@@ -1098,6 +1437,7 @@ namespace Utilities.Planner
             public readonly List<PhasingSceneNode> All = new List<PhasingSceneNode>();
             public readonly List<PhasingSceneNode> Roots;
             private readonly Dictionary<long, List<PhasingSceneNode>> children = new Dictionary<long, List<PhasingSceneNode>>();
+            private readonly Dictionary<long, bool> leftOut = new Dictionary<long, bool>();
             private static readonly List<PhasingSceneNode> None = new List<PhasingSceneNode>();
 
             public Scene(IEnumerable<PhasingSceneNode> nodes)
@@ -1131,6 +1471,67 @@ namespace Utilities.Planner
             public bool HasChildren(PhasingSceneNode node)
             {
                 return node.HasChildren || children.ContainsKey(node.Key);
+            }
+
+            /// <summary>
+            /// Linked under it is something the export keeps: a node that is not a left-out shape, or children that are not
+            /// in the list (taken to be kept).
+            /// </summary>
+            public bool HasExportedChildren(PhasingSceneNode node)
+            {
+                return UnlistedChildren(node) || ChildrenOf(node).Any(c => !LeftOut(c));
+            }
+
+            /// <summary>
+            /// A shape (a spline such as a RailClone path) with nothing exported linked under it at any depth: the export
+            /// leaves it out and the Planner never sees it, so the fixer does not list, rename or count it. A shape that
+            /// does hold something exported is an empty node in the export, like a helper.
+            /// </summary>
+            public bool LeftOut(PhasingSceneNode node)
+            {
+                if (!node.IsShape)
+                {
+                    return false;
+                }
+                bool result;
+                if (leftOut.TryGetValue(node.Key, out result))
+                {
+                    return result;
+                }
+                result = true;
+                var seen = new HashSet<long> { node.Key };
+                var pending = new Stack<PhasingSceneNode>();
+                pending.Push(node);
+                while (pending.Count > 0 && result)
+                {
+                    var current = pending.Pop();
+                    if (UnlistedChildren(current))
+                    {
+                        result = false;
+                        break;
+                    }
+                    foreach (var child in ChildrenOf(current))
+                    {
+                        if (!seen.Add(child.Key))
+                        {
+                            continue;
+                        }
+                        if (!child.IsShape)
+                        {
+                            result = false;
+                            break;
+                        }
+                        pending.Push(child);
+                    }
+                }
+                leftOut[node.Key] = result;
+                return result;
+            }
+
+            // Flagged as having children, none of them in the list.
+            private bool UnlistedChildren(PhasingSceneNode node)
+            {
+                return node.HasChildren && !children.ContainsKey(node.Key);
             }
         }
     }

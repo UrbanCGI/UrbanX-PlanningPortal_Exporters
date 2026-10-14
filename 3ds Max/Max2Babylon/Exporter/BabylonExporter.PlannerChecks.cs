@@ -11,8 +11,8 @@ namespace Max2Babylon
     /// <summary>
     /// UrbanCGI fork: pre-flight checks that protect the Planner (planning.urbancgi.co.uk) from two recurring
     /// export faults, the naming convention its 4D generator depends on and textures whose bytes do not match
-    /// their extension. The naming rules live in <see cref="PlannerNamingValidator"/> (shared, Max-free); this
-    /// file only gathers the scene nodes and reports.
+    /// their extension. The naming rules live in <see cref="PlannerNamingValidator"/> and the phasing counts in
+    /// <see cref="PhasingNameFixer"/> (shared, Max-free); this file only gathers the scene nodes and reports.
     /// </summary>
     partial class BabylonExporter
     {
@@ -25,15 +25,29 @@ namespace Max2Babylon
             }
 
             RaiseMessage("Checking Planner naming convention", Color.Blue);
+            // The fixer's plan for the scene: which top node it corrects (the check says the layers of any other one are
+            // renamed by hand), its pointer to the button, and the phasing counts.
+            var phasing = PlanPhasingNames();
             NamingReport report;
             try
             {
-                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene), DateTime.Today);
+                // Without a plan the check takes the first top node with "phasing" in its name; with one that found no
+                // top node, none (an empty name).
+                var phasingTop = phasing != null ? (phasing.TopName ?? string.Empty) : null;
+                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene), DateTime.Today, phasingTop);
             }
             catch (Exception e)
             {
                 RaiseWarning("Planner naming check skipped: " + e.Message, 1);
                 return true;
+            }
+
+            // A note on layers and helpers that do not pair up goes in with the other notes.
+            var counts = phasing != null ? phasing.Counts : null;
+            var pairing = counts != null ? counts.PairingNote() : null;
+            if (pairing != null)
+            {
+                report.Issues.Add(new NamingIssue { Severity = NamingSeverity.Note, Subject = counts.TopName, Message = pairing });
             }
 
             foreach (var issue in report.Issues)
@@ -51,8 +65,17 @@ namespace Max2Babylon
                         break;
                 }
             }
-            ReportPhasingNameFixes();
+            var fixable = phasing != null ? PhasingFixScript.ExportWarning(phasing) : null;
+            if (fixable != null)
+            {
+                RaiseWarning(fixable, 1);
+            }
             RaiseMessage(report.Summary(), report.Errors > 0 ? Color.Red : Color.Black, 0, true);
+            if (counts != null)
+            {
+                // The tagged objects of the export are in the line above.
+                RaiseMessage(counts.Describe(false), Color.Black, 0, true);
+            }
 
             if (parameters.plannerNamingStrict && report.Errors > 0)
             {
@@ -63,22 +86,18 @@ namespace Max2Babylon
         }
 
         /// <summary>
-        /// One warning when the phasing name fixer could correct names in the scene (with the word fixes saved in
-        /// it, no stage changes), pointing to its button. Never stops the export: a failure of the fixer is ignored.
+        /// The phasing name fixer's plan for the scene (with the word fixes saved in it, no stage changes), or null when
+        /// it cannot be made: the naming check stands on its own and never stops for the fixer.
         /// </summary>
-        private void ReportPhasingNameFixes()
+        private static PhasingFixPlan PlanPhasingNames()
         {
             try
             {
-                var warning = PhasingFixScript.ExportWarning(PhasingScene.Plan(PhasingScene.LoadWordFixes(), null));
-                if (warning != null)
-                {
-                    RaiseWarning(warning, 1);
-                }
+                return PhasingScene.Plan(PhasingScene.LoadWordFixes(), null);
             }
             catch (Exception)
             {
-                // The naming check stands on its own.
+                return null;
             }
         }
 

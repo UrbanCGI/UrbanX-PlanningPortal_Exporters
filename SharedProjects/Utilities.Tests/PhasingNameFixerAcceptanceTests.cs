@@ -20,6 +20,12 @@ namespace Utilities.Tests
     ///   PLANNER_FIX_REF_CSV = the clean-up's rename list (optional)
     ///   PLANNER_FIX_OUT_CSV = where to write the fixer's own list, to compare by eye (optional)
     ///
+    /// The clean-up wrote sub-stages with a full stop; the convention now writes a hyphen. So the expected result is
+    /// v3_06 with every sub-stage full stop (layer IDs and Ph/St tags) turned into a hyphen, "v3_06h": v3_05 must come
+    /// out as v3_06h, v3_06 as v3_06h through hyphen-only renames, and v3_06h must need nothing. The rename list is
+    /// compared with the clean-up's with the same full stops turned into hyphens on both sides, leaving out the
+    /// fixer's own hyphen reason and its hyphen-only rows (the clean-up had no such change).
+    ///
     /// The review edits the clean-up made by hand are given as stage overrides: in phase 2, the Eastside Kerbing
     /// layers are stage 7 and the Westside Kerbing layers stage 8.
     /// </summary>
@@ -27,7 +33,42 @@ namespace Utilities.Tests
     {
         // The GLB exporter's suffix on a repeated name; in 3ds Max those objects carry the same name.
         private static readonly Regex DuplicateSuffix = new Regex(@"\s*\([0-9]+\)\s*\z", RegexOptions.CultureInvariant);
+        // A sub-stage after a full stop: in a layer ID at the start of a name (<PP>_<SS>.<n>_), and in a Ph/St tag.
+        // Written here independently of the fixer, as the definition of v3_06h.
+        private static readonly Regex LayerIdFullStop = new Regex(@"^([0-9]+_[0-9]+)\.([0-9]+)(?=_)", RegexOptions.CultureInvariant);
+        private static readonly Regex TagFullStop = new Regex(@"(Ph[0-9]+_St[0-9]+)\.([0-9]+)(?=_)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        // The same in running text (the What changed column): IDs and tags wherever they stand.
+        private static readonly Regex TextIdFullStop = new Regex(@"(?<![0-9])([0-9]{2}_[0-9]{2})\.([0-9]+)", RegexOptions.CultureInvariant);
+        private static readonly Regex TextTagFullStop = new Regex(@"(Ph[0-9]+_St[0-9]+)\.([0-9]+)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         private readonly ITestOutputHelper output;
+
+        /// <summary>A name with its sub-stage full stops turned into hyphens (v3_06 to v3_06h).</summary>
+        internal static string Hyphenate(string name)
+        {
+            return TagFullStop.Replace(LayerIdFullStop.Replace(name ?? string.Empty, "$1-$2"), "$1-$2");
+        }
+
+        internal static string StripDuplicateSuffix(string name)
+        {
+            return DuplicateSuffix.Replace(name ?? string.Empty, string.Empty);
+        }
+
+        private static string HyphenateText(string text)
+        {
+            return TextTagFullStop.Replace(TextIdFullStop.Replace(text ?? string.Empty, "$1-$2"), "$1-$2");
+        }
+
+        // A reason list without the fixer's hyphen reason, which the clean-up never gave.
+        private static string WithoutHyphenReason(string reasons)
+        {
+            return string.Join("; ", (reasons ?? string.Empty).Split(new[] { "; " }, StringSplitOptions.None).Where(r => r != PhasingNameFixer.HyphenReason).ToArray());
+        }
+
+        // A Changed row that only puts the hyphen in: the clean-up did not have it.
+        private static bool HyphenOnly(PhasingFixRow row)
+        {
+            return row.Status == PhasingFixStatus.Changed && row.WhatChanged == PhasingNameFixer.HyphenReason && Hyphenate(row.CurrentName) == row.CorrectedName;
+        }
 
         public PhasingNameFixerAcceptanceTests(ITestOutputHelper output)
         {
@@ -38,6 +79,8 @@ namespace Utilities.Tests
         {
             public readonly List<string> Names = new List<string>();
             public readonly List<List<int>> Children = new List<List<int>>();
+            /// <summary>The GLB node carries a mesh (the extract's "mesh" flag; true when the file has none).</summary>
+            public readonly List<bool> Mesh = new List<bool>();
             public List<int> Roots = new List<int>();
 
             public static Tree Load(string path)
@@ -48,8 +91,33 @@ namespace Utilities.Tests
                 {
                     tree.Names.Add(DuplicateSuffix.Replace((string)node["name"] ?? string.Empty, string.Empty));
                     tree.Children.Add(node["children"].Select(c => (int)c).ToList());
+                    tree.Mesh.Add(node["mesh"] == null || (bool)node["mesh"]);
                 }
                 return tree;
+            }
+
+            /// <summary>The same tree with every sub-stage full stop turned into a hyphen.</summary>
+            public Tree Hyphenated()
+            {
+                var result = new Tree { Roots = Roots.ToList() };
+                result.Names.AddRange(Names.Select(Hyphenate));
+                result.Children.AddRange(Children.Select(c => c.ToList()));
+                result.Mesh.AddRange(Mesh);
+                return result;
+            }
+
+            /// <summary>Every node under <paramref name="node"/>, at any depth.</summary>
+            public List<int> Descendants(int node)
+            {
+                var result = new List<int>();
+                var pending = new Stack<int>(Children[node]);
+                while (pending.Count > 0)
+                {
+                    var next = pending.Pop();
+                    result.Add(next);
+                    foreach (var child in Children[next]) pending.Push(child);
+                }
+                return result;
             }
 
             public int? ParentOf(int index)
@@ -77,6 +145,12 @@ namespace Utilities.Tests
                     }
                     nodes[parent].HasChildren = Children[parent].Count > 0;
                 }
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    // The GLB does not say which nodes are helpers, but the export writes a node without a mesh only for
+                    // a helper (a dummy, a point, a group head) or for a node holding exported objects: those stand in.
+                    nodes[i].IsHelper = !Mesh[i];
+                }
                 return nodes;
             }
 
@@ -86,6 +160,7 @@ namespace Utilities.Tests
                 var result = new Tree { Roots = Roots.ToList() };
                 result.Names.AddRange(Names);
                 result.Children.AddRange(Children.Select(c => c.ToList()));
+                result.Mesh.AddRange(Mesh);
                 foreach (var rename in plan.NodeRenames)
                 {
                     result.Names[(int)rename.Key] = rename.NewName;
@@ -171,7 +246,12 @@ namespace Utilities.Tests
             }
             var before = Tree.Load(beforePath);
             var after = Tree.Load(afterPath);
+            var expected = after.Hyphenated(); // v3_06h
             Assert.Equal(before.Names.Count, after.Names.Count);
+            var hyphenated = Enumerable.Range(0, after.Names.Count).Count(i => after.Names[i] != expected.Names[i]);
+            output.WriteLine("v3_06h: " + hyphenated + " of v3_06's " + after.Names.Count + " names take the hyphen; dimension and version full stops kept: "
+                + string.Join(", ", expected.Names.Where(n => n.Contains(".")).Take(5).ToArray()));
+            Assert.True(hyphenated > 100);
 
             var nodes = before.SceneNodes();
             var overrides = KerbingOverrides(nodes);
@@ -182,33 +262,53 @@ namespace Utilities.Tests
             var top = (int)plan.TopKey.Value;
             var phasing = before.PhasingTree(top);
 
-            // Every node comes out with its cleaned name and place; nothing outside the phasing tree is touched.
+            // v3_05: every node comes out with its v3_06h name and place; nothing outside the phasing tree is touched.
             var fixedTree = before.Applied(plan);
-            var nameMismatches = Enumerable.Range(0, before.Names.Count).Where(i => fixedTree.Names[i] != after.Names[i]).ToList();
-            var placeMismatches = Enumerable.Range(0, before.Names.Count).Where(i => !fixedTree.Children[i].SequenceEqual(after.Children[i])).ToList();
+            var nameMismatches = Enumerable.Range(0, before.Names.Count).Where(i => fixedTree.Names[i] != expected.Names[i]).ToList();
+            var placeMismatches = Enumerable.Range(0, before.Names.Count).Where(i => !fixedTree.Children[i].SequenceEqual(expected.Children[i])).ToList();
             var outsideTouched = plan.NodeRenames.Select(r => (int)r.Key).Concat(plan.NodeMoves.Select(m => (int)m.Key)).Where(k => !phasing.Contains(k)).ToList();
             var expectedMoves = Enumerable.Range(0, before.Names.Count).Where(i => before.ParentOf(i) != after.ParentOf(i)).ToList();
-            var renamedInCleanUp = Enumerable.Range(0, before.Names.Count).Count(i => before.Names[i] != after.Names[i]);
-            foreach (var i in nameMismatches) output.WriteLine("NAME  #" + i + ": " + fixedTree.Names[i] + "  expected " + after.Names[i]);
-            foreach (var i in placeMismatches) output.WriteLine("PLACE #" + i + ": children " + string.Join(",", fixedTree.Children[i]) + "  expected " + string.Join(",", after.Children[i]));
-            output.WriteLine(string.Format("Nodes {0}, phasing tree {1}; renames {2} (clean-up renamed {3}), moves {4} (expected {5}); name mismatches {6}, place mismatches {7}, outside touched {8}; checks {9}",
-                before.Names.Count, phasing.Count, plan.NodeRenames.Count, renamedInCleanUp, plan.NodeMoves.Count, expectedMoves.Count,
+            var renamesExpected = Enumerable.Range(0, before.Names.Count).Count(i => before.Names[i] != expected.Names[i]);
+            foreach (var i in nameMismatches) output.WriteLine("NAME  #" + i + ": " + fixedTree.Names[i] + "  expected " + expected.Names[i]);
+            foreach (var i in placeMismatches) output.WriteLine("PLACE #" + i + ": children " + string.Join(",", fixedTree.Children[i]) + "  expected " + string.Join(",", expected.Children[i]));
+            output.WriteLine(string.Format("v3_05 -> v3_06h: nodes {0}, phasing tree {1}; renames {2} (expected {3}), moves {4} (expected {5}); name mismatches {6}, place mismatches {7}, outside touched {8}; checks {9}",
+                before.Names.Count, phasing.Count, plan.NodeRenames.Count, renamesExpected, plan.NodeMoves.Count, expectedMoves.Count,
                 nameMismatches.Count, placeMismatches.Count, outsideTouched.Count, plan.ToCheck));
+            output.WriteLine(plan.Counts.Describe(true));
             Assert.Empty(nameMismatches);
             Assert.Empty(placeMismatches);
             Assert.Empty(outsideTouched);
-            Assert.Equal(renamedInCleanUp, plan.NodeRenames.Count);
+            Assert.Equal(renamesExpected, plan.NodeRenames.Count);
             Assert.Equal(expectedMoves, plan.NodeMoves.Select(m => (int)m.Key).ToList());
             Assert.Equal(after.ParentOf(expectedMoves[0]), (int)plan.NodeMoves[0].ToParentKey);
 
-            // The cleaned file needs nothing more, with or without the review's stages.
+            // v3_06 (the clean-up, full stops): hyphen-only renames, no moves, and it comes out as v3_06h.
             var cleaned = after.SceneNodes();
             foreach (var again in new[] { PhasingNameFixer.Plan(cleaned, null, PhasingNameFixer.DefaultWordFixes(), KerbingOverrides(cleaned)),
                                           PhasingNameFixer.Plan(cleaned, null, PhasingNameFixer.DefaultWordFixes(), null) })
             {
-                output.WriteLine("Cleaned file: " + again.NodeRenames.Count + " renames, " + again.NodeMoves.Count + " moves, " + again.ToCheck + " to check");
+                var applied = after.Applied(again);
+                var mismatches = Enumerable.Range(0, after.Names.Count).Count(i => applied.Names[i] != expected.Names[i]);
+                var notHyphenOnly = again.NodeRenames.Count(r => Hyphenate(r.OldName) != r.NewName);
+                var otherReasons = again.Rows.Count(r => r.Status == PhasingFixStatus.Changed && r.WhatChanged != PhasingNameFixer.HyphenReason);
+                output.WriteLine(string.Format("v3_06 -> v3_06h: {0} renames (expected {1}), {2} moves, {3} to check; name mismatches {4}, renames that are not hyphen-only {5}, other reasons {6}",
+                    again.NodeRenames.Count, hyphenated, again.NodeMoves.Count, again.ToCheck, mismatches, notHyphenOnly, otherReasons));
+                Assert.Equal(0, mismatches);
+                Assert.Equal(0, notHyphenOnly);
+                Assert.Equal(0, otherReasons);
+                Assert.Equal(hyphenated, again.NodeRenames.Count);
+                Assert.Empty(again.NodeMoves);
+            }
+
+            // v3_06h needs nothing more, with or without the review's stages.
+            var done = expected.SceneNodes();
+            foreach (var again in new[] { PhasingNameFixer.Plan(done, null, PhasingNameFixer.DefaultWordFixes(), KerbingOverrides(done)),
+                                          PhasingNameFixer.Plan(done, null, PhasingNameFixer.DefaultWordFixes(), null) })
+            {
+                output.WriteLine("v3_06h: " + again.NodeRenames.Count + " renames, " + again.NodeMoves.Count + " moves, " + again.ToCheck + " to check");
                 Assert.Empty(again.NodeRenames);
                 Assert.Empty(again.NodeMoves);
+                Assert.False(again.HasChanges);
             }
 
             var outPath = Environment.GetEnvironmentVariable("PLANNER_FIX_OUT_CSV");
@@ -224,13 +324,17 @@ namespace Utilities.Tests
             }
 
             // The rename list: Changed rows match on Type / Current / Corrected (and the layer column); the reasons
-            // match too, except where the review's stage or the duplicate handling words them differently.
+            // match too, except where the review's stage or the duplicate handling words them differently. The
+            // clean-up's names and reasons are taken with their full stops hyphenated, the fixer's reasons without its
+            // hyphen reason, and its hyphen-only rows (names the clean-up left alone) are counted apart.
             var reference = ReadCsv(csvPath);
             Assert.Equal(PhasingFixPlan.CsvHeader, string.Join(",", reference[0]));
             var expectedChanged = reference.Skip(1).Where(r => r[0] == "Changed").ToList();
             var expectedChecks = reference.Skip(1).Where(r => r[0] == "Check").ToList();
-            var changed = plan.Rows.Where(r => r.Status == PhasingFixStatus.Changed).ToList();
+            var hyphenOnly = plan.Rows.Where(HyphenOnly).ToList();
+            var changed = plan.Rows.Where(r => r.Status == PhasingFixStatus.Changed && !HyphenOnly(r)).ToList();
             var checks = plan.Rows.Where(r => r.Status == PhasingFixStatus.Check).ToList();
+            var leftAloneInCleanUp = Enumerable.Range(0, before.Names.Count).Count(i => before.Names[i] == after.Names[i] && after.Names[i] != expected.Names[i]);
             int rowMismatches = 0, layerColumnMismatches = 0, reasonMismatches = 0, reasonsExempt = 0;
             for (int i = 0; i < Math.Max(changed.Count, expectedChanged.Count); i++)
             {
@@ -243,17 +347,19 @@ namespace Utilities.Tests
                 var mine = changed[i];
                 var theirs = expectedChanged[i];
                 var theirCurrent = DuplicateSuffix.Replace(theirs[3], string.Empty);
-                if (mine.TypeText != theirs[1] || mine.CurrentName != theirCurrent || mine.CorrectedName != theirs[4])
+                if (mine.TypeText != theirs[1] || mine.CurrentName != theirCurrent || mine.CorrectedName != Hyphenate(theirs[4]))
                 {
                     rowMismatches++;
-                    output.WriteLine("ROW " + i + ": " + mine.TypeText + " " + mine.CurrentName + " -> " + mine.CorrectedName + "  expected " + theirs[1] + " " + theirCurrent + " -> " + theirs[4]);
+                    output.WriteLine("ROW " + i + ": " + mine.TypeText + " " + mine.CurrentName + " -> " + mine.CorrectedName + "  expected " + theirs[1] + " " + theirCurrent + " -> " + Hyphenate(theirs[4]));
                 }
-                if (mine.LayerItSitsIn != theirs[2])
+                if (mine.LayerItSitsIn != Hyphenate(theirs[2]))
                 {
                     layerColumnMismatches++;
-                    output.WriteLine("LAYER " + i + ": " + mine.LayerItSitsIn + "  expected " + theirs[2]);
+                    output.WriteLine("LAYER " + i + ": " + mine.LayerItSitsIn + "  expected " + Hyphenate(theirs[2]));
                 }
-                if (mine.WhatChanged != theirs[5])
+                var mineReason = HyphenateText(WithoutHyphenReason(mine.WhatChanged));
+                var theirReason = HyphenateText(theirs[5]);
+                if (mineReason != theirReason)
                 {
                     bool exempt = mine.WhatChanged.Contains("in the review") || mine.WhatChanged.Contains("number added") || theirCurrent != theirs[3]
                         || mine.WhatChanged.Contains("moved into");
@@ -266,19 +372,20 @@ namespace Utilities.Tests
             {
                 var mine = checks[i];
                 var theirs = expectedChecks[i];
-                if (mine.TypeText != theirs[1] || mine.LayerItSitsIn != theirs[2] || mine.CurrentName != DuplicateSuffix.Replace(theirs[3], string.Empty)
-                    || mine.CorrectedName != theirs[4] || mine.WhatChanged != theirs[5])
+                if (mine.TypeText != theirs[1] || mine.LayerItSitsIn != Hyphenate(theirs[2]) || mine.CurrentName != DuplicateSuffix.Replace(theirs[3], string.Empty)
+                    || mine.CorrectedName != Hyphenate(theirs[4]) || HyphenateText(mine.WhatChanged) != HyphenateText(theirs[5]))
                 {
                     checkMismatches++;
                     output.WriteLine("CHECK " + i + ": " + mine.CurrentName + " | " + mine.WhatChanged + "  expected " + theirs[3] + " | " + theirs[5]);
                 }
             }
-            output.WriteLine(string.Format("Rename list: {0} Changed rows (reference {1}), {2} Check rows (reference {3}); row mismatches {4}, layer column mismatches {5}, reason mismatches {6} (+{7} expected to differ), check mismatches {8}",
-                changed.Count, expectedChanged.Count, checks.Count, expectedChecks.Count, rowMismatches, layerColumnMismatches, reasonMismatches, reasonsExempt, checkMismatches));
+            output.WriteLine(string.Format("Rename list: {0} Changed rows (reference {1}) + {2} hyphen-only (names the clean-up left alone: {3}), {4} Check rows (reference {5}); row mismatches {6}, layer column mismatches {7}, reason mismatches {8} (+{9} expected to differ), check mismatches {10}",
+                changed.Count, expectedChanged.Count, hyphenOnly.Count, leftAloneInCleanUp, checks.Count, expectedChecks.Count, rowMismatches, layerColumnMismatches, reasonMismatches, reasonsExempt, checkMismatches));
             Assert.Equal(0, rowMismatches);
             Assert.Equal(0, layerColumnMismatches);
             Assert.Equal(0, reasonMismatches);
             Assert.Equal(0, checkMismatches);
+            Assert.Equal(leftAloneInCleanUp, hyphenOnly.Count);
         }
 
         // The modellers' scene also has a Max layer for the top node, each group and each layer, nested like the
@@ -295,7 +402,7 @@ namespace Utilities.Tests
                 return;
             }
             var before = Tree.Load(beforePath);
-            var after = Tree.Load(afterPath);
+            var after = Tree.Load(afterPath).Hyphenated(); // v3_06h
             var scene = new FixerScene();
             scene.Nodes.AddRange(before.SceneNodes());
             var top = before.Roots.First(r => before.Names[r].IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0);
@@ -320,6 +427,16 @@ namespace Utilities.Tests
             Assert.Single(plan.MaxLayerMoves);
             Assert.Equal(mirrored.Count(i => before.Names[i] != after.Names[i]), plan.MaxLayerRenames.Count);
 
+            // The counts: every Max layer under the top one; the nodes without a mesh stand in for the helpers. Every
+            // group and layer has a Max layer of its name, the empty 01_00_START_DATE_01-06-26 too, so they pair up.
+            output.WriteLine(plan.Counts.Describe(true));
+            output.WriteLine(plan.Counts.PairingNote() ?? "Layers and helpers pair up.");
+            Assert.Equal(mirrored.Count - 1, plan.Counts.Layers);
+            Assert.Equal(before.Names[top], plan.Counts.TopLayerName);
+            Assert.Equal(before.Descendants(top).Count(i => !before.Mesh[i]), plan.Counts.Helpers);
+            Assert.Equal(plan.Counts.Layers, plan.Counts.Helpers);
+            Assert.Null(plan.Counts.PairingNote());
+
             // The batch takes every item, and its arrays read back as the plan.
             var batch = PhasingFixScript.Build(plan, "__phasing_fix_test_");
             Assert.Empty(batch.Refused);
@@ -329,7 +446,7 @@ namespace Utilities.Tests
             Assert.Equal(plan.MaxLayerRenames.Select(r => r.NewName), MaxScriptText.ArrayItems(batch.Script, "fixLayerRenameNew"));
             output.WriteLine("Batch: " + batch.Script.Length + " characters");
 
-            // Carried out, every node and Max layer has its cleaned name and place.
+            // Carried out, every node and Max layer has its v3_06h name and place.
             scene.Apply(plan);
             var byKey = scene.Nodes.ToDictionary(n => n.Key);
             var nameMismatches = Enumerable.Range(0, after.Names.Count).Count(i => byKey[i].Name != after.Names[i]);

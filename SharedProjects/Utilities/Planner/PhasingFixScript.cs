@@ -622,6 +622,13 @@ namespace Utilities.Planner
             return count.ToString(CultureInfo.InvariantCulture) + " " + (count == 1 ? one : many);
         }
 
+        /// <summary>The first <paramref name="shown"/> names, comma-separated, then "and N more" for the rest.</summary>
+        internal static string FirstNames(IList<string> names, int shown)
+        {
+            var text = string.Join(", ", names.Take(shown).ToArray());
+            return names.Count > shown ? text + " and " + (names.Count - shown).ToString(CultureInfo.InvariantCulture) + " more" : text;
+        }
+
         private static string DescribeFailure(PhasingFixBatch batch, string kind, int index, string code, string detail)
         {
             var error = "3ds Max reported an error" + (string.IsNullOrEmpty(detail) ? string.Empty : ": " + detail);

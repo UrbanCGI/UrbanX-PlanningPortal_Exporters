@@ -157,8 +157,9 @@ namespace Max2Babylon
 
         /// <summary>
         /// Plans the phasing name fix with the word fixes saved in the scene (or the HS2 list) and no stage changes,
-        /// and returns the summary followed by the list as CSV text. With <paramref name="apply"/> the list is also
-        /// carried out, after holding the scene (Edit > Fetch restores it), and the outcome follows the summary.
+        /// and returns the summary and the phasing counts followed by the list as CSV text. With
+        /// <paramref name="apply"/> the list is also carried out, after holding the scene (Edit > Fetch restores it),
+        /// and the outcome follows the summary, with the counts of the scene as the fix left it.
         /// </summary>
         public static string FixPhasingNames(bool apply)
         {
@@ -168,21 +169,43 @@ namespace Max2Babylon
             }
             var wordFixes = PhasingScene.LoadWordFixes();
             var plan = PhasingScene.Plan(wordFixes, null);
+            var applying = apply && plan.HasChanges;
             var text = new StringBuilder();
             text.Append(plan.Summary()).Append("\r\n");
+            if (!applying)
+            {
+                AppendCounts(text, plan.Counts);
+            }
             foreach (var note in plan.Notes)
             {
                 text.Append(note).Append("\r\n");
             }
-            if (apply && plan.HasChanges)
+            if (applying)
             {
                 Loader.Core.FileHold();
                 var result = PhasingScene.Apply(plan);
                 var after = PhasingScene.Plan(wordFixes, null, new[] { result });
                 text.Append(result.Describe(after, true)).Append("\r\n");
+                // The counts once the fix is done: a renamed layer or helper may pair up now.
+                AppendCounts(text, after.Counts);
             }
             text.Append("\r\n").Append(plan.ToCsv().TrimStart((char)0xFEFF));
             return text.ToString();
+        }
+
+        // The phasing counts line and, when layers and helpers do not pair up, the note on it.
+        private static void AppendCounts(StringBuilder text, Utilities.Planner.PhasingCounts counts)
+        {
+            if (counts == null)
+            {
+                return;
+            }
+            text.Append(counts.Describe(true)).Append("\r\n");
+            var pairing = counts.PairingNote();
+            if (pairing != null)
+            {
+                text.Append(pairing).Append("\r\n");
+            }
         }
 
         public static void DisableBabylonAutoSave()

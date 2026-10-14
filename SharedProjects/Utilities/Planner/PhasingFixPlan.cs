@@ -22,6 +22,97 @@ namespace Utilities.Planner
         public bool IsGroupHead;
         /// <summary>A member of a 3ds Max group.</summary>
         public bool IsGroupMember;
+        /// <summary>
+        /// A helper rather than geometry: a dummy, a point, a group head or another helper object, as 3ds Max reports
+        /// it (the Max side decides). Only counted, for the comparison with the layer / activity matrix.
+        /// </summary>
+        public bool IsHelper;
+        /// <summary>
+        /// A shape (spline) as 3ds Max reports it, e.g. a RailClone path: the export leaves it out, so the Planner never
+        /// sees it, unless something exported is linked under it (then it is an empty node, and counts as a helper). A
+        /// shape that nothing exported is linked under is not listed, renamed or counted by the fixer.
+        /// </summary>
+        public bool IsShape;
+    }
+
+    /// <summary>A layer name read as the fixer reads it: phase, stage and split (see <see cref="PhasingNameFixer.ReadLayerId"/>).</summary>
+    public sealed class PhasingLayerId
+    {
+        public int Phase;
+        public int Stage;
+        /// <summary>The split ("02_05-2" gives 2), or null.</summary>
+        public int? Split;
+        /// <summary>The split is written after a full stop, the old form ("02_05.2").</summary>
+        public bool SplitAfterFullStop;
+    }
+
+    /// <summary>
+    /// The phasing hierarchy in numbers, to compare with the project's layer / activity matrix: the Max layers inside
+    /// the phasing top layer's tree, the helper nodes (dummies, points, group heads) inside the phasing top node's
+    /// hierarchy, and the tagged objects there. Worked out by <see cref="PhasingNameFixer.Plan"/> from its scene model;
+    /// the Fix phasing names window and the export log both show these.
+    /// </summary>
+    public sealed class PhasingCounts
+    {
+        /// <summary>Names listed at most on each side of the pairing note.</summary>
+        public const int NamesShown = 10;
+
+        /// <summary>The phasing top node's name.</summary>
+        public string TopName;
+        /// <summary>The Max layer the layers are counted under, or null when there is none.</summary>
+        public string TopLayerName;
+        /// <summary>Max layers inside the top layer's tree, at any depth (the top layer not counted).</summary>
+        public int Layers;
+        /// <summary>
+        /// Helper nodes inside the top node's hierarchy, at any depth (the top node not counted), with the shapes that
+        /// something exported is linked under (empty nodes in the export).
+        /// </summary>
+        public int Helpers;
+        /// <summary>Other nodes inside the top node's hierarchy whose names start with a Ph/St tag (shapes left out).</summary>
+        public int TaggedObjects;
+        /// <summary>Counted layers with no counted helper of the same name (any capitals), in layer order.</summary>
+        public readonly List<string> LayersWithoutHelper = new List<string>();
+        /// <summary>Counted helpers with no counted layer of the same name (any capitals), in scene order.</summary>
+        public readonly List<string> HelpersWithoutLayer = new List<string>();
+
+        /// <summary>
+        /// One line, e.g. "Phasing counts: 74 layers in the Max layer X, 81 helper nodes under X." With
+        /// <paramref name="withTaggedObjects"/>, the tagged objects too ("..., 81 helper nodes and 170 tagged objects under X.").
+        /// </summary>
+        public string Describe(bool withTaggedObjects)
+        {
+            var layers = TopLayerName != null
+                ? PhasingFixScript.Count(Layers, "layer", "layers") + " in the Max layer " + TopLayerName
+                : "no Max layer named " + TopName + " to count layers in";
+            var under = withTaggedObjects
+                ? PhasingFixScript.Count(Helpers, "helper node", "helper nodes") + " and " + PhasingFixScript.Count(TaggedObjects, "tagged object", "tagged objects")
+                : PhasingFixScript.Count(Helpers, "helper node", "helper nodes");
+            return "Phasing counts: " + layers + ", " + under + " under " + TopName + ".";
+        }
+
+        /// <summary>
+        /// Says how the counted layers and helpers fail to pair up by name, with up to <see cref="NamesShown"/> names
+        /// each side; null when they pair up, or when there is no top layer to compare with.
+        /// </summary>
+        public string PairingNote()
+        {
+            if (TopLayerName == null || (LayersWithoutHelper.Count == 0 && HelpersWithoutLayer.Count == 0))
+            {
+                return null;
+            }
+            var parts = new List<string>();
+            if (LayersWithoutHelper.Count > 0)
+            {
+                parts.Add(PhasingFixScript.Count(LayersWithoutHelper.Count, "layer has", "layers have") + " no helper node of the same name ("
+                    + PhasingFixScript.FirstNames(LayersWithoutHelper, NamesShown) + ")");
+            }
+            if (HelpersWithoutLayer.Count > 0)
+            {
+                parts.Add(PhasingFixScript.Count(HelpersWithoutLayer.Count, "helper node has", "helper nodes have") + " no layer of the same name ("
+                    + PhasingFixScript.FirstNames(HelpersWithoutLayer, NamesShown) + ")");
+            }
+            return "The phasing layers and helper nodes do not pair up: " + string.Join("; ", parts.ToArray()) + ".";
+        }
     }
 
     /// <summary>A 3ds Max layer (Layer Explorer), by name.</summary>
@@ -143,7 +234,7 @@ namespace Utilities.Planner
         public int WrittenStage;
         /// <summary>The stage it gets: the written stage, or the review's override.</summary>
         public int Stage;
-        /// <summary>The split number it gets ("2" for 02_05.2), or null.</summary>
+        /// <summary>The split number it gets ("2" for 02_05-2), or null.</summary>
         public string Split;
         /// <summary>The corrected text after the ID.</summary>
         public string Description;
@@ -162,6 +253,8 @@ namespace Utilities.Planner
         public string TopName;
         /// <summary>Set when there is nothing to fix at all (no phasing top node).</summary>
         public string Message;
+        /// <summary>The phasing layers, helpers and tagged objects counted, or null when there is no phasing top node.</summary>
+        public PhasingCounts Counts;
         /// <summary>Things about the inputs worth telling the modeller, e.g. a word fix that was not used.</summary>
         public readonly List<string> Notes = new List<string>();
 
@@ -203,7 +296,7 @@ namespace Utilities.Planner
                 return Message ?? string.Empty;
             }
             return string.Format(CultureInfo.InvariantCulture, "{0} and {1} to change, {2} to check.",
-                Plural(LayersToChange, "layer", "layers"), Plural(ObjectsToChange, "object", "objects"), ToCheck);
+                PhasingFixScript.Count(LayersToChange, "layer", "layers"), PhasingFixScript.Count(ObjectsToChange, "object", "objects"), ToCheck);
         }
 
         /// <summary>The review list as CSV, in the reference format: a byte order mark, the header, CRLF line ends.</summary>
@@ -249,11 +342,6 @@ namespace Utilities.Planner
                 return text;
             }
             return "\"" + text.Replace("\"", "\"\"") + "\"";
-        }
-
-        private static string Plural(int count, string one, string many)
-        {
-            return count.ToString(CultureInfo.InvariantCulture) + " " + (count == 1 ? one : many);
         }
     }
 }

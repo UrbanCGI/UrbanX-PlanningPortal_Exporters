@@ -31,6 +31,7 @@ namespace Max2Babylon
         private static PhasingFixForm current;
         private static NativeWindow maxWindow;
 
+        private readonly Label countsLabel = new Label();
         private readonly Label summaryLabel = new Label();
         private readonly Label detailLabel = new Label();
         private readonly DataGridView grid = new DataGridView();
@@ -124,10 +125,14 @@ namespace Max2Babylon
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 1,
-                RowCount = 2,
+                RowCount = 3,
                 Padding = new Padding(8, 8, 8, 4)
             };
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            // The phasing counts, for the comparison with the layer / activity matrix, above everything else.
+            countsLabel.AutoSize = true;
+            countsLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            countsLabel.Margin = new Padding(0, 0, 0, 6);
             summaryLabel.AutoSize = true;
             summaryLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             summaryFont = new Font(Font, FontStyle.Bold);
@@ -136,8 +141,9 @@ namespace Max2Babylon
             detailLabel.AutoSize = true;
             detailLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             detailLabel.Margin = new Padding(0);
-            top.Controls.Add(summaryLabel, 0, 0);
-            top.Controls.Add(detailLabel, 0, 1);
+            top.Controls.Add(countsLabel, 0, 0);
+            top.Controls.Add(summaryLabel, 0, 1);
+            top.Controls.Add(detailLabel, 0, 2);
 
             grid.Dock = DockStyle.Fill;
             grid.AllowUserToAddRows = false;
@@ -390,6 +396,8 @@ namespace Max2Babylon
             grid.Rows.Clear();
             if (plan == null)
             {
+                countsLabel.Text = string.Empty;
+                countsLabel.Visible = false;
                 summaryLabel.Text = "The scene could not be read.";
                 detailLabel.Text = readError ?? string.Empty;
                 applyButton.Enabled = false;
@@ -397,6 +405,10 @@ namespace Max2Babylon
                 return;
             }
 
+            var counts = plan.Counts;
+            var pairing = counts != null ? counts.PairingNote() : null;
+            countsLabel.Text = counts == null ? string.Empty : counts.Describe(true) + (pairing != null ? "\r\n" + pairing : string.Empty);
+            countsLabel.Visible = counts != null;
             summaryLabel.Text = plan.Summary();
             var rows = new List<DataGridViewRow>();
             foreach (var row in plan.Rows.Where(r => r.Status == PhasingFixStatus.Changed && (r.Item == PhasingFixItem.TopLayer || r.Item == PhasingFixItem.Group)))
