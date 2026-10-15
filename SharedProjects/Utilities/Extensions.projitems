@@ -33,6 +33,17 @@
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixPlan.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingNameFixer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixScript.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerList.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerScene.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerPlanner.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerScript.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerObjectLinks.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNaturalOrder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerSchedule.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerTagEdit.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerAddLayer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerScheduleRows.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerPreview.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingWordFixText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TreeViewExtension.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Updates\UpdateCommandLine.cs" />

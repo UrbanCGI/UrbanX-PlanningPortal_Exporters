@@ -12,6 +12,8 @@ namespace Max2Babylon
         public LightPropertiesForm()
         {
             InitializeComponent();
+            // UrbanCGI fork: the title says Planner (set here, so the designer file is left as it is).
+            this.Text = "Planner - Light Properties";
         }
 
         private void LightPropertiesForm_Load(object sender, EventArgs e)

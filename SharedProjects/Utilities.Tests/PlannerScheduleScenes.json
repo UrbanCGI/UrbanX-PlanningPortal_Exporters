@@ -1,0 +1,739 @@
+[
+ {
+  "id": "removed-then-installed",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_02_Strip_Out_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_RM_Old_Fence",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "ph1_st02_RM_Kerb_B_ph2_st01_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_IN_Fence2_Ph1_St02_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Reinstate_10-09-26_12-09-26",
+    "parent": 6,
+    "mesh": false
+   },
+   {
+    "name": "ph1_st02_RM_Kerb_A_ph2_st01_IN",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_IN_Fence_Ph1_St02_RM",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_IN_New_Kerb",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "installed-then-removed",
+  "nodes": [
+   {
+    "name": "HS2_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Hoarding_01-08-26_03-08-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Hoarding_Ph1_St05_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Hoarding_2_Ph1_St05_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Gate",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Kerb",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_05_Clear_20-08-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Kerb_Ph1_St05_RM",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St05_RM_Barrier",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St05_IN_Path",
+    "parent": 6,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "strays-and-tbc",
+  "nodes": [
+   {
+    "name": "Site_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Works_01-09-26_02-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph3_St01_IN_Unowned_Ph4_St02_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Pointing_At_TBC",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Pointing_At_Provisional",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph0_St00_IN_Existing_Ph2_St01_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_IN_Own_Work",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_03_Undated_TBC",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_Undated_Work",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Undated_Removal",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "01_04_Provisional_TBC_15-09-26_16-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_IN_Provisional_Work",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "01_06_Late_01-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph5_St09_RM_Nobody",
+    "parent": 12,
+    "mesh": true
+   },
+   {
+    "name": "Ph5_St09_IN_Nobody_In",
+    "parent": 12,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "one-number-layers",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "05_Hoarding_01-10-26_02-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St05_IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St05_IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph3_St05_IN_C",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph0_St00_IN_D_Ph2_St05_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "06_Trail_Only_05-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph0_St00_IN_E_Ph4_St06_RM",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "Ph0_St00_IN_F_Ph4_St06_RM",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "Ph0_St00_IN_G_Ph5_St06_RM",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "02_05_Other_20-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St05_IN_H",
+    "parent": 10,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "sub-stages",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_04_1_First_01-11-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_1_IN_P1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Plain",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_04_2_Second_03-11-26_04-11-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_2_IN_P2",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04-2_IN_P3",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04.2_IN_P4",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "01_04-3_Old_Hyphen_06-11-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_3_IN_P5",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "01_06_Whole_10-11-26_11-11-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St06_1_IN_W1",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St06_IN_W2",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "01_07_Elsewhere_15-11-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St07_IN_X_Ph1_St04_2_RM",
+    "parent": 13,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St07_IN_Y_Ph1_St04_RM",
+    "parent": 13,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St07_IN_Z_Ph1_St06_2_RM",
+    "parent": 13,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "spread-splits-copies",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Main",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_02_Kerbs_01-12-26_04-12-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_K10",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_K2",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_K1",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_RM_Old_K",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_2",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_Pile",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_Pile_2",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_Pile_primitive0",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_Twin",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Kerbs_05-12-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_Copy_Layer_Object",
+    "parent": 13,
+    "mesh": true
+   },
+   {
+    "name": "01_03_Other_10-12-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_Twin",
+    "parent": 15,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Lonely",
+    "parent": 15,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-changes",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Spring_02-10-26_06-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_S1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S6",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_RM_S7",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Autumn_03-04-27_07-04-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_A1",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_A2",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_A3",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_S8_Ph1_St02_RM",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "01_03_After_08-04-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_B1_Ph1_St01_RM",
+    "parent": 14,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "not-scheduled",
+  "workspaceStart": "2027-02-01",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works_01-03-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Plain_Box",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Tagged",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_S01_IN_Malformed",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Unfiled",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_Outside_Root",
+    "parent": -1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "segment-mode",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "Group_A",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_RM_B",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "duplicate-names",
+  "nodes": [
+   {
+    "name": "Notes",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Dup",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 2,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Kerbs_01-09-26_02-09-26",
+    "parent": 3,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Dup",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Dup",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Unique",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Dup2_Ph1_St02_RM",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Removal_05-09-26",
+    "parent": 3,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Dup2_Ph1_St02_RM",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_RM_Other",
+    "parent": 9,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "workspace-before-the-works",
+  "workspaceStart": "2026-08-03",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Hoarding_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_Hoarding",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Kerb_Ph1_St01_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph0_St00_IN_Existing_Ph1_St01_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph3_St05_IN_Nobody",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Tbc_TBC",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_Tbc_Item",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_RM_Tbc_Removal",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "02_09_Undated",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St09_IN_Undated",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St09_RM_Undated_Rm",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St09_IN_Tbc_Then_Gone_Ph2_St09_RM",
+    "parent": 10,
+    "mesh": true
+   }
+  ]
+ }
+]

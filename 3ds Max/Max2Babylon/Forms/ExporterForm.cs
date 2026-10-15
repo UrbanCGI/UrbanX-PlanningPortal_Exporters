@@ -29,6 +29,12 @@ namespace Max2Babylon
         // UrbanCGI fork: opens the phasing name fixer; added at run time (see AddFixPhasingNamesButton).
         private Button butFixPhasingNames;
 
+        // UrbanCGI fork: the outer Exporter and Schedule tabs, built at run time around the designer's window (see AddOuterTabs).
+        private TabControl outerTabs;
+        private TabPage exporterPage;
+        private TabPage schedulePage;
+        private PlannerScheduleTab scheduleTab;
+
         /// <summary>
         /// UrbanCGI fork: true while an export runs, from this window or from MAXScript (MaxScriptManager.Export), so
         /// the phasing name fixer and the Update button wait for it.
@@ -40,9 +46,14 @@ namespace Max2Babylon
 
         private static int exportsRunning;  // only ever changed on 3ds Max's main thread
 
-        /// <summary>UrbanCGI fork: runs an export with <see cref="ExportRunning"/> set.</summary>
+        /// <summary>
+        /// UrbanCGI fork: runs an export with <see cref="ExportRunning"/> set. The Schedule tab's date preview ends first
+        /// (every object gets its own hidden state back), from this window or from MAXScript alike, as the export leaves
+        /// hidden objects out of the GLB; it cannot start again until the export is over.
+        /// </summary>
         internal static void RunExport(Action export)
         {
+            PlannerPreviewController.EndAll();
             exportsRunning++;
             try
             {
@@ -106,7 +117,8 @@ namespace Max2Babylon
             RegisterFilePostOpen();
 
             this.pictureBox1.Image = ResourceHelper.LoadImage("Max2Babylon.Resources.MaxExporter.png");
-            this.Text = $"Babylon.js - Export scene to babylon or glTF format v{BabylonExporter.exporterVersion} - {ReleaseInfo.ShortText}";
+            // UrbanCGI fork: the window is "Planner"; the version and the release stay as they were.
+            this.Text = $"Planner - v{BabylonExporter.exporterVersion} - {ReleaseInfo.ShortText}";
 
             this.babylonExportAction = babylonExportAction;
 
@@ -202,16 +214,17 @@ namespace Max2Babylon
         {
             AddFixPhasingNamesButton();
             AddUpdatePanel();
+            AddOuterTabs();
             LoadOptions();
 
             var maxVersion = Tools.GetMaxVersion();
             if (maxVersion.Major == 22 && maxVersion.Minor < 2)
             {
-                CreateErrorMessage("You must update 3dsMax 2020 to version 2020.2 to use Max2Babylon. Unpatched versions of 3dsMax will crash during export.", 0);
+                CreateErrorMessage("You must update 3dsMax 2020 to version 2020.2 to use the Planner exporter. Unpatched versions of 3dsMax will crash during export.", 0);
             }
             else
             {
-                CreateMessage(String.Format("Using Max2Babylon for 3dsMax version v{0}.{1}.{2}.{3}", maxVersion.Major, maxVersion.Minor, maxVersion.Revision, maxVersion.BuildNumber), Color.Black, 0, true);
+                CreateMessage(String.Format("Using the Planner exporter for 3dsMax version v{0}.{1}.{2}.{3}", maxVersion.Major, maxVersion.Minor, maxVersion.Revision, maxVersion.BuildNumber), Color.Black, 0, true);
             }
 
             // In the background, at most once a day, silent when offline (UrbanCGI fork).
@@ -508,7 +521,11 @@ namespace Max2Babylon
             exportBusy = true;
             RefreshUpdateButtons();
 
-            // switch to the log tab.
+            // switch to the log tab (UrbanCGI fork: on the Exporter page).
+            if (outerTabs != null && exporterPage != null)
+            {
+                outerTabs.SelectedTab = exporterPage;
+            }
             exporterTabControl.SelectTab(logTabPage.Name);
 
             bool success = true;
@@ -985,6 +1002,184 @@ namespace Max2Babylon
                 Size = new System.Drawing.Size(width, height),
                 TextAlign = System.Drawing.ContentAlignment.MiddleLeft
             };
+        }
+
+        /// <summary>
+        /// UrbanCGI fork: the outer tabs, "Exporter" (everything the window held: the banner, the version and update
+        /// block, the Options / Advanced / Log tabs, the buttons and the progress bar) and "Schedule" (the Planner's layer
+        /// list, <see cref="PlannerScheduleTab"/>). Built here rather than in the designer file. The window first grows by
+        /// what the tab strip and its borders take, so the Exporter page is exactly the size the window's client area was;
+        /// then every control moves into the page with the bounds it had, so nothing shifts or overlaps, and the anchors
+        /// (worked out against a page of the same size) and the minimum size (grown by the same amount) behave as before.
+        /// Should any of it fail, the window is put back as it was, without the Schedule tab.
+        /// </summary>
+        private void AddOuterTabs()
+        {
+            if (outerTabs != null)
+            {
+                return;
+            }
+            var existing = Controls.Cast<Control>().ToList();
+            var bounds = existing.ToDictionary(c => c, c => c.Bounds);
+            var oldClient = ClientSize;
+            var oldMinimum = MinimumSize;
+            TabControl tabs = null;
+            TabPage exporter = null;
+            // True while the window's layout is suspended here, so a failure part-way still resumes it exactly once.
+            bool suspended = false;
+            try
+            {
+                SuspendLayout();
+                suspended = true;
+                tabs = new TabControl
+                {
+                    Name = "outerTabs",
+                    Location = new System.Drawing.Point(0, 0),
+                    Size = oldClient,
+                    TabIndex = 0
+                };
+                exporter = new TabPage("Exporter")
+                {
+                    Name = "exporterPage",
+                    Padding = Padding.Empty,
+                    UseVisualStyleBackColor = false,
+                    BackColor = BackColor
+                };
+                var schedule = new TabPage("Schedule")
+                {
+                    Name = "schedulePage",
+                    Padding = new Padding(3),
+                    UseVisualStyleBackColor = false,
+                    BackColor = BackColor
+                };
+                tabs.TabPages.Add(exporter);
+                tabs.TabPages.Add(schedule);
+                Controls.Add(tabs);
+
+                // What the tab strip and the borders take (the display rectangle is the page's area).
+                var display = tabs.DisplayRectangle;
+                var extra = new System.Drawing.Size(tabs.Width - display.Width, tabs.Height - display.Height);
+                ClientSize = new System.Drawing.Size(oldClient.Width + extra.Width, oldClient.Height + extra.Height);
+                MinimumSize = new System.Drawing.Size(oldMinimum.Width + extra.Width, oldMinimum.Height + extra.Height);
+                tabs.Dock = DockStyle.Fill;
+                suspended = false;
+                ResumeLayout(true);
+                // Should the page come out another size (rounding at another display scaling), the window makes up the difference.
+                var page = exporter.DisplayRectangle.Size;
+                if (page != oldClient)
+                {
+                    var fix = new System.Drawing.Size(oldClient.Width - page.Width, oldClient.Height - page.Height);
+                    ClientSize = new System.Drawing.Size(ClientSize.Width + fix.Width, ClientSize.Height + fix.Height);
+                    MinimumSize = new System.Drawing.Size(MinimumSize.Width + fix.Width, MinimumSize.Height + fix.Height);
+                    PerformLayout();
+                }
+
+                foreach (var control in existing)
+                {
+                    exporter.Controls.Add(control);
+                    control.Bounds = bounds[control];
+                }
+                outerTabs = tabs;
+                exporterPage = exporter;
+                schedulePage = schedule;
+            }
+            catch (Exception)
+            {
+                // Back as it was: the window its old size first, so the controls put back on it work out their anchors
+                // against that size; then each control with its old bounds and its old place in the stacking order; then
+                // the tabs go. The layout resumes once, whether or not the failure came while it was suspended above.
+                try
+                {
+                    if (!suspended)
+                    {
+                        SuspendLayout();
+                        suspended = true;
+                    }
+                    MinimumSize = oldMinimum;
+                    ClientSize = oldClient;
+                    foreach (var control in existing)
+                    {
+                        if (control.Parent != this)
+                        {
+                            Controls.Add(control);
+                        }
+                        control.Bounds = bounds[control];
+                    }
+                    if (tabs != null)
+                    {
+                        Controls.Remove(tabs);
+                        tabs.Dispose();
+                    }
+                    for (int i = 0; i < existing.Count; i++)
+                    {
+                        Controls.SetChildIndex(existing[i], i);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Nothing more to do.
+                }
+                finally
+                {
+                    if (suspended)
+                    {
+                        try
+                        {
+                            ResumeLayout(true);
+                        }
+                        catch (Exception)
+                        {
+                            // Nothing more to do.
+                        }
+                    }
+                }
+                outerTabs = null;
+                exporterPage = null;
+                schedulePage = null;
+                return;
+            }
+
+            try
+            {
+                scheduleTab = new PlannerScheduleTab
+                {
+                    Name = "scheduleTab",
+                    Dock = DockStyle.Fill,
+                    CanChangeScene = () => !ExportRunning && !exportBusy
+                };
+                schedulePage.Controls.Add(scheduleTab);
+                outerTabs.SelectedIndexChanged += (s, e) =>
+                {
+                    if (outerTabs.SelectedTab == schedulePage && scheduleTab != null)
+                    {
+                        scheduleTab.OnShown();
+                    }
+                    else if (scheduleTab != null)
+                    {
+                        // The date scrubber's preview ends with the tab (before an export, too): every object gets its
+                        // own hidden state back.
+                        scheduleTab.OnHidden();
+                    }
+                };
+                // Closing the window ends it as well.
+                FormClosing += (s, e) =>
+                {
+                    if (scheduleTab != null)
+                    {
+                        scheduleTab.OnHidden();
+                    }
+                };
+            }
+            catch (Exception ex)
+            {
+                scheduleTab = null;
+                schedulePage.Controls.Add(new Label
+                {
+                    Dock = DockStyle.Fill,
+                    Padding = new Padding(8),
+                    Text = "The Schedule tab could not open: " + ex.Message
+                });
+            }
         }
 
         private void ShowUpdateStatus(string text, Color color, string detail = null)

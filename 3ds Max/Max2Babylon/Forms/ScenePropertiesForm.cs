@@ -10,6 +10,8 @@ namespace Max2Babylon
         public ScenePropertiesForm()
         {
             InitializeComponent();
+            // UrbanCGI fork: the title says Planner (set here, so the designer file is left as it is).
+            this.Text = "Planner - Scene Properties";
         }
 
         private void butOK_Click(object sender, EventArgs e)
