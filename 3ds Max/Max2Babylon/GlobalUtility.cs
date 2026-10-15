@@ -14,15 +14,27 @@ namespace Max2Babylon
 {
     static class CuiTitles
     {
-        public const string MenuTitle = "Babylon...";
-        public const string GlobalTitle = "Babylon";
-        public const string PropertiesTitle = "Babylon Properties";
-        public const string AnimationGroupsTitle = "Babylon Animation Groups";
-        public const string ActionsBuilderTitle = "Babylon Actions Builder";
-        public const string SkipFlattenTitle = "Babylon Toggle Skip Flatten Status";
-        public const string LoadAnimationTitle = "Babylon Load Animation From Containers";
-        public const string SaveAnimationTitle = "Babylon Save Animation To Containers";
-        public const string FileExporterTitle = "File Exporter";
+        // UrbanCGI fork: what modellers see says "Planner". What 3ds Max, saved setups and scripts key on stays as it
+        // was: the action table, the action ids, the internal category below and the menu GUIDs in CreateBabylonMenus.ms.
+        public const string MenuTitle = "Planner...";
+        public const string GlobalTitle = "Planner";
+        public const string PropertiesTitle = "Planner Properties";
+        public const string AnimationGroupsTitle = "Planner Animation Groups";
+        public const string ActionsBuilderTitle = "Planner Actions Builder";
+        public const string SkipFlattenTitle = "Planner Toggle Skip Flatten Status";
+        public const string LoadAnimationTitle = "Planner Load Animation From Containers";
+        public const string SaveAnimationTitle = "Planner Save Animation To Containers";
+        public const string FileExporterTitle = "&Planner...";
+
+        /// <summary>
+        /// The internal (non-localised) action category, as upstream. 3ds Max 2025 and later find the action table (which
+        /// the menu script addresses as 47368) through it, so it never changes.
+        /// </summary>
+        public const string InternalCategory = "Babylon";
+
+        /// <summary>The titles earlier builds gave their menus: taken away on start-up, so an upgrade leaves no "Babylon" menu behind.</summary>
+        public const string LegacyMenuTitle = "Babylon...";
+        public const string LegacyGlobalTitle = "Babylon";
     }
 
 #if MAX2025_OR_NEWER
@@ -30,7 +42,7 @@ namespace Max2Babylon
     {
         public const string DummyActionTitle = "BabylonDummyAction";
         public override string InternalActionText => DummyActionTitle;
-        public override string InternalCategory => CuiTitles.GlobalTitle;
+        public override string InternalCategory => CuiTitles.InternalCategory;
         public override string ActionText => InternalActionText;
         public override string Category => InternalCategory;
         public override void Execute(object parameter)
@@ -386,24 +398,19 @@ namespace Max2Babylon
 #else
             IIMenuManager menuManager = Loader.Core.MenuManager;
 
-            // Set up menu
-            menu = menuManager.FindMenu( CuiTitles.GlobalTitle ); // "Babylon"
-
-            if (menu != null)
-            {
-                menuManager.UnRegisterMenu(menu);
-                Loader.Global.ReleaseIMenu(menu);
-                menu = null;
-            }
+            // Set up menu. UrbanCGI fork: the menus of earlier sessions go first, under the current title and under the
+            // old "Babylon" one, so an upgraded install shows a single "Planner" menu.
+            RemoveMenus(menuManager, menuManager.MainMenuBar, CuiTitles.GlobalTitle, CuiTitles.LegacyGlobalTitle);
+            menu = null;
 
             // Main menu
             menu = Loader.Global.IMenu;
-            menu.Title = CuiTitles.GlobalTitle; // "Babylon"
+            menu.Title = CuiTitles.GlobalTitle; // "Planner"
             menuManager.RegisterMenu(menu, 0);
 
             // Launch option
             menuItemBabylon = Loader.Global.IMenuItem;
-            menuItemBabylon.Title = CuiTitles.FileExporterTitle; // "&File Exporter";
+            menuItemBabylon.Title = CuiTitles.FileExporterTitle; // "&Planner...";
             menuItemBabylon.ActionItem = actionTable[0];
             menu.AddItem(menuItemBabylon, -1);
 
@@ -416,17 +423,11 @@ namespace Max2Babylon
             var rootQuadMenu = menuManager.GetViewportRightClickMenu(RightClickContext.NonePressed);
             var quadMenu = rootQuadMenu.GetMenu(0);
 
-            menu = menuManager.FindMenu( CuiTitles.MenuTitle ) ; // "Babylon...");
-
-            if (menu != null)
-            {
-                menuManager.UnRegisterMenu(menu);
-                Loader.Global.ReleaseIMenu(menu);
-                menu = null;
-            }
+            RemoveMenus(menuManager, quadMenu, CuiTitles.MenuTitle, CuiTitles.LegacyMenuTitle);
+            menu = null;
 
             menu = Loader.Global.IMenu;
-            menu.Title = CuiTitles.MenuTitle; // "Babylon...";
+            menu.Title = CuiTitles.MenuTitle; // "Planner...";
             menuManager.RegisterMenu(menu, 0);
 
             menuItemBabylon = Loader.Global.IMenuItem;
@@ -467,6 +468,57 @@ namespace Max2Babylon
             Loader.Global.COREInterface.MenuManager.UpdateMenuBar();
 #endif
             }
+
+#if !MAX2025_OR_NEWER
+        /// <summary>
+        /// UrbanCGI fork: takes every item whose submenu has one of <paramref name="titles"/> off <paramref name="host"/>
+        /// (the main menu bar or the quad), then unregisters the menus of those titles. Menus are found by title, so
+        /// without this the "Babylon" menu of an earlier build would stay beside the new "Planner" one.
+        /// </summary>
+        private static void RemoveMenus(IIMenuManager menuManager, IIMenu host, params string[] titles)
+        {
+            try
+            {
+                if (host != null)
+                {
+                    for (int i = host.NumItems - 1; i >= 0; i--)
+                    {
+                        var item = host.GetItem(i);
+                        var subMenu = item != null ? item.SubMenu : null;
+                        if (subMenu != null && Array.IndexOf(titles, subMenu.Title) >= 0)
+                        {
+                            host.RemoveItem(i);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // A menu that cannot be read is left as it is; unregistering below still runs.
+            }
+
+            foreach (var title in titles)
+            {
+                // A crash or an older build can leave more than one menu with the same title.
+                IIMenu previous = null;
+                for (int guard = 0; guard < 8; guard++)
+                {
+                    var existing = menuManager.FindMenu(title);
+                    if (existing == null || object.Equals(existing, previous))
+                    {
+                        break;
+                    }
+                    // A menu 3ds Max still holds is never released, and none is released twice.
+                    if (!menuManager.UnRegisterMenu(existing))
+                    {
+                        break;
+                    }
+                    Loader.Global.ReleaseIMenu(existing);
+                    previous = existing;
+                }
+            }
+        }
+#endif
 
         private void AddCallbacks() 
         {

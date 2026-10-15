@@ -85,7 +85,7 @@ namespace Max2Babylon
         /// whose base object is geometry is not evaluated: modifiers do not make geometry a helper or a shape. Anything
         /// that cannot be read is neither.
         /// </summary>
-        private static void Classify(IINode node, out bool isHelper, out bool isShape)
+        internal static void Classify(IINode node, out bool isHelper, out bool isShape)
         {
             isHelper = false;
             isShape = false;

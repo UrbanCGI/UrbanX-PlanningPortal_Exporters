@@ -12,6 +12,8 @@ namespace Max2Babylon
         public CameraPropertiesForm()
         {
             InitializeComponent();
+            // UrbanCGI fork: the title says Planner (set here, so the designer file is left as it is).
+            this.Text = "Planner - Camera Properties";
         }
 
         private void CameraPropertiesForm_Load(object sender, EventArgs e)

@@ -2,8 +2,11 @@
 
 This fork of [BabylonJS/Exporters](https://github.com/BabylonJS/Exporters) adds two pre-flight
 safeguards for models that are exported to the UrbanCGI Planner (planning.urbancgi.co.uk), a tool
-that corrects the phasing names in the scene before export, and an Update button that installs the latest
-release from inside 3ds Max. Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
+that corrects the phasing names in the scene before export, an Update button that installs the latest
+release from inside 3ds Max, and a Schedule tab that builds the phasing layers and helpers from the Planner's
+layer list (section 5), shows and edits each layer's IN and RM, adds layers and previews the schedule at a date
+(section 6). Modellers see it as "Planner": the menu, the window and the quad menu say so (section 5).
+Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
 `babylon.js glTF exporter for 3dsmax <year> v1.0-urbancgi`.
 
 ## 1. Textures are exported by content, not by file extension
@@ -445,6 +448,312 @@ command line, shared with the installer); `Max2Babylon/Updates/ReleaseInfo.cs` (
 `GitHubReleaseJson.cs`, `UpdateStateFile.cs`, `UpdateChecker.cs` (the GitHub request), `UpdateRunner.cs`
 (download, prompts, starting the installer, closing 3ds Max), the block in `Max2Babylon/Forms/ExporterForm.cs`.
 
+## 5. Planner: the Schedule tab (layers and helpers from the Planner's list)
+
+Layer names, dates and the hierarchy are set in the Planner now. The Planner exports them as a layer list (its
+**Layer list for 3ds Max (CSV)** export, next to Schedule to Excel), and the exporter's **Schedule** tab imports it and builds the scene's phasing
+layers and helper nodes to match: one Max layer and one helper (dummy) of the same name per row, the helper on its
+own layer, nested as the Planner nests the folders, and the objects linked under their layer's helper. That
+hierarchy is what the GLB carries and what the Planner's Generate from model reads.
+
+**The name "Planner".** The menu is **Planner** (it was "Babylon"), its item **Planner…** opens the window, the
+quad menu is **Planner…** with "Planner Properties", "Planner Animation Groups" and so on, and the window is titled
+"Planner - v1.0-urbancgi - release v…". On 3ds Max 2022 to 2024 the old "Babylon" menu is taken off the menu bar
+and the quad on start-up (menus are found by title there); on 2025 and later the menu is the same menu as before
+(the same GUID in `CreateBabylonMenus.ms`) with its new title. Everything saved scenes and scripts rely on is
+unchanged: the Max2Babylon DLL and namespace, the `babylonjs_*` properties, the MAXScript entry points
+(`MaxScriptManager.*`), the action table and action ids, and the actions' category ("Babylon" in Customize User
+Interface). The installer is unchanged.
+
+**The window.** Two tabs: **Exporter**, everything the window held before (the banner, the version and update
+block, the Options / Advanced / Log tabs, Fix phasing names…, the buttons and the progress bar), and **Schedule**.
+The tabs are built when the window opens (the designer file is not edited): the window grows by the height of the
+tab strip and the existing controls move into the Exporter page with the same positions and anchors, so nothing
+shifts; the minimum size grows by the same amount. An export switches to the Exporter page's Log tab.
+
+**The list (CSV).** One row per layer, in outline order, parents first; UTF-8 with its byte order mark, comma
+separated, quotes as in RFC 4180, CRLF. The header is
+`Planner ID,Parent ID,Layer,Kind,ID,Phase,Stage,Sub-stage,Name,Start,Finish,TBC,Order`; the first four are needed,
+in any order and any capitals, and other columns are ignored.
+
+| Column | Meaning |
+| --- | --- |
+| Planner ID | the Planner folder's id; unique; how a re-import finds the row's layer again |
+| Parent ID | the parent row's Planner ID; empty for a top-level row, which goes directly under the phasing root |
+| Layer | the exact name of the Max layer and its helper, used as it is (`02_01_2_Construction_of_Phase1_TM_31-08-26_17-10-26`, `_01_Zone5_Working`) |
+| Kind | `Group` (holds other layers) or `Layer` (holds work) |
+| ID, Phase, Stage, Sub-stage | the layer ID (`02_01_2`, 2, 1, 2), empty when none; the ID also finds a layer built by hand |
+| Name, Start, Finish, TBC, Order | shown in the tab; the build never depends on them (Excel may reformat the dates) |
+
+The import also reads a file saved by Excel: without the byte order mark, LF line ends, a last empty line,
+semicolons or tabs instead of commas, and Excel's "CSV (Comma delimited)" (Windows-1252; the tab says so). A file
+without the four needed columns is not imported. Each row is checked: a missing or repeated Planner ID, a Parent ID
+not in the list, parents that go round in a circle, an empty Layer, a Layer with a line break or another control
+character, a Kind other than Group or Layer, and a layer name another row already has (any capitals, as 3ds Max layer
+names must differ) make the row a **Problem**, and so does every row under it. An ID column that does not read as a
+layer ID, or says something other than the name, is not used to find layers (a note on the row says so).
+
+**The tab.** **Import layer list…** reads a list; it is kept with the scene (root node app data, like the word
+fixes of Fix phasing names) and shown again whenever the window opens or the scene is opened. The list shows as a
+tree (each level indented, groups in bold) with the columns Layer, Kind, Start, Finish, TBC and **Status in the
+scene**: New (green), Rename from `<old name>`, Move under `<parent>`, Layer added, Helper added, Helper put on its
+layer (yellow), Up to date, or Problem: `<why>` (red). The status tooltip says how the row was found. Under it,
+**In the scene but not in the Planner's list** lists the scene's phasing layers and helpers no row matches (a layer
+removed in the Planner, or never in it): they are left as they are, never deleted; one built from an earlier list
+says so, with its Planner ID. The statuses are worked out when the tab is shown and on **Read the scene again**.
+
+**Build layers and helpers…** first lists every change, one line each with its reason (Create, Rename with "new
+dates in the Planner", "renamed in the Planner", "marked TBC in the Planner", "sub-stage written with an
+underscore"…, Move, Add layer, Add helper, Put on its layer), then the rows that only get their Planner ID ("found
+by its layer ID", "found by its name", "found by its phase number"), then the Problems, which are skipped. **Save list…** writes it as CSV.
+**Apply** checks the scene has not changed since the list was made (otherwise it reads it again and asks for
+another look), holds the scene (**Hold the scene first**, on by default: Edit > Fetch puts it back), and runs every
+change as one MAXScript batch inside one undo record ("Build Planner layers"; whether 3ds Max undoes the layer
+changes with the node changes has not been checked yet, so Hold is the safer way back, as for Fix phasing names). It
+then reads the scene again and says what was done and what was not.
+
+- **The phasing root** is found as Fix phasing names finds it: the first top-level node with "phasing" in its name,
+  and the layer of its name (else the first top-level layer with "phasing" in its name). A scene with neither always
+  gets the layer and helper `Work_Phasing` at the top: the Planner never writes the root as a row, so a row with
+  "phasing" in its name (`_03_Signal_Phasing_Works`) is an ordinary group or layer under it. A root with only its
+  layer or only its helper gets the other half. Top-level rows go under the root. A top-level row named like the
+  root (any capitals) stands for the root itself: its rows go under the root, and the root's helper gets its
+  Planner ID.
+- **Each row finds its layer and helper** in this order: (1) a helper whose user property `planner_id` is the row's
+  Planner ID (with more than one, the one of the row's name, then the one with the row's layer ID, then one inside
+  the root); (2) a phasing layer (inside the root layer's tree, or a helper under the root node) whose name carries
+  the row's layer ID, when exactly one row and one such layer have that ID (`02_01.2_…`, `02_01-2_…` and
+  `02_01_2_…` are the same ID); (3) a layer or helper of the row's exact name (any capitals): inside the root any;
+  outside it when the scene has no phasing root at all (a scene built by hand: everything of the row's name is
+  taken, so a group named `Enabling_Works` and the layers in it are adopted), when the name reads as a phasing name
+  (a layer ID or a phase group `_<n>_`), or when it is a layer with its helper of the same name (a context or survey
+  layer has no Dummy of its name on it), never a Max group of objects; so a group left outside the root is brought
+  in (the status and the review say "from outside the phasing root"), but an ordinary layer of the same name
+  (context, survey) is not taken and the row is a Problem; (3b) for a row without a layer ID named as a phase
+  group, the phase group inside the root with the same phase number, when that number is on exactly one row of the
+  whole list and one phase group of the root's tree, and that group's helper has no Planner ID (a group renamed in
+  the Planner before the scene had Planner IDs is renamed, not built again; a group whose helper has a Planner ID,
+  such as one the Planner removed, is never renamed into another: it is listed. A group made in Max with Add layer
+  has no Planner ID either, and nothing tells it from one renamed in the Planner, so it is taken for the list's group
+  of its phase number when that number is unique on both sides: the review shows the rename first, and Add layer
+  refuses a group whose phase number the list or the tree has already); (4) none: the row is new. A layer and a helper pair up by
+  name; a helper with a Planner ID that sits on a layer with no helper of its own pairs with that layer (a helper
+  renamed by hand); so does a helper without one whose name carries the same layer ID as the layer it sits on, when
+  it is the only such helper there and not a Max group of objects (a scene built by hand where the layer was
+  re-dated and its helper was not, or the other way round). A helper whose Planner ID
+  belongs to another row is kept for that row; once that row has found its own, a leftover with the same ID (a
+  helper cloned in 3ds Max, which copies its user properties, or merged in) can be found by another row's layer ID or
+  name and gets that row's Planner ID; one that no row finds is listed as not in the list ("a copy?"). Every helper
+  found gets the row's Planner ID.
+- **What it changes**: the layer and the helper are renamed to the row's Layer together; the layer goes under the
+  parent row's layer and the helper under the parent row's helper (attached when that is a 3ds Max group head); a
+  helper not on its layer is put on it; a missing layer is created under its parent, a missing helper is created as
+  a Dummy at the origin (box 1 unit), on its layer, linked under its parent's helper, with its Planner ID. Layer
+  renames go through temporary names, so names can swap. Objects stay where they are (linked under their helper,
+  they move with it).
+- **What it never does**: delete anything; give a layer or helper (renamed or new) a name that another layer (any
+  capitals) or node (the same capitals) keeps, the root's included: that row is a Problem, left as it is, and so is
+  every row under a row that cannot be built. A name that stays as it is is never a Problem: when another node also
+  has it (an object of that name, a copy of the helper) the row gets a note (in its tooltip) and is built as usual;
+  the tab's notes say once how many rows have such a note.
+
+**Link objects to their helpers…** links every object on a phasing layer (a layer in the root layer's tree with its
+helper) under that layer's helper, keeping its place in the world. What is linked is the object's top-most ancestor
+that is not a phasing helper (the object itself when it has none), so a hierarchy moves whole and a 3ds Max group by
+its group head. Helpers and splines the export leaves out (RailClone paths) are not objects; a spline with an object
+linked under it is. Listed as Problems and not moved: an object whose top ancestor sits on another layer, and the
+objects of a phasing layer without its helper (Build layers and helpers adds one when the Planner's list has the
+layer; otherwise make it by hand). Objects on the root layer itself are left as they are (a note says how many). The
+same review list, Hold and one undo record ("Link objects to their helpers"); the report gives the counts.
+
+The export log and the naming check work as before; after a build every phasing layer has its helper of the same
+name, so the counts pair up. Link objects can add to the helper count: a Max group (by its group head), a Point or
+another helper, or a spline with objects under it, linked under a layer's helper, is exported as an empty node,
+which the export log counts as a helper node without a layer of its name, so its pairing note names it. The Link
+review says so beforehand; it does not affect the export or the Planner's Generate from model.
+
+**Checking by hand in 3ds Max** (none of this has been run in 3ds Max yet): the Planner menu on 2022/2024 (no
+"Babylon" menu left after an upgrade) and on 2025/2026; the window's two tabs at the usual and a high display
+scaling (nothing shifted or overlapping, resizing and the minimum size, the update block and Fix phasing names
+still working); importing the HS2 list into an empty scene, Build, Edit > Undo and Edit > Fetch; importing it into
+the HS2 model (all up to date, Planner IDs only); renaming, re-dating and moving folders in the Planner, exporting
+the list again and building; Link objects to their helpers on the HS2 model; the list shown again after saving and
+reopening the scene; an export afterwards (the counts pair up but for any groups, Points or splines Link objects
+linked, the Planner reads the GLB as before).
+
+Files: `SharedProjects/Utilities/Planner/PlannerLayerList.cs` (reading and checking the CSV, the stored form),
+`PlannerLayerScene.cs` (the scene model: root, layer + helper units), `PlannerLayerPlanner.cs` (matching, statuses,
+the change plan and the review list), `PlannerLayerScript.cs` (the build's MAXScript batch and the reading of its
+report), `PlannerObjectLinks.cs` (the link plan and its batch); `Max2Babylon/Tools/PlannerScheduleScene.cs` (reads
+the scene, keeps the list, runs the batches), `Max2Babylon/Forms/PlannerScheduleTab.cs`, `PlannerReviewForm.cs`,
+the outer tabs in `Max2Babylon/Forms/ExporterForm.cs`; the rename in `GlobalUtility.cs`, `Scripts/CreateBabylonMenus.ms`
+and the action items.
+
+## 6. Planner: IN and RM, Add layer and the date scrubber (Schedule tab)
+
+Each layer row of the Schedule tab shows its **IN** and **RM**: the objects its work installs and removes. They are
+stored nowhere: they are read from the objects' names, the Ph/St tags Generate from model reads, so the lists and the
+names always agree, and changing a list renames objects.
+
+**What the tab shows.** With a list imported, its tree; with none, the scene's own phasing tree (the layers in the
+root, nested as the Max layers nest), so a scene built by hand works too. Layers added in Max (below) sit under their
+parents. The columns are Layer, Kind, Start, Finish, TBC, IN, RM and Status in the scene. The side list shows the
+chosen row's IN and RM objects, with a note when an object sits in another layer, is TBC or has a stage no dated
+layer has; choosing objects there selects them in 3ds Max. Below the tree, **Not in the Planner's list** (with their
+IN and RM) and **Not scheduled** (the objects the Planner leaves out, with why; choosing one selects it).
+
+**Fill IN / RM from names** reads every object as the Planner's Generate from model reads the GLB (layer mode). It is
+a port of the Planner's code, checked against that code object by object (see Tests):
+
+- The model is what the export writes: a node hidden while Export hidden objects is off, or with Do not export
+  ticked, is left out unless something exported is under it, when it goes as an empty node; a spline goes only as
+  such an empty node. The node hierarchy, not the Max layers, says which layer an object is in: the nearest node
+  above it whose name reads as a layer (its layer's helper, once linked).
+- The names are the GLB's. The export writes the nodes depth first, each before the nodes linked under it, the
+  top-level trees that hold geometry first, and gives a name it has written already " (1)", " (2)", ...: a second
+  node called X reaches the Planner as `X (1)`, an object of its own, which the Planner schedules and shows and hides
+  on its own, and so does the tab (the side list says what it is called in 3ds Max). The naming check still asks for
+  unique names. Names are indexed as the Planner's viewport indexes them: meshes first, the first node of a name
+  winning (two nodes the GLB still gives one name, such as a node called `X (1)` in 3ds Max and a second X the export
+  renames so, leave the later one unscheduled, listed); split pieces (`Name_2` under `Name`) and material shards are
+  read with their object.
+- A layer is known by its label (its name without dates and TBC). Its phase is the one its ID gives, or, for a
+  one-number ID, the one most of its objects' leading tags of its stage carry (the lower on a tie), else their
+  trailing tags. An object's tags (leading and trailing, in either order, written any older way: `St04-2`,
+  `St04.2`, lower case) are its layer's own work when their phase and stage are the layer's, another layer's
+  otherwise.
+- A layer's own work is spread over its dates: removal-only objects first, then by name (the Planner's natural
+  order), an install before its own object's removal. Another stage's tag is a one-day activity at the start of the
+  dated layer of that phase and stage (the very sub-stage first, then the one that starts first); with none, a
+  removal is parked the day after the works end and an install sits at the project start, both TBC (an install in
+  phase 0 is there before the works, so not TBC). An object whose tags are both other layers' (a stray) is dated by
+  its leading tag's layer; with none, its leading tag is its own layer's work. An undated (TBC) layer's work sits at
+  the project start, TBC.
+- The project start is the Planner workspace's start, moved back to the earliest dated layer when that is earlier:
+  Generate from model never moves it forward, and a new workspace starts on the day it is made, so a workspace made
+  before its works start keeps that earlier day, and undated layers' work, installs no dated layer has and phase 0
+  sit on it. **Planner project start** (by the buttons, kept with the scene, root node app data "PLPS") takes the
+  workspace's start, the first day of its Gantt; unticked, the tab takes the earliest dated layer, and the summary
+  says it is assumed. Dated layers' work does not depend on it.
+- A layer's **IN** is the installs its dates place (its own, and other layers' objects whose install tag names its
+  phase and stage); its **RM** likewise. Work no dated layer places shows in two rows at the end, "at the project
+  start" and "after the end of the works"; a dated group the Planner reads outside the phasing tree gets a row of
+  its own.
+- **Not scheduled**, with why: no Ph/St tag (in a layer, or under the root), a tag that does not read, a tag that is
+  not at the start of the name (`Kerb_Ph1_St01_IN`, `Kerb_Ph1_St01_IN_001`: the Planner reads an object only when
+  its name starts with its tag, so `Ph1_St01_IN_Kerb`), not linked under a dated layer's helper (naming the phasing
+  layer it sits on: Link objects to their helpers puts it there), hidden or Do not export, two nodes the GLB gives one
+  name, no name. A node linked under a scheduled object is shown and hidden with it and is not listed.
+- With no tagged object under a dated layer, the Planner would use its older segment mode; the tab says so and
+  shows no IN or RM.
+
+**Removed, then installed.** An object can sit in another layer than the one installing it, and its removal can come
+before its install. `ph1_st02_RM_Kerb_ph2_st01_IN` (removed in Ph1 St02, installed again in Ph2 St01) and
+`Ph2_St01_IN_Fence_Ph1_St02_RM` read the same, sitting in either layer: the removal is in the RM of the Ph1 St02
+layer, the install in the IN of the Ph2 St01 layer. The Planner shows such an object from the project start (its
+first event is a removal), hides it from its removal and shows it again from its install, and so does the scrubber.
+
+**Add selected to IN…, Add selected to RM…, Remove from the list…** (under the side list):
+
+- **Add** gives the objects selected in 3ds Max the chosen layer's install (IN) or removal (RM) tag,
+  `Ph<phase>_St<stage>[_<sub>]_IN|RM`. The tag of that type is replaced where it is (leading or trailing); a
+  missing one is added at the end of the name as the trailing tag, or as the leading tag when the name has none at
+  all, as a name reads only with one (`Kerb_A` becomes `Ph2_St01_IN_Kerb_A`). Everything else in the name, the
+  other tag included, stays as written: `ph1_st02_RM_Kerb_ph2_st01_IN` given another install becomes
+  `ph1_st02_RM_Kerb_Ph3_St02_1_IN`. A tag already carrying that phase and stage, spelled another way, is left as it
+  is.
+- **Remove** takes the chosen objects' tag of that column out. When it was the leading tag and a trailing one is
+  left, the trailing one, as written, leads (`Ph1_St01_IN_X_ph1_st05_RM` becomes `ph1_st05_RM_X`); a name that would
+  be left empty is refused.
+- Nothing is moved or linked: an object stays in its layer, wherever its install is.
+- The layer is the one the Planner reads on the chosen row: its helper's name, which the GLB carries, even when the
+  Max layer's name has drifted from it (a scene built by hand).
+- What is selected: clicking a closed group in 3ds Max selects its head and every member, so a node under another
+  node being added is part of it (the Planner shows and hides it with it) and is left out, with a note, unless it
+  has a tag of its own: then it is its own object, kept in a hierarchy that is not a group, and a Problem inside a
+  closed group (open the group, Group > Open, and select it alone; or select the head alone for the group). An
+  object's split pieces (`Name_2` under `Name`) are renamed with it (`NewName_2`), so the Planner still reads them
+  as part of it; a piece chosen alone is a Problem (choose its object).
+- Each edit is checked first by reading the scene again with the new names, exactly as Fill reads it. An object
+  that would not then be in the column asked for is a Problem and keeps its name, with why: the layer has no dates,
+  or holds no tagged object yet (the Planner dates another layer's work only from a dated layer that holds one);
+  another layer dates that stage; the object is not under a dated layer's helper; another node has the new name
+  (the export would call one of the two `X (1)`), or one of its split pieces' new names is taken; a one-number layer
+  has no phase to write; the object is a layer's helper. Objects the renames make the Planner read differently
+  without being renamed are listed as **Also**, each with why (a one-number layer whose phase follows its objects'
+  tags, a piece no longer read with its object).
+- A review list, then **Apply**: Hold the scene first (on by default), one MAXScript batch in one undo record
+  ("Planner IN / RM"), and the lists filled again from the names, which give back exactly the edited lists.
+
+**Add layer…** adds a phase group or a layer under the chosen row, which must be a phase group (`_<n>_<name>`) with
+its Max layer and helper, or, with no row chosen, under the phasing root (made as Build makes it when the scene has
+none). The Planner files every layer in the phase group above it (or at the top) and every phase group in the one
+above it, so under a layer or a plain group it is refused (the next list from the Planner would move it out; the
+message names the phase group above). The dialog asks for the kind; for a layer its phase (none for an ID of one
+number), stage and sub-stage, its name, and its start and finish (or one day) or TBC; for a group its name and its
+phase (a group without one would stay in 3ds Max only: the Planner makes folders only for phase groups and dated
+layers). It shows the name the convention gives, `<ID>_<Name>[_TBC][_dd-mm-yy[_dd-mm-yy]]` (spaces become
+underscores; one day is written twice when a date in the name would otherwise read as a range with it, as the
+Planner's list writes it), a group `_<pp>_<Name>`. It is refused when the name does not read back with the ID and
+dates meant, or when a Max layer, a node, a row of the list or a layer added before has the name, or a layer of the
+phasing tree, a row or a layer added before has the ID, or, for a group, a phase group of the tree or a row of the
+list has its phase number (Build would take one for the other, see (3b)). A review, then **Apply** with Build layers
+and helpers' own batch: the Max layer under its parent's layer, and a Dummy of the same name on it, linked under the
+parent's helper (with no Planner ID). The row shows as **Added in Max — not yet in the Planner** and is kept with the
+scene (root node app data, "PLAD"). A layer reaches the Planner with the next GLB once a tagged object is linked
+under its helper, a phase group once a layer in it holds one (Generate from model makes folders only for layers that
+hold a tagged object and for the phase groups around them; Merge keeps the rest of the schedule); the next list from
+the Planner then has it, and the import adopts it (found by its layer ID or name and given its Planner ID: no
+duplicate, nothing listed as not in the list) and stops showing it as added. Until then Build never touches it.
+The scene is the truth: an added layer taken back with Edit > Undo, deleted or renamed by hand is no longer an added
+layer (the tab drops it, and the record kept with the scene, when it next reads the scene), and its ID and name are
+free again.
+
+**The date scrubber** (at the bottom of the tab, once filled) is a day slider from the project start to the day the
+last activity ends; the days after the end of the works are the **TBC zone** (shaded) where the Planner parks the
+removals no dated layer has. It shows the date, the layers at work that day (undated ones on the project start, as
+the Planner puts them) and **Select changing this day (n)**: the objects installed or removed that day (installs
+that start on it, removals whose last minute is on it). **Preview in the viewport** hides what the Planner's 4D view
+hides at that date: at the start of the day, as the Planner's 4D view shows a day in its day steps, or, with **End
+of the day**, once the day's work is done. Objects not yet installed and objects already removed are hidden, and so
+is everything linked under them (as the 4D view hides what is under a node it hides); an object hidden by its own
+flag (or its layer) is never touched. The changes are made in one go with the undo hold suspended, so the preview is
+never an undo step, then one redraw; a scene that needed no saving before a step needs none after it. Nothing is
+renamed, moved or linked. The preview ends, every object getting its own hidden state back, on its button, on
+leaving the Schedule tab, on closing the window, before a new scene, a reset or opening a file, and before every
+export, from the window or from MAXScript (`maxScriptManager.Export`), as the export leaves hidden objects out of the
+GLB; while an export runs, the preview does not start (the tab says why), and choosing in the lists or Select
+changing this day does not change the selection. Every save shows the hidden objects first and hides them again
+after, so the file keeps everyone's own state, also after a save that failed part-way. Nothing in the scrubber's
+row changes size as it moves (the date and the count have room for their longest text; the layers at work get two
+lines, all of them in the tooltip), so the slider stays under the pointer while it is dragged. Read the scene
+again, Fill and the edits read the objects the preview hid as they were before it.
+
+**What the Planner does that the tab mirrors** (worth knowing; the tab follows the Planner rather than differ):
+the Planner's day steps are whole days of minutes from the start of its timeline, so after a clock change they sit
+an hour off midnight (01:00 after the spring change, 23:00 the day before after the autumn one), where the tab's
+days are midnights; on the day of a clock change, activities chained across it gap or overlap by an hour in the 4D
+view; an undated TBC layer's work is at the project start (its installs show from the first day), not after the end;
+of two nodes the GLB gives one name (a node called `X (1)` in 3ds Max and a second X the export renames so), only
+the first is shown and hidden.
+
+**Checking by hand in 3ds Max** (none of this has been run in 3ds Max yet): Fill on the HS2 model (128 IN and 85 RM
+over 84 layers, as the tests read it); choosing in the side list and in Not scheduled selects in the viewport; Add
+to IN, Add to RM and Remove on a few objects, then Edit > Undo; Add to RM on a closed group clicked in the viewport
+(one rename, the head's); an object with split pieces; Add layer under a phase group and under the root, Undo (the
+row goes, and the same ID can be added again) and Fetch, save and reopen (still "Added in Max"), then a list that has
+it; Planner project start set, saved and reopened; the scrubber across the HS2 dates with the preview on, dragged
+(the slider stays under the pointer), and every object's hidden state back after the button, a tab change, closing
+the window, File > New and opening a file; saving during a preview; a MAXScript export during a preview (the GLB
+has every object); Select changing this day; the preview's speed on the full HS2 scene.
+
+Files: `SharedProjects/Utilities/Planner/PlannerSchedule.cs` (the port of Generate from model, the scheduler and the
+4D view), `PlannerNaturalOrder.cs` (the Planner's natural order, generated from Node's ICU), `PlannerTagEdit.cs` (tag
+rewriting, the checked edit plan and its batch), `PlannerAddLayer.cs` (Add layer and the added layers' store),
+`PlannerScheduleRows.cs` (the tab's rows), `PlannerPreview.cs` (the preview's bookkeeping);
+`Max2Babylon/Tools/PlannerPreviewController.cs`, `PlannerScheduleScene.cs` (hidden and Do not export flags, the added
+layers, selection, the batches); `Max2Babylon/Forms/PlannerScheduleTab.cs`, `PlannerAddLayerForm.cs`.
+
 ## Building
 
 No 3ds Max installation is needed: the SDK assemblies for every supported version are vendored under
@@ -518,7 +827,8 @@ Microsoft.WindowsAPICodePack assemblies) from `bin/Release/<year>/` into
 post-build event does this automatically (it reads the `ADSK_3DSMAX_x64_<year>` environment variable Max
 sets up).
 
-To confirm the install: the exporter window shows the release ("Version v…") at the top right, the exporter
+To confirm the install: the menu says Planner, the window (Planner > Planner…) has the Exporter and Schedule
+tabs and shows the release ("Version v…") at the top right of the Exporter tab, the exporter
 log shows "Checking Planner naming convention" at the start of an export, and the GLB's generator string ends
 in `v1.0-urbancgi`.
 
@@ -556,3 +866,24 @@ real data and print their report:
   full stop warnings and the hyphen warning come on top. The report on the first tree is printed. Optional:
   `PLANNER_FIX_REF_CSV=<csv>` compares the list with the clean-up's (the same underscores put in on both sides,
   the fixer's rows that only put them in counted apart), `PLANNER_FIX_OUT_CSV=<csv>` writes the fixer's own.
+- `PLANNER_FIX_V306=<json>` also runs the Schedule tab's acceptance (section 5) on v3_06u: on an empty scene the
+  build makes exactly its phasing tree under `Work_Phasing`; on the v3_06u scene (its layers and same-named helpers)
+  every row is up to date and only gets its Planner ID; after a re-date, a rename, a move and a removed row in the
+  list, exactly those are renamed and moved and the removed one is listed, nothing deleted. The list is written from
+  the tree itself unless `PLANNER_LAYERS_CSV=<csv>` gives the Planner's own export for that model; then the
+  differences between the list and the model are reported (they are the Planner's to explain) and renames are
+  allowed. `PLANNER_LAYERS_REPORT=<txt>` writes what the runs found.
+- The schedule (section 6) is checked against the Planner's own code: a harness bundles the Planner's
+  `phasingFromModel.ts`, `nodeNames.ts`, `schedule.ts` and `timeline.ts` (main) with esbuild, runs Generate from
+  model as the store runs it on each scene as the export writes it (its nodes in the export's order, a second node of
+  a name called `X (1)`), and writes every activity (name, install or removal, folder, TBC, start and finish
+  instants, the objects it binds), the layer folders, the unfiled objects and the 4D view's hidden objects at every
+  instant something changes (a minute either side too) and every midnight. `PlannerScheduleScenes.json` holds
+  synthetic scenes (removed then installed in both orders, strays, TBC, one-number layers, sub-stages written every
+  way, split pieces, layer copies, clock changes, objects not scheduled, segment mode, nodes of one name, a workspace
+  that starts before its works);
+  `PlannerScheduleScenes.utc.json` and `PlannerScheduleScenes.sydney.json` are the Planner's results in UTC and in
+  Sydney time (regenerate them with the harness rather than edit them). `PlannerNaturalOrderCases.cs` holds 2,515
+  name pairs and the order JavaScript gives them. Kept out of the repo: `PLANNER_SCHEDULE_HS2=<json>` (the v3_06u
+  node tree) with `PLANNER_SCHEDULE_HS2_PLANNER=<json>` (the harness's results for it) compares the HS2 model the
+  same way.

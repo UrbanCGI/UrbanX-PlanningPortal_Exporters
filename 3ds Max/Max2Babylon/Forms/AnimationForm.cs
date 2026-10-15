@@ -21,6 +21,8 @@ namespace Max2Babylon
         public AnimationForm(BabylonAnimationActionItem babylonAnimationAction)
         {
             InitializeComponent();
+            // UrbanCGI fork: the title says Planner (set here, so the designer file is left as it is).
+            this.Text = "Planner - Animation Groups";
             Tools.InitializeGuidNodesMap();
             this.babylonAnimationAction = babylonAnimationAction;
         }

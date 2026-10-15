@@ -43,17 +43,17 @@ namespace Max2Babylon
 
         public override string ButtonText
         {
-            get { return "Babylon File Exporter"; }
+            get { return "Planner"; }
         }
 
         public override string MenuText
         {
-            get { return "&Babylon File Exporter..."; }
+            get { return "&Planner..."; }
         }
 
         public override string DescriptionText
         {
-            get { return "Babylon - Generate a babylon.js scene file2"; }
+            get { return "Planner - export the scene and build its phasing layers from the Planner's list"; }
         }
 
         public override string CategoryText

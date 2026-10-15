@@ -52,17 +52,17 @@ namespace Max2Babylon
 
         public override string ButtonText
         {
-            get { return "Babylon Properties"; }
+            get { return "Planner Properties"; }
         }
 
         public override string MenuText
         {
-            get { return "Babylon Properties"; }
+            get { return "Planner Properties"; }
         }
 
         public override string DescriptionText
         {
-            get { return "Babylon - setting specific properties"; }
+            get { return "Planner - setting specific properties"; }
         }
 
         public override string CategoryText
