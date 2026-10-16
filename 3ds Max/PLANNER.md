@@ -5,7 +5,7 @@ safeguards for models that are exported to the UrbanCGI Planner (planning.urbanc
 that corrects the phasing names in the scene before export, an Update button that installs the latest
 release from inside 3ds Max, and a Schedule tab that builds the phasing layers and helpers from the Planner's
 layer list (section 5), shows and edits each layer's IN and RM, adds layers and previews the schedule at a date
-(section 6). Modellers see it as "Planner": the menu, the window and the quad menu say so (section 5).
+(section 6), with a Gantt of the layers beside them (section 7). Modellers see it as "Planner": the menu, the window and the quad menu say so (section 5).
 Everything else is upstream. Exports made with this build identify themselves in the GLB's `asset.generator` as
 `babylon.js glTF exporter for 3dsmax <year> v1.0-urbancgi`.
 
@@ -133,6 +133,13 @@ JavaScript too (U+FEFF counts as a space, U+0085 does not).
 
 ### What is reported
 
+The objects are read as the Planner reads them: the geometry, and the tagged nodes the export passes as groups (a
+closed Max group's head, which Add to IN / Add to RM tag for the whole group; a tagged dummy), each an object of its
+own. A split piece (`Name_2` linked under `Name`) is part of its object, as the Planner reads it: only what its own
+name writes (a space, a hyphen, a sub-stage written an old way) is told about it. An untagged node linked under a
+scheduled object (a member of its Max group, a part linked under it) is shown and hidden with it, so it is not noted
+as unscheduled.
+
 | Severity | Case |
 | --- | --- |
 | Error | leading tag malformed (`Ph1_S03_...`) |
@@ -140,9 +147,10 @@ JavaScript too (U+FEFF counts as a space, U+0085 does not).
 | Error | group date unreadable (`31-02-26`) or finish before start (`17-02-27_23-02-17`) |
 | Error | two exported objects share a name |
 | Warning | tagged object not inside a dated group (unfiled: the Planner cannot schedule it); names the offending group, or the dated 3ds Max layer if the object sits on one. In a phasing layer whose ID only Fix phasing names reads (a full stop after the phase, `06.01.2_…`), the message says so and points to Fix phasing names (or, under a second top node with "phasing" in its name, gives the ID to rename it to by hand) |
-| Warning | neither tag matches the group: for a two-number group (any layer of the phasing hierarchy, and any other group named phase then stage) neither tag has its phase and stage (`Ph2_St02_3_IN_...` or `Ph3_St02_7_IN_...` inside `02_02_7_...`, `Ph1_St01_IN_...` inside `01_04_...`); for a one-number group neither tag has its stage (`Ph1_St06_RM_...` inside `00_...`, `Ph2_St05_2_IN_...` inside `05-1_...`); or the leading tag has its stage but not its phase (the phase most of the leading tags with its stage carry, or, when no leading tag has its stage, most of the trailing tags with it; see section 1) and another dated layer has the leading tag's phase and stage, so the Planner dates the object from that layer, which the message names (`Ph2_St07_IN_...` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`, with `02_07_Other_01-03-27` in the file; with no such layer the Planner keeps the object on the group's dates, as meant, and nothing is said); or only the trailing tag has its stage, in another phase (`Ph2_St03_IN_..._Ph2_St07_RM` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`), so the group does not own the removal: the message is worded around the removal tag, says where the Planner dates the removal (the layer with its phase and stage, or after the end of the works, TBC, when there is none) and where it puts the leading tag's work (its own layer as usual, or, when no dated layer has the leading tag's phase and stage, the group's own work: spread over the group's dates, not listed as unresolved, which nothing else reports, and TBC only when the group is; a TBC group with no dates puts it at the start of the project, TBC like the rest of the group). Both messages say how the group got its phase; when leading tags set it they name the objects that did (up to five), and when those are fewer than the objects warned in the group for another phase, the advice says the slip may be theirs (`Ph2_St06_2_RM_Old_Barrier` beside three `Ph0_St00_IN_…_Ph1_St06_2_RM` hoardings in `06-2_Hoarding_Removal_…`). An object directly in a layer of the phasing top node is pointed to Fix phasing names, which gives it the layer's tag; one linked under another node inside the layer (a Max group, an object), or in a layer of a second top node with "phasing" in its name, is told to correct it by hand, as the fixer leaves it |
+| Warning | neither tag matches the group: for a two-number group (any layer of the phasing hierarchy, and any other group named phase then stage) neither tag has its phase and stage (`Ph2_St02_3_IN_...` or `Ph3_St02_7_IN_...` inside `02_02_7_...`, `Ph1_St01_IN_...` inside `01_04_...`); for a one-number group neither tag has its stage (`Ph1_St06_RM_...` inside `00_...`, `Ph2_St05_2_IN_...` inside `05-1_...`); or the leading tag has its stage but not its phase (the phase most of the leading tags with its stage carry, or, when no leading tag has its stage, most of the trailing tags with it; see section 1) and another dated layer has the leading tag's phase and stage, so the Planner dates the object from that layer, which the message names (`Ph2_St07_IN_...` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`, with `02_07_Other_01-03-27` in the file; with no such layer the Planner keeps the object on the group's dates, as meant, and nothing is said); or only the trailing tag has its stage, in another phase (`Ph2_St03_IN_..._Ph2_St07_RM` among `Ph1_St07_IN_...` objects in `07_Kerbs_...`), so the group does not own the removal: the message is worded around the removal tag, says where the Planner dates the removal (the layer with its phase and stage, or after the end of the works, TBC, when there is none) and where it puts the leading tag's work (its own layer as usual, or, when no dated layer has the leading tag's phase and stage, the group's own work: spread over the group's dates, not listed as unresolved, which nothing else reports, and TBC only when the group is; a TBC group with no dates puts it at the start of the project, TBC like the rest of the group). Both messages say how the group got its phase; when leading tags set it they name the objects that did (up to five), and when those are fewer than the objects warned in the group for another phase, the advice says the slip may be theirs (`Ph2_St06_2_RM_Old_Barrier` beside three `Ph0_St00_IN_…_Ph1_St06_2_RM` hoardings in `06-2_Hoarding_Removal_…`). An object directly in a layer of the phasing top node is pointed to Fix phasing names, which gives it the layer's tag; one linked under another node inside the layer (a Max group, an object), or in a layer of a second top node with "phasing" in its name, is told to correct it by hand, as the fixer leaves it. An object taken away and put back in one stage is told in the next warning instead |
+| Warning | objects taken away and put back in one stage (the removal tag first, then the install tag, the same phase, stage and sub-stage: `Ph2_St02_RM_Bench_Ph2_St02_IN`) that sit in another stage's layer (a `02_01_…` layer), one warning with the count and up to 10 of them, each with its layer and the name that retags it for that layer (`Ph2_St01_RM_Bench_Ph2_St01_IN`: the rest of the name as written, both tags the current way; a one-number layer in the phase its objects give, else the object's own): such an object belongs in that stage's layer, and the Planner's Generate from model lists it as a naming error under "Layer names that need attention", so move it to that stage's layer or retag it (its split pieces likewise: the advice says how many it has). The objects and the layer are read as the Planner reads them: a closed Max group's head is an object with a vote in a one-number layer's phase, a split piece is part of its object with none, groups of one label are one layer, its phase from all their objects. Fix phasing names leaves such an object as it is, with a Check line (section 3), so the warnings on names written an old way or with a hyphen list it to rename by hand, and the export's pointer to the fixer does not count it; the export asks the fixer which objects it leaves so (where it numbers a stage's layers again, an object may become its new layer's own work, which it corrects as usual). Put up, then taken down in one stage (`Ph2_St02_IN_Sign_Ph2_St02_RM`), taken away and put back in two stages, or in a stage and its sub-stage (`St03`, `St03_1`) is not this case. None on HS2 |
 | Warning | tags whose phase and stage have no layer in the file, one warning for removal tags and one for install tags, each with the count, the tags and up to 10 object names: the Planner cannot date that work, so it puts a removal after the end of the works and an install at the start of the project, both marked TBC (HS2: `Ph1_St06`, `Ph1_St14`, `Ph1_St23`, `Ph1_St26`, `Ph1_St34`, `Ph99_St99`, eight objects; Fix phasing names lists these as Check lines and cannot correct them). A tag is looked at only where the Planner looks for another layer: not the one its own group owns, not the leading tag when its group owns neither (the mismatch above), not an install in phase 0 (there before the works), and not on an unfiled object. As for the Planner, a group is a layer only when it holds a tagged object: one with the tag's phase and stage that holds none is named in the warning |
-| Warning | sub-stages written an old way, with a hyphen or a full stop: one warning for object names (`Ph1_St04-2_IN_...`, `Ph1_St04.2_IN_...`; for a hyphen it adds that Datasmith turns it into an underscore in Unreal, so the names would not match) and one for group names of two numbers (`01_04-2_...`, `01_04.2_...`), each with the count and up to 10 names, saying the convention writes an underscore (`Ph1_St04_2_IN_...`, `01_04_2_...`) and which ones Fix phasing names converts (the layers of the phasing top node it corrects and the objects directly in them) and which to rename by hand (anything else, e.g. an object linked under a Max group inside a layer, or a layer of a second top node with "phasing" in its name), with why; where the fixer leaves a name for a reason of its own, that reason is given, one list of names for each: a layer directly under the top node with no phase group of its phase to move it into, and the objects directly in it; the objects directly in a layer the fixer cannot read (one number whose objects directly in it give no phase, a number of three digits or more); an object whose name with underscores another node already has (`…_Kerb-1` beside `…_Kerb_1`). In a phasing layer only a hyphen or a full stop before the split counts (a layer's `6.06` is corrected by the fixer with the rest of the ID). In any other group name only a full stop after a two-digit stage counts, and not one before `_x_`, so a measurement (`2.4_High_Hoarding`, `01_2.4_High_Hoarding_…`, `1.8_x_2.4_Heras_Panel`) is not counted; nor is a full stop inside a name (`…_v.02`), nor a hyphen in a group's name after its ID (`06_04_Temporary_Road-Road_Marking_…`: Datasmith leaves layer names alone) |
+| Warning | sub-stages written an old way, with a hyphen or a full stop: one warning for object names (`Ph1_St04-2_IN_...`, `Ph1_St04.2_IN_...`; for a hyphen it adds that Datasmith turns it into an underscore in Unreal, so the names would not match) and one for group names of two numbers (`01_04-2_...`, `01_04.2_...`), each with the count and up to 10 names, saying the convention writes an underscore (`Ph1_St04_2_IN_...`, `01_04_2_...`) and which ones Fix phasing names converts (the layers of the phasing top node it corrects and the objects directly in them) and which to rename by hand (anything else, e.g. an object linked under a Max group inside a layer, or a layer of a second top node with "phasing" in its name), with why; where the fixer leaves a name for a reason of its own, that reason is given, one list of names for each: a layer directly under the top node with no phase group of its phase to move it into, and the objects directly in it; the objects directly in a layer the fixer cannot read (one number whose objects directly in it give no phase, a number of three digits or more); an object whose name with underscores another node already has (`…_Kerb-1` beside `…_Kerb_1`); an object taken away and put back in one stage that sits in another stage's layer, which the fixer leaves for the modeller to correct. In a phasing layer only a hyphen or a full stop before the split counts (a layer's `6.06` is corrected by the fixer with the rest of the ID). In any other group name only a full stop after a two-digit stage counts, and not one before `_x_`, so a measurement (`2.4_High_Hoarding`, `01_2.4_High_Hoarding_…`, `1.8_x_2.4_Heras_Panel`) is not counted; nor is a full stop inside a name (`…_v.02`), nor a hyphen in a group's name after its ID (`06_04_Temporary_Road-Road_Marking_…`: Datasmith leaves layer names alone) |
 | Warning | a group of one number with an old sub-stage (`06-2_Hoarding_Removal_…`, `05.2_…` after a two-digit stage), one warning each: an ID of one number cannot carry a sub-stage, so it needs its phase in front, `<phase>_06_2_<name>`. When its objects' tags with that stage agree on a phase (for a phasing layer, the objects directly in it; for any other group, the tagged objects it is the nearest dated group of) the warning says what it becomes (`03_06_2_Hoarding_Removal_…`; `03_06_<m>_…` when another layer of the fixer's has the same phase and stage, as the fixer then numbers the stage's layers 1, 2, … in start-date order) and whether Fix phasing names renames it (a phasing layer of the top node it corrects) or it is renamed by hand, and why (outside that top node; directly under it with no phase group of its phase; its objects only inside a Max group in it, as the fixer reads only the objects directly in a layer); when they give no phase, or several, it says so (`phases 1 and 2`), to be renamed by hand with the phase it belongs to. A number of three digits or more (`06-123_…`) has no place in the ID: renamed by hand |
 | Warning | a hyphen anywhere else in a tagged object's name (`Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF`, also a date, `..._17-08-26`), one warning with the count and up to 10 names: Unreal's Datasmith import turns every hyphen in an object's name into an underscore, so the name would not match between the Planner and Unreal. Says which ones Fix phasing names converts and which to rename by hand, as above. An untagged object is not the Planner's and is not counted |
 | Warning | group has neither dates nor TBC; group has an order number but no name |
@@ -150,11 +158,12 @@ JavaScript too (U+FEFF counts as a space, U+0085 does not).
 | Warning | empty description (a stray underscore at the description's edge is trimmed by the Planner and not reported) |
 | Warning | a space anywhere in a tagged object's name or a dated group's name (names use underscores only, no notes) |
 | Warning | two groups share a name |
-| Note | single-digit stage (`St6`, `St6_1`); untagged object inside a dated group; a date more than 3 years in the past or 10 in the future |
+| Note | single-digit stage (`St6`, `St6_1`); untagged object inside a dated group (not one linked under a tagged object there, which the Planner shows and hides with it); a date more than 3 years in the past or 10 in the future |
 | Note | the phasing layers and helper nodes do not pair up by name (see the counts below): how many on each side, with up to 10 names |
 | Note | tags whose phase and stage only an undated layer has (`01_05_Hoarding_TBC`), one note for removal tags and one for install tags, with the tags, the layers and up to 10 object names: the Planner dates another stage's work only from a layer with a start date, so until that layer has dates it puts the work where it puts a tag with no layer, marked TBC |
 
-After the summary line ("Planner naming check: …", which gives the tagged objects of the export) comes the
+After the summary line ("Planner naming check: …", which gives the tagged objects of the export as the Planner
+reads them: a tagged group head counts, a split piece is part of its object) comes the
 phasing counts line, for a quick comparison with the project's layer / activity matrix, e.g. "Phasing counts:
 91 layers in the Max layer HS2_…_v.02, 91 helper nodes under HS2_…_v.02." (the HS2 figures as worked out from its
 GLB and Max layers; not yet seen in 3ds Max itself):
@@ -254,7 +263,14 @@ Dates and TBC are never changed. Anything that does not read is left exactly as 
 a person to look at: an object with no Ph/St tag, a group child that is not a layer, a removal tag naming a stage
 with no layer in the file (or a layer that cannot be moved), a corrected top, group, layer or object name that
 another node already has, a word fix that would leave a name unreadable, a second top-level node with "phasing" in
-its name (only the first is corrected), and so on. A removal tag naming a stage with no layer keeps its stage, but
+its name (only the first is corrected), and so on. An object taken away and put back in one stage (its removal tag
+first, then its install tag, the same phase, stage and sub-stage, `Ph2_St02_RM_Bench_Ph2_St02_IN`) that sits in
+another stage's layer (a `02_01_…` layer) is left as it is too, spelling and all, with a Check line giving the
+Planner's advice: move it to that stage's layer, or retag it for this layer (`Ph2_St01_RM_Bench_Ph2_St01_IN`, both
+tags). The Planner lists it as a naming error for the modeller to correct, and giving only its leading tag the layer's
+stage, as for any other object, would take it away in this layer and put it back in the other, which nothing would
+then report. One whose stage the review gives the layer is the layer's own work, corrected as usual. The export's
+pointer to the fixer does not count these. A removal tag naming a stage with no layer keeps its stage, but
 its spelling is still corrected (the phase's zeros, the underscore): its Check line then says "tag kept, only its
 spelling corrected" and the object's Changed line shows the new spelling; otherwise "left as it is". The export's
 naming check gathers these objects in one warning (section 2). When the stage has no phasing layer but a layer
@@ -598,8 +614,8 @@ names always agree, and changing a list renames objects.
 **What the tab shows.** With a list imported, its tree; with none, the scene's own phasing tree (the layers in the
 root, nested as the Max layers nest), so a scene built by hand works too. Layers added in Max (below) sit under their
 parents. The columns are Layer, Kind, Start, Finish, TBC, IN, RM and Status in the scene. The side list shows the
-chosen row's IN and RM objects, with a note when an object sits in another layer, is TBC or has a stage no dated
-layer has; choosing objects there selects them in 3ds Max. Below the tree, **Not in the Planner's list** (with their
+chosen row's IN and RM objects, with a note when an object sits in another layer, is TBC, has a stage no dated
+layer has or is taken away and put back in a stage whose layer it does not sit in (below); choosing objects there selects them in 3ds Max. Below the tree, **Not in the Planner's list** (with their
 IN and RM) and **Not scheduled** (the objects the Planner leaves out, with why; choosing one selects it).
 
 **Fill IN / RM from names** reads every object as the Planner's Generate from model reads the GLB (layer mode). It is
@@ -622,9 +638,13 @@ a port of the Planner's code, checked against that code object by object (see Te
   trailing tags. An object's tags (leading and trailing, in either order, written any older way: `St04-2`,
   `St04.2`, lower case) are its layer's own work when their phase and stage are the layer's, another layer's
   otherwise.
-- A layer's own work is spread over its dates: removal-only objects first, then by name (the Planner's natural
-  order), an install before its own object's removal. Another stage's tag is a one-day activity at the start of the
-  dated layer of that phase and stage (the very sub-stage first, then the one that starts first); with none, a
+- A layer's own work is spread over its dates: first the removals that clear the way (of removal-only objects, and of
+  objects whose name writes the removal before the install, `Ph1_St03_RM_Bollard_Ph1_St03_IN`: taken away, then put
+  back), then the rest by name (the Planner's natural order), an object's install and removal in the order its name
+  writes them (`Ph1_St03_IN_Fence_Ph1_St03_RM`: put up, then taken down). Another stage's tag is a one-day activity at the start of the
+  dated layer of that phase and stage (the very sub-stage first, then the one that starts first); an object taken
+  away, then put back whose two tags are both that one layer's work (`Ph2_St02_RM_Bench_Ph2_St02_IN` under a
+  02_01 layer) has its removal in the first half of that day and its install in the second; with none, a
   removal is parked the day after the works end and an install sits at the project start, both TBC (an install in
   phase 0 is there before the works, so not TBC). An object whose tags are both other layers' (a stray) is dated by
   its leading tag's layer; with none, its leading tag is its own layer's work. An undated (TBC) layer's work sits at
@@ -632,7 +652,7 @@ a port of the Planner's code, checked against that code object by object (see Te
 - The project start is the Planner workspace's start, moved back to the earliest dated layer when that is earlier:
   Generate from model never moves it forward, and a new workspace starts on the day it is made, so a workspace made
   before its works start keeps that earlier day, and undated layers' work, installs no dated layer has and phase 0
-  sit on it. **Planner project start** (by the buttons, kept with the scene, root node app data "PLPS") takes the
+  sit on it. **Planner project start** (beside the scrubber, kept with the scene, root node app data "PLPS") takes the
   workspace's start, the first day of its Gantt; unticked, the tab takes the earliest dated layer, and the summary
   says it is assumed. Dated layers' work does not depend on it.
 - A layer's **IN** is the installs its dates place (its own, and other layers' objects whose install tag names its
@@ -652,8 +672,43 @@ before its install. `ph1_st02_RM_Kerb_ph2_st01_IN` (removed in Ph1 St02, install
 `Ph2_St01_IN_Fence_Ph1_St02_RM` read the same, sitting in either layer: the removal is in the RM of the Ph1 St02
 layer, the install in the IN of the Ph2 St01 layer. The Planner shows such an object from the project start (its
 first event is a removal), hides it from its removal and shows it again from its install, and so does the scrubber.
+Within one layer the name says which comes first: `Ph1_St03_RM_Bollard_Ph1_St03_IN` is taken away at the start of
+the layer's work and put back later in it, `Ph1_St03_IN_Fence_Ph1_St03_RM` put up and then taken down. A removal
+that ends at the instant the install starts (a one-day removal layer and the reinstall the next day) goes first, so
+the object stays in view throughout. This is how the Planner reads them since its fixes of 2026-10-15; before, the
+install went first at one instant, which hid such an object for the whole schedule, and within one layer the
+install always went first, so an object taken away and put back was missing until the layer's work and gone after
+it. The first applies to existing schedules straight away; the order within a layer only to the work Generate from
+model makes from then on (Merge keeps existing activities as they are, so an existing schedule keeps its order
+until it is generated again with Replace), while the tab always shows a fresh Generate.
 
-**Add selected to IN…, Add selected to RM…, Remove from the list…** (under the side list):
+The same holds when both tags are the work of one layer the object is not filed under: the removal takes the first
+half of that layer's first day and the install the second, so the object is taken away and put back at once and
+stays in view (the install used to start with the day and the removal end with it, so the object was missing
+before the stage and gone after it). One description, phase, stage and type is one activity, so objects that share
+a description and a stage share their install and removal; when one of them is taken away, then put back and another
+put up, then taken down, those two activities cannot show both in order, and the one shown wrong is listed with the
+layer-name notes (the Planner's Generate lists it too), for the modeller to give it a description of its own.
+**Add to IN** and **Add to RM** can make such a name (`Ph2_St01_RM_Pole` given an install beside
+`Ph2_St01_IN_Pole_Ph2_St01_RM`): the rename goes ahead, as its tags are what was asked, and the review notes what
+Generate will list. Both follow the Planner's fix of 2026-10-15.
+
+**Taken away and put back in one stage, in another stage's layer.** An object whose name takes it away and puts it
+back in one stage (the removal tag first, then the install tag, the same phase, stage and sub-stage) belongs in
+that stage's layer: `Ph2_St02_RM_Bench_Ph2_St02_IN` filed under a 02_01 layer is a naming error, to be corrected in
+3ds Max by moving it to the Ph2_St02 layer, or by retagging it for the layer it sits in,
+`Ph2_St01_RM_Bench_Ph2_St01_IN`. The Planner's Generate from model lists it under "Layer names that need attention"
+(from 2026-10-16), and the tab lists it word for word with the layer-name notes, under the first name of the layer it
+sits in, with the name retagged for that layer (the rest of the name as written, a note after a space included, both
+tags the current way; for a one-number layer the phase its objects give, else the object's own). The side list
+notes it too. It is scheduled as above all the same (a layer that dates the stage takes it away and puts it back on
+its first day), and it is listed also when no layer dates that stage. Put up, then taken down in one stage
+(`Ph2_St02_IN_Sign_Ph2_St02_RM`), taken away and put back in two stages, or in a stage and its sub-stage (`St03`,
+`St03_1`) is not this case, nor is such an object in its stage's own layer. The export's naming check warns about
+every one, a closed Max group's head included (section 2), Fix phasing names leaves each as it is with a Check line
+(section 3), and Add to IN and Add to RM never write such a name (below).
+
+**Add to IN…, Add to RM…, Remove from list…** (under the side list):
 
 - **Add** gives the objects selected in 3ds Max the chosen layer's install (IN) or removal (RM) tag,
   `Ph<phase>_St<stage>[_<sub>]_IN|RM`. The tag of that type is replaced where it is (leading or trailing); a
@@ -673,13 +728,19 @@ first event is a removal), hides it from its removal and shows it again from its
   has a tag of its own: then it is its own object, kept in a hierarchy that is not a group, and a Problem inside a
   closed group (open the group, Group > Open, and select it alone; or select the head alone for the group). An
   object's split pieces (`Name_2` under `Name`) are renamed with it (`NewName_2`), so the Planner still reads them
-  as part of it; a piece chosen alone is a Problem (choose its object).
+  as part of it, also when the edit gives an untagged object its first tag or takes out its only one (the Planner
+  folds a piece into its object by name and ancestor alone, tagged or not); a piece chosen alone is a Problem
+  (choose its object).
 - Each edit is checked first by reading the scene again with the new names, exactly as Fill reads it. An object
   that would not then be in the column asked for is a Problem and keeps its name, with why: the layer has no dates,
   or holds no tagged object yet (the Planner dates another layer's work only from a dated layer that holds one);
   another layer dates that stage; the object is not under a dated layer's helper; another node has the new name
   (the export would call one of the two `X (1)`), or one of its split pieces' new names is taken; a one-number layer
-  has no phase to write; the object is a layer's helper. Objects the renames make the Planner read differently
+  has no phase to write; the object is a layer's helper; the new name would have the object taken away and put back
+  in one stage while it sits in another stage's layer (the naming error above, which the tool never writes: as it
+  never moves objects, the review says to move it to that stage's layer in 3ds Max, or gives the name that retags it
+  for the layer it sits in; an edit towards that name, such as Add to RM on the layer it sits in, goes ahead). Objects
+  the renames make the Planner read differently
   without being renamed are listed as **Also**, each with why (a one-number layer whose phase follows its objects'
   tags, a piece no longer read with its object).
 - A review list, then **Apply**: Hold the scene first (on by default), one MAXScript batch in one undo record
@@ -726,14 +787,22 @@ GLB; while an export runs, the preview does not start (the tab says why), and ch
 changing this day does not change the selection. Every save shows the hidden objects first and hides them again
 after, so the file keeps everyone's own state, also after a save that failed part-way. Nothing in the scrubber's
 row changes size as it moves (the date and the count have room for their longest text; the layers at work get two
-lines, all of them in the tooltip), so the slider stays under the pointer while it is dragged. Read the scene
-again, Fill and the edits read the objects the preview hid as they were before it.
+lines, all of them in the tooltip), so the slider stays under the pointer while it is dragged. **Planner project
+start** sits at the right of the layers at work. At the window's smallest size the lists below the tree give way
+first (down to their tabs), then the notes above it (as many written out as there is room for and a last line
+counting the rest, down to one line saying how many there are; the tooltip holds every one), so the tree keeps three
+rows and the side list two however many notes the scene gives; both get their height back when the window grows.
+Read the scene again, Fill and the edits read the objects the preview hid as they
+were before it.
+
+**Days and times as the Planner reads them**: the tab's days are local midnights, as the Planner's Day steps are, and
+an activity starts at its time on the wall clock, also on the day the clocks change (13:00 is 13:00 after the
+change; a time in the hour the clocks repeat is its first occurrence, as the Planner reads it), so work chained
+across a change neither gaps nor overlaps. The Planner's own day grid lines are still drawn an hour off midnight
+after a change; its 4D view is not.
 
 **What the Planner does that the tab mirrors** (worth knowing; the tab follows the Planner rather than differ):
-the Planner's day steps are whole days of minutes from the start of its timeline, so after a clock change they sit
-an hour off midnight (01:00 after the spring change, 23:00 the day before after the autumn one), where the tab's
-days are midnights; on the day of a clock change, activities chained across it gap or overlap by an hour in the 4D
-view; an undated TBC layer's work is at the project start (its installs show from the first day), not after the end;
+an undated TBC layer's work is at the project start (its installs show from the first day), not after the end;
 of two nodes the GLB gives one name (a node called `X (1)` in 3ds Max and a second X the export renames so), only
 the first is shown and hidden.
 
@@ -753,6 +822,106 @@ rewriting, the checked edit plan and its batch), `PlannerAddLayer.cs` (Add layer
 `PlannerScheduleRows.cs` (the tab's rows), `PlannerPreview.cs` (the preview's bookkeeping);
 `Max2Babylon/Tools/PlannerPreviewController.cs`, `PlannerScheduleScene.cs` (hidden and Do not export flags, the added
 layers, selection, the batches); `Max2Babylon/Forms/PlannerScheduleTab.cs`, `PlannerAddLayerForm.cs`.
+
+## 7. Planner: the Gantt beside the tree (Schedule tab)
+
+A Gantt sits beside the Schedule tab's tree, **row for row with it**: the same rows in the same order, at the same
+heights (it asks the tree where each row it shows is), scrolling with it, folding with it. Dates stay the Planner's:
+nothing in the Gantt changes a date, a name or the scene.
+
+**What it draws**, as the Planner's Gantt-to-Excel export draws a schedule (`ganttExport.ts`):
+
+- One column per calendar day (**Days**, the default), or **Weeks** or **Months** for long programmes. The header has
+  two rows: months over days (Days), months over weeks starting on Monday (Weeks), years over months (Months).
+  Weekend days are shaded (the export's weekend grey in the header, lighter down the chart); the header's days of the
+  scrubber's TBC zone are tinted as the scrubber's date is: the days after the works end up to the scrubber's last day,
+  where the removals no dated layer has are parked. The chart can run further, over the dates of a layer that holds no
+  work yet (a row of the list the scene does not have, an empty layer); those days are not the zone, nor are a layer's
+  own dates in its hover. At Weeks and Months the zone's own days are tinted (a week or a month wider than it is not).
+- **Layer rows**: the days the layer's IN work runs in the install colour and the days its RM work runs in the
+  Gantt's red (a row with both: installs above, removals below). The work is the row's IN and RM columns, the
+  activities Fill IN / RM from names works out, and the days are the ones the Planner's scheduler gives each
+  activity, its start date to the day of its last minute, which the Planner's Gantt and its export colour (checked
+  against the Planner's own code, see Tests). Up to the scrubber's date the bars are solid, after it the export's tint
+  (the colour 45% towards white), as the Planner's Gantt fills a bar up to its playhead; with End of the day the
+  scrubber's own day counts as done. **TBC** work is hatched, the colour's diagonal lines over its tint as the
+  export's pattern is: an activity whose dates are to be confirmed, or one in a TBC layer. The rows for work no
+  dated layer places (at the project start, after the end of the works) and for dated groups outside the phasing
+  tree are drawn the same way. So is a phasing layer of the scene that the Planner's list does not have (removed in the
+  Planner, or made by hand in 3ds Max) whose work the Planner reads: it gets a row after the list's, in grey, with that
+  status (it stays in **Not in the Planner's list** below the tree too), so the Gantt charts every layer the scrubber
+  finds at work.
+- **Group rows**: a grey span over everything inside them (the export's folder grey, hatched for a TBC group), in a
+  slimmer band than a layer's bar.
+- **Before Fill IN / RM**: each layer's own dates, from its name (else the list's Start and Finish), in a neutral
+  slate, hatched when TBC; an undated layer has none. After Fill, a dated layer whose dates place no work shows its
+  dates as a dashed outline.
+- **Today** is a grey line down the middle of its day, the **scrubber's** date an orange line with a head on the
+  header (at the start of its day, or its end with End of the day); before Fill, and while the schedule cannot be
+  scrubbed, there is no scrubber and none is drawn.
+- The chart runs from the earliest to the latest day anything is drawn on, and over the scrubber's whole range.
+
+Colours, the Planner's own (`config/activity.ts`, `ganttExport.ts`, `styles.css`): install `#43B04A` (the colour of
+an activity with none of its own, which is what Generate from model makes) and its tint `#98D49B`; removal
+`#E23B3B` and `#EF9393`; header `#E7EBF0`, weekend `#CFD5DE`; group `#D9DEE5`, TBC group hatch `#9AA5B4`; the
+scrubber `#F7921D` (the Planner's accent, its playhead); today `#7F8A99`. The neutral slate before Fill is the
+export's `#9AA5B4`.
+
+**Hover and click.** Hovering a day says the row, the date (a weekend, today, the TBC zone) and what installs or
+removes that day: each activity at work, IN or RM, its name, how many objects, its dates, TBC, and whether its
+objects show from its start or are hidden from its finish (up to eight, then how many more); on a group, the span of
+what is inside it; before Fill, the layer's dates. **Clicking** a day (on a row or on the header) moves the scrubber
+there, within its range, and chooses that row in the tree; no preview starts, and a preview that is on follows. A
+press that moves is a drag, not a click.
+
+**Zoom and scrolling**, with no bar of its own (so the tree keeps three rows at the smallest window): **Days**,
+**Weeks** and **Months** sit at the right of the header's top row (D, W and M when the Gantt is narrow), and Ctrl
+and the mouse wheel zoom too; the line of the scrubber stays where it is as the zoom changes when it is in view. The
+mouse wheel scrolls the tree's rows (the Gantt follows), Shift and the wheel scroll the days, the chart can be
+dragged sideways, and a strip along the header's top edge shows the part in view and moves it (drag it, or press
+where to go); with the Gantt focused, Left, Right, Home and End scroll. When the scrubber's slider moves the date out
+of view the Gantt scrolls to it. Its right-click menu has the zoom, **Go to the scrubber**, **Go to today** and
+**Hide the Gantt**.
+
+**Folding.** A row with rows under it has a triangle before its name: click it, double-click the row, or press Left
+and Right on it; the triangle in the Layer header folds every group, or opens them all when none is open. The tree's
+right-click menu has **Expand all**, **Collapse all** and **Show the Gantt**. A folded group's span stays in the
+Gantt. Folds are kept while the window is open (by the row's Planner ID, else its name), also across readings of the
+scene.
+
+**Layout.** Beside the Gantt the tree leaves out its **Start**, **Finish** and **TBC** columns: the Gantt draws each
+row's dates, and the names hold them (the Layer cell's tooltip gives the whole name). Its Layer column keeps the width
+it had before the Gantt was there (the whole width shared by every column, at the size the window has when the tab
+first shows, and no less than about 20 characters of a name), and the Gantt takes the rest and every width the window
+gains, and gives way first as it shrinks (down to about six text heights); the tree never goes below its columns'
+least widths (a scroll bar under it would take a row at the smallest window). The tree's columns are laid out afresh
+by their weights each time its width changes (a grid otherwise goes on sharing a width as its columns were when it
+was squeezed), and its Layer column is measured once it shows: short of its width where there is room, the tree
+widens. Dragging the splitter sets the tree's width from then on. **Hide the Gantt** gives the tree the whole width
+with every column and its own one-line header; **Show the Gantt** brings it back. The tree's header is the Gantt's,
+two text rows tall; where the window is so short that the lists below the tree give way to keep the tree's three
+rows, it goes down to one row (the days, a month's name on its first day, the zoom at the right), so the lists keep
+what they had before the Gantt was there; it gets its two rows back as the window grows.
+
+In the harness (HS2, the window at its default size): at 100% the Layer column is 212 px (204 before the Gantt) and
+the Gantt 184 px, about 7 days at Days (22 at Weeks, 66 at Months); at 125% 343 px and 233 px; at 150% 380 px and
+263 px; at 200% 630 px and 333 px (each about 7 days at Days). At the smallest window the tree keeps three rows, the
+side list two, and the lists below the tree what they had before the Gantt (46 px at 100%). For more days, widen the
+window, drag the splitter or zoom out.
+
+**Speed.** On HS2 (92 rows, 253 days) the chart is worked out in about 1 ms; painting walks only the rows and days in
+view (4 to 11 ms for a maximised Gantt in the harness), and a scrubber step repaints only the Gantt.
+
+**Checking by hand in 3ds Max** (not run in 3ds Max yet): the Gantt beside the HS2 tree before and after Fill;
+folding, scrolling (wheel, Shift and wheel, drag, the strip) and the rows staying level with the tree; the hover text;
+a click with the preview off (the scrubber moves, nothing is hidden) and on (the viewport follows); the zoom; Hide
+and Show the Gantt (the date columns come and go); the window at its default size and at its smallest (the one-row
+header) at display scalings of 100, 125, 150 and 200%.
+
+Files: `SharedProjects/Utilities/Planner/PlannerGantt.cs` (the chart: rows, days, colours, header, tooltip text,
+folding, the TBC zone; tested in `PlannerGanttTests.cs`), `PlannerScheduleRows.cs` (`UnlistedAtWork`, the rows for a
+scene layer not in the list); `Max2Babylon/Forms/PlannerGanttView.cs` (the owner-drawn control, its one-row header),
+`PlannerScheduleTab.cs` (the split, the columns beside the Gantt, the folds, the click to the scrubber).
 
 ## Building
 
@@ -877,13 +1046,18 @@ real data and print their report:
   `phasingFromModel.ts`, `nodeNames.ts`, `schedule.ts` and `timeline.ts` (main) with esbuild, runs Generate from
   model as the store runs it on each scene as the export writes it (its nodes in the export's order, a second node of
   a name called `X (1)`), and writes every activity (name, install or removal, folder, TBC, start and finish
-  instants, the objects it binds), the layer folders, the unfiled objects and the 4D view's hidden objects at every
-  instant something changes (a minute either side too) and every midnight. `PlannerScheduleScenes.json` holds
+  instants, the objects it binds, and its start and end dates, the days the Gantt colours for it: section 7), the layer folders, the unfiled objects, the layer-name issues and the 4D view's
+  hidden objects at every instant something changes (a minute either side too) and every midnight. `PlannerScheduleScenes.json` holds
   synthetic scenes (removed then installed in both orders, strays, TBC, one-number layers, sub-stages written every
   way, split pieces, layer copies, clock changes, objects not scheduled, segment mode, nodes of one name, a workspace
-  that starts before its works);
-  `PlannerScheduleScenes.utc.json` and `PlannerScheduleScenes.sydney.json` are the Planner's results in UTC and in
-  Sydney time (regenerate them with the harness rather than edit them). `PlannerNaturalOrderCases.cs` holds 2,515
+  that starts before its works, a removal ending as the install starts, the order within one layer, starts on
+  clock-change days, objects taken away and put back by a layer they are not filed under, also when that layer is a
+  sub-stage, provisional, undated or starts on a clock-change day, or no layer dates the stage, objects of one
+  description needing opposite orders, objects taken away and put back in one stage in another stage's layer under
+  three-number, one-number, provisional and undated layers and layer copies, with the cases that are not);
+  `PlannerScheduleScenes.utc.json`, `PlannerScheduleScenes.sydney.json` and `PlannerScheduleScenes.london.json` are
+  the Planner's results in UTC, Sydney and London time (regenerate them with the harness rather than edit them).
+  `PlannerNaturalOrderCases.cs` holds 2,515
   name pairs and the order JavaScript gives them. Kept out of the repo: `PLANNER_SCHEDULE_HS2=<json>` (the v3_06u
   node tree) with `PLANNER_SCHEDULE_HS2_PLANNER=<json>` (the harness's results for it) compares the HS2 model the
   same way.

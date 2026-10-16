@@ -162,7 +162,9 @@ namespace Utilities.Planner
     /// Each edit is checked by reading the scene again with the new names, exactly as the Planner would
     /// (<see cref="PlannerSchedule"/>): an object that would not then be in the column asked for (an undated target layer,
     /// one that holds no tagged object yet, another layer the Planner dates that stage from, an object not under a dated
-    /// layer's helper, a name another node has) is a Problem and keeps its name; other objects the renames make the
+    /// layer's helper, a name another node has) is a Problem and keeps its name, and so is one whose new name would have it
+    /// taken away and put back in one stage while it sits in another stage's layer (a naming error the Planner lists:
+    /// such an object belongs in that stage's layer, and the tool never moves objects); other objects the renames make the
     /// Planner read differently are listed, each with why. Objects are known by the names the GLB gives them (a second
     /// node of a name is "X (1)", an object of its own).
     ///
@@ -323,6 +325,9 @@ namespace Utilities.Planner
             return type == PlannerTaskType.Install ? "IN" : "RM";
         }
 
+        // A split piece the renames would part from its object.
+        private const string PieceLost = "would no longer be read as part of it";
+
         // ---------------------------------------------------------------------------------------------------------
         // Planning and checking
 
@@ -371,7 +376,8 @@ namespace Utilities.Planner
             {
                 var node = nodes[key];
                 var above = AddedAbove(scene, key, adding);
-                var piece = before.PieceOf(key);
+                // A split piece by name and ancestor, as the Planner folds it, whether or not its object is tagged.
+                var piece = before.MergedOwnerOf(key);
                 bool tagged = PlannerNaming.ParseMeshName(before.NameOf(key) ?? node.Name ?? string.Empty) != null;
                 if (above != null && (piece != null || !tagged))
                 {
@@ -460,14 +466,15 @@ namespace Utilities.Planner
             }
 
             // An object's split pieces (Name_2 under Name) are renamed with it (NewName_2), so the Planner still reads them
-            // as part of it.
+            // as part of it. The Planner folds a piece into its object by name and ancestor alone, so an untagged object's
+            // pieces (tagged now) and the pieces of an object losing its only tag go with it too.
             var pieceOwner = new Dictionary<long, long>();
             var piecesOf = new Dictionary<long, List<PlannerSceneNode>>();
             if (proposals.Count > 0)
             {
                 foreach (var node in nodes.Values)
                 {
-                    var owner = before.PieceOf(node.Key);
+                    var owner = before.MergedOwnerOf(node.Key);
                     if (owner == null || asked.ContainsKey(node.Key))
                     {
                         continue;
@@ -485,8 +492,8 @@ namespace Utilities.Planner
             {
                 List<PlannerSceneNode> pieces;
                 var oldName = nodes[pair.Key].Name ?? string.Empty;
-                var obj = before.ObjectOf(pair.Key);
-                if (pair.Value == oldName || obj == null || obj.Name != oldName || !piecesOf.TryGetValue(pair.Key, out pieces))
+                // The pieces follow the object's own name (one the export renames is read by another).
+                if (pair.Value == oldName || before.NameOf(pair.Key) != oldName || !piecesOf.TryGetValue(pair.Key, out pieces))
                 {
                     continue;
                 }
@@ -506,7 +513,8 @@ namespace Utilities.Planner
                 long owner;
                 if (pieceOwner.TryGetValue(key, out owner))
                 {
-                    problems[owner] = "its split piece " + (nodes[key].Name ?? string.Empty) + " " + why + ", so it is not renamed either (the piece would no longer be read as part of it)";
+                    problems[owner] = "its split piece " + (nodes[key].Name ?? string.Empty) + " " + why + ", so it is not renamed either"
+                        + (why.Contains(PieceLost) ? string.Empty : " (the piece would no longer be read as part of it)");
                 }
                 else
                 {
@@ -561,15 +569,24 @@ namespace Utilities.Planner
                         }
                         problems[pair.Key] = Explain(after, pair.Key, newName, pair.Value.Last(), got);
                         changed = true;
+                        continue;
+                    }
+                    // A rename that would have the object taken away and put back in one stage while it sits in another
+                    // stage's layer: a naming error the Planner lists, which the tool never writes (it never moves objects).
+                    var misfiled = renamed.ContainsKey(pair.Key) ? after.ObjectOf(pair.Key) : null;
+                    if (misfiled != null && misfiled.MisfiledStage != null)
+                    {
+                        problems[pair.Key] = MisfiledProblem(misfiled);
+                        changed = true;
                     }
                 }
                 foreach (var pair in renamed.Where(p => pieceOwner.ContainsKey(p.Key)))
                 {
                     var owner = pieceOwner[pair.Key];
-                    var now = after.PieceOf(pair.Key);
+                    var now = after.MergedOwnerOf(pair.Key);
                     if (!problems.ContainsKey(owner) && (now == null || now.Key != owner))
                     {
-                        fail(pair.Key, "would no longer be read as part of it with the new names");
+                        fail(pair.Key, PieceLost + " with the new names");
                         changed = true;
                     }
                 }
@@ -671,6 +688,13 @@ namespace Utilities.Planner
                 plan.Notes.Add(PhasingFixScript.Count(partsOf.Values.Sum(v => v.Count), "object", "objects") + " under " + partsOf.Count.ToString(CultureInfo.InvariantCulture)
                     + " of the selected objects (a group's members, a hierarchy, split pieces) left out: selected with them, they are part of them, and the Planner shows and hides them with them.");
             }
+            // What the Planner's Generate would list about the names once renamed, and does not now: an object taken away,
+            // then put back that now shares its activities with one put up, then taken down, for one.
+            var listedNow = new HashSet<string>(before.LayerIssues, StringComparer.Ordinal);
+            foreach (var issue in after.LayerIssues.Where(i => !listedNow.Contains(i)))
+            {
+                plan.Notes.Add("After the renames, Generate from model lists " + issue + ".");
+            }
             return plan;
         }
 
@@ -726,15 +750,15 @@ namespace Utilities.Planner
         // Where a node's work is: its places, or "part of X" for a split piece of X.
         private static List<string> StateOf(PlannerSchedule schedule, long key)
         {
-            var piece = schedule.PieceOf(key);
+            var piece = schedule.MergedOwnerOf(key);
             return piece != null ? new List<string> { "part of " + piece.Name } : schedule.PlacesOfNode(key);
         }
 
         // Why a node not renamed is read differently once the others are.
         private static string WhyAnew(PlannerSchedule before, PlannerSchedule after, long key, Dictionary<string, string> phaseChanged)
         {
-            var wasPiece = before.PieceOf(key);
-            var nowPiece = after.PieceOf(key);
+            var wasPiece = before.MergedOwnerOf(key);
+            var nowPiece = after.MergedOwnerOf(key);
             if (wasPiece != null && nowPiece == null)
             {
                 return "not renamed, but no longer read as a split piece of " + wasPiece.Name + " once that is renamed, so the Planner reads it as an object of its own";
@@ -782,6 +806,18 @@ namespace Utilities.Planner
         private static string Places(List<string> places)
         {
             return places.Count == 0 ? "not scheduled" : string.Join("; ", places.ToArray());
+        }
+
+        /// <summary>
+        /// Why an edit is refused that would have the object taken away and put back in one stage while it sits in another
+        /// stage's layer (<see cref="PlannerScheduleObject.MisfiledStage"/>, read with the new name).
+        /// </summary>
+        internal static string MisfiledProblem(PlannerScheduleObject obj)
+        {
+            var stage = obj.MisfiledStage;
+            return "it would be taken away and put back in " + stage + ", but it sits in " + obj.FiledIn.Raw + ", which is not " + stage
+                + "'s layer: an object taken away and put back in one stage belongs in that stage's layer, and the Planner lists it as a naming error. "
+                + "Correct it in 3ds Max: move it to the " + stage + " layer (this tool never moves objects), or retag it for the layer it sits in as " + obj.Retagged;
         }
 
         // Why an object would not be where the edit asks, read off the schedule with the new names.

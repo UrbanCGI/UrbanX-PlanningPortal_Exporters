@@ -270,6 +270,12 @@ namespace Utilities.Planner
         public readonly List<PhasingMaxLayerMove> MaxLayerMoves = new List<PhasingMaxLayerMove>();
         /// <summary>Every layer read, in the corrected (phase, stage, split) order.</summary>
         public readonly List<PhasingLayerInfo> Layers = new List<PhasingLayerInfo>();
+        /// <summary>
+        /// The objects left as they are, each with a Check line, because it is taken away and put back in one stage while
+        /// it sits in another stage's layer (a naming error for the modeller to correct), by their names: the export's
+        /// naming check does not send them here (<see cref="PlannerNamingValidator"/>).
+        /// </summary>
+        public readonly HashSet<string> LeftMisfiled = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>Changed rows for the top layer, groups and layers.</summary>
         public int LayersToChange

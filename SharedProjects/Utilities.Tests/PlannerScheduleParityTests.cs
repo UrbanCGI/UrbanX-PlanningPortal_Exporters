@@ -15,19 +15,35 @@ namespace Utilities.Tests
     /// <summary>
     /// The schedule the Schedule tab works out (<see cref="PlannerSchedule"/>) against the Planner's own code run on the
     /// same models: every activity (name, install or removal, folder, TBC, start and finish instants, the objects it
-    /// binds), every layer folder, the unfiled objects and the 4D view's hidden objects at every instant something
-    /// changes (and a minute either side) and every midnight.
+    /// binds, and the days the tab's Gantt colours for it, which are the scheduler's start and end dates the Planner's
+    /// Gantt and its Excel export colour, hatched as they hatch it), every layer folder, the unfiled objects and the 4D
+    /// view's hidden objects at every instant something changes (and a minute either side) and every midnight.
     ///
-    /// The Planner's results are made by a harness that bundles the Planner's main branch (phasingFromModel.ts,
-    /// nodeNames.ts, schedule.ts, timeline.ts) and runs Generate from model as the store does, on each scene as the
-    /// export writes it (its nodes in the export's order, a second node of a name called "&lt;name&gt; (1)"):
-    ///   PlannerScheduleScenes.json         synthetic scenes (removed then installed in both segment orders, strays, TBC,
-    ///                                      one-number layers, sub-stages, splits, copies, clock changes, ...)
+    /// The Planner's results are made by a harness that bundles the Planner's code (phasingFromModel.ts, nodeNames.ts,
+    /// schedule.ts, timeline.ts and the domain package, with its 2026-10-15 fixes: a removal before an install at one
+    /// instant, a layer's own work in the order its names write the tags, starts at their time on the wall clock; an object
+    /// taken away, then put back by one layer it is not filed under has its removal in the first half of that layer's first
+    /// day, and objects of one description needing opposite orders are listed; and from 2026-10-16 an object taken away and
+    /// put back in one stage that sits in another stage's layer is listed as a naming error) and runs
+    /// Generate from model as the store does, on each scene as the export writes it (its nodes in the export's order, a
+    /// second node of a name called "&lt;name&gt; (1)"):
+    ///   PlannerScheduleScenes.json         synthetic scenes (removed then installed in both segment orders, also within one
+    ///                                      layer, by another layer and ending as the install starts, one description in
+    ///                                      opposite orders, strays, TBC, one-number layers,
+    ///                                      sub-stages, splits, copies, clock changes, starts on clock-change days; put
+    ///                                      back by another layer that is a sub-stage, provisional, undated, starts on a
+    ///                                      clock-change day or dates no stage, from two layers and with both orders of
+    ///                                      one description; taken away and put back in one stage in another stage's
+    ///                                      layer, under three-number, one-number, provisional and undated layers and
+    ///                                      layer copies, with the cases that are not, ...)
     ///   PlannerScheduleScenes.utc.json     the Planner's results in UTC
-    ///   PlannerScheduleScenes.sydney.json  the Planner's results in Sydney time (clocks change on 4 Oct 2026 and 5 Apr 2027)
+    ///   PlannerScheduleScenes.sydney.json  the Planner's results in Sydney time (clocks change on 4 Oct 2026, 4 Apr 2027
+    ///                                      and 3 Oct 2027)
+    ///   PlannerScheduleScenes.london.json  the Planner's results in London time (clocks change on 25 Oct 2026 and
+    ///                                      28 Mar 2027)
     /// and, kept out of the repo, the HS2 model:
     ///   PLANNER_SCHEDULE_HS2          the v3_06u node tree { "roots", "nodes": [ { "name", "children", "mesh" } ] }
-    ///   PLANNER_SCHEDULE_HS2_PLANNER  the harness's results for it (any zone the harness ran in: UTC or Sydney)
+    ///   PLANNER_SCHEDULE_HS2_PLANNER  the harness's results for it (any zone the harness ran in: UTC, Sydney or London)
     /// </summary>
     public class PlannerScheduleParityTests
     {
@@ -122,6 +138,26 @@ namespace Utilities.Tests
             public int Instants;
             public int Checks;
             public int Folders;
+            public int GanttBars;
+        }
+
+        // A folder's TBC as the Planner's exports read it (scheduleExport.ts buildScheduleRows): its own flag, or a folder's above it.
+        private static bool FolderTbc(Dictionary<string, JObject> folders, string name)
+        {
+            for (int hops = 0; name != null && hops < 64; hops++)
+            {
+                JObject folder;
+                if (!folders.TryGetValue(name, out folder))
+                {
+                    return false;
+                }
+                if ((bool)folder["tbc"])
+                {
+                    return true;
+                }
+                name = (string)folder["parent"];
+            }
+            return false;
         }
 
         /// <summary>Runs the schedule on a scene and lists every way it differs from the Planner's result for it.</summary>
@@ -162,6 +198,7 @@ namespace Utilities.Tests
             // Activities, one to one by name.
             var mine = built.Activities.ToDictionary(a => a.Name, StringComparer.Ordinal);
             var theirs = planner["activities"].Cast<JObject>().ToList();
+            var folderByName = planner["folders"].Cast<JObject>().GroupBy(f => (string)f["name"], StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
             foreach (var a in theirs)
             {
                 var name = (string)a["name"];
@@ -180,6 +217,18 @@ namespace Utilities.Tests
                 if (activity.EndMs != (long)a["endMs"]) differ(name + ": finish " + Show(built, activity.EndMs) + " against " + Show(built, (long)a["endMs"]));
                 var members = a["members"].Select(m => (string)m).ToList();
                 if (!members.SequenceEqual(activity.Members)) differ(name + ": binds " + string.Join(",", activity.Members) + " against " + string.Join(",", members));
+                // The Schedule tab's Gantt: the days it colours for the activity are the scheduler's start and end dates,
+                // which the Planner's Gantt and its Excel export colour, hatched as they hatch it (its own TBC or its folder's).
+                if (a["startDate"] != null)
+                {
+                    counts.GanttBars++;
+                    var work = PlannerGanttModel.WorkOf(built, activity);
+                    var days = work.FirstDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " to " + work.LastDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    var theirDays = (string)a["startDate"] + " to " + (string)a["endDate"];
+                    if (days != theirDays) differ(name + ": Gantt days " + days + " against " + theirDays);
+                    bool hatched = (bool)a["tbc"] || FolderTbc(folderByName, (string)a["folder"]);
+                    if (work.Tbc != hatched) differ(name + ": Gantt TBC " + work.Tbc + " against " + hatched);
+                }
             }
             foreach (var name in mine.Keys.Except(theirs.Select(a => (string)a["name"])))
             {
@@ -248,7 +297,8 @@ namespace Utilities.Tests
                 differences.AddRange(Compare((JArray)scene["nodes"], (string)scene["workspaceStart"], result, counts, out schedule));
             }
             output.WriteLine(file + ": " + counts.Scenes + " scenes, " + counts.Activities + " activities, " + counts.Objects + " objects, "
-                + counts.Folders + " layer folders, " + counts.Instants + " instants (" + counts.Checks + " object checks); " + differences.Count + " differences");
+                + counts.Folders + " layer folders, " + counts.Instants + " instants (" + counts.Checks + " object checks), " + counts.GanttBars + " Gantt bars; "
+                + differences.Count + " differences");
             Assert.True(differences.Count == 0, string.Join("\n", differences.Take(40)));
         }
 
@@ -262,6 +312,12 @@ namespace Utilities.Tests
         public void SyntheticScenesMatchThePlannerInSydneyTime()
         {
             RunGolden("PlannerScheduleScenes.sydney.json");
+        }
+
+        [Fact]
+        public void SyntheticScenesMatchThePlannerInLondonTime()
+        {
+            RunGolden("PlannerScheduleScenes.london.json");
         }
 
         [Fact]
@@ -284,7 +340,8 @@ namespace Utilities.Tests
                 var lines = new List<string>
                 {
                     "HS2 v3_06u schedule parity (" + result["zone"] + "): " + counts.Activities + " activities, " + counts.Objects + " objects, "
-                        + counts.Folders + " layer folders, " + counts.Instants + " instants (" + counts.Checks + " object checks); " + differences.Count + " differences",
+                        + counts.Folders + " layer folders, " + counts.Instants + " instants (" + counts.Checks + " object checks), " + counts.GanttBars + " Gantt bars; "
+                        + differences.Count + " differences",
                     "Project start " + schedule.ProjectStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ", works end "
                         + (schedule.WorksEnd.HasValue ? schedule.WorksEnd.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-")
                         + "; layers " + schedule.Layers.Count + ", IN " + schedule.Activities.Where(a => a.Type == PlannerTaskType.Install).Sum(a => a.Members.Count)

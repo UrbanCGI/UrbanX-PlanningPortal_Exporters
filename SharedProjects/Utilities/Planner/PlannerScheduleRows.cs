@@ -184,6 +184,41 @@ namespace Utilities.Planner
             return rows;
         }
 
+        public const string UnlistedAtWorkStatus = "Not in the Planner's list \u2014 left as it is; the Planner reads its work";
+
+        /// <summary>
+        /// The rows the tree adds after its own for the scene's phasing layers the list does not have whose work the Planner
+        /// reads (filled: the schedule has a layer there), so that the Gantt beside the tree charts every layer the scrubber
+        /// finds at work. Each is a copy of its row in <paramref name="unlisted"/> (which the list of such layers below the
+        /// tree keeps), at the top level, in that order.
+        /// </summary>
+        public static List<PlannerScheduleRow> UnlistedAtWork(IEnumerable<PlannerScheduleRow> unlisted)
+        {
+            var rows = new List<PlannerScheduleRow>();
+            foreach (var row in (unlisted ?? Enumerable.Empty<PlannerScheduleRow>()).Where(r => r.Layer != null))
+            {
+                var copy = new PlannerScheduleRow
+                {
+                    Source = PlannerScheduleRowSource.Unlisted,
+                    Depth = 0,
+                    Name = row.Name,
+                    LayerName = row.LayerName,
+                    Kind = row.Kind,
+                    Start = row.Start,
+                    Finish = row.Finish,
+                    Tbc = row.Tbc,
+                    Status = UnlistedAtWorkStatus,
+                    Unit = row.Unit,
+                    UnlistedItem = row.UnlistedItem,
+                    Layer = row.Layer
+                };
+                copy.In.AddRange(row.In);
+                copy.Rm.AddRange(row.Rm);
+                rows.Add(copy);
+            }
+            return rows;
+        }
+
         /// <summary>
         /// The rows for what no row of <paramref name="shown"/> stands for: dated groups the Planner reads outside the
         /// phasing tree, installs no dated layer places (at the project start) and removals no dated layer places (after

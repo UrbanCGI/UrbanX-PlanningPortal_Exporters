@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Utilities.Planner;
 
@@ -16,7 +17,10 @@ namespace Max2Babylon
     /// review and in one undo step. Fill IN / RM from names reads every object as the Planner's Generate from model would
     /// and gives each row its IN and RM (the side list shows them; selecting there selects in 3ds Max); Add to IN / RM and
     /// Remove rename the objects' tags after a review; Add layer makes a layer or phase group with its helper. The date
-    /// scrubber previews the scene as the Planner's 4D view shows it at a date (not while an export runs). The last
+    /// scrubber previews the scene as the Planner's 4D view shows it at a date (not while an export runs). A Gantt beside
+    /// the tree (<see cref="PlannerGanttView"/>) charts the same rows, row for row, folding with the tree's groups; a day
+    /// clicked there moves the scrubber. Beside it the tree leaves out its Start, Finish and TBC columns (the Gantt draws
+    /// the dates, and the names hold them), so its Layer column keeps the width it had before the Gantt was there. The last
     /// imported list, the layers added in Max and the Planner's project start are kept with the scene and shown again
     /// when the window opens. Built in code; the window holds it in its Schedule page.
     /// </summary>
@@ -71,7 +75,57 @@ namespace Max2Babylon
         private readonly ToolTip toolTip = new ToolTip();
         private readonly SplitContainer split = new SplitContainer();
         private readonly SplitContainer sideSplit = new SplitContainer();
+        // The Gantt beside the tree, row for row with it. Neither has a bar of its own, so the tree keeps its rows at the
+        // smallest window: the Gantt's zoom and scrolling are in its header, the folds in the tree's Layer header and its
+        // menu (Expand all, Collapse all, Show the Gantt).
+        private readonly SplitContainer ganttSplit = new SplitContainer();
+        private readonly PlannerGanttView gantt;
+        private readonly ContextMenuStrip treeMenu = new ContextMenuStrip();
+        private readonly ToolStripMenuItem showGanttItem = new ToolStripMenuItem("Show the Gantt");
+        private bool ganttPlaced;
+        private bool scrubFromGantt;
+        // The tree's width beside the Gantt (placed, or dragged by the modeller), which it gets back as the window grows.
+        private int treeWidth = -1;
+        private bool treeDragged;
+        private bool fittingTree;
+        private Size ganttSplitSize;
+        // The Layer column's width the tree is placed to give beside the Gantt: the one it had before the Gantt was there
+        // (the whole width shared by every column, at the size the window has when the tab first shows), and the font it was
+        // worked out for.
+        private int layerAim = -1;
+        private int layerAimFont;
+        // The tree and the Gantt were placed while the tab showed: the window's layout is done, and the aim stays.
+        private bool ganttSettled;
+        // The tree's indent per level and its fold triangles' size, from the font (FitWidths).
+        private int indentStep = 16;
+        private int glyphSize = 9;
+        // The groups collapsed in the tree (PlannerGanttModel.KeyOf), kept while the window is open; the rows the tree and
+        // the Gantt show, and the Gantt's chart of them.
+        private readonly HashSet<string> collapsed = new HashSet<string>(StringComparer.Ordinal);
+        private List<PlannerScheduleRow> shownRows = new List<PlannerScheduleRow>();
+        private PlannerGanttModel ganttModel;
+        // The summary above the tree (buttons, list, scene, notes), the side list's buttons and the scrubber's rows.
+        private readonly TableLayoutPanel summaryPanel;
+        private readonly FlowLayoutPanel sideButtons;
+        private readonly TableLayoutPanel scrubPanel;
+        // Every note (the summary shows as many lines of them as there is room for, see FitNotes), and what they were
+        // last fitted to.
+        private List<string> notes = new List<string>();
+        private string notesFitted;
+        private bool fittingNotes;
         private bool splitPlaced;
+        private bool sidePlaced;
+        // The side list's width when placed: room for its three buttons on a line (FitWidths).
+        private int sideWidth = 240;
+        // The tree's header and three rows, the lists' tab strip below it and the side list's header and two rows
+        // (FitWidths); the height the lists below the tree are meant to have (placed, or dragged by the modeller), which
+        // they get back when the window grows again.
+        private int treeMinHeight = 91;
+        private int listsMinHeight = 22;
+        private int sideRowsMinHeight = 71;
+        private int listsHeight = -1;
+        private bool fittingSplit;
+        private Size splitSize;
         private readonly Font boldFont;
         private readonly PlannerPreviewController preview = new PlannerPreviewController();
 
@@ -139,8 +193,16 @@ namespace Max2Babylon
             buttons.Controls.Add(addLayerButton);
 
             // The Planner workspace's project start: Generate from model only moves it back, so a workspace made before
-            // its works start keeps its earlier start, where undated layers' work and installs no dated layer has sit.
-            var startPanel = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = false, Margin = new Padding(8, 0, 0, 0) };
+            // its works start keeps its earlier start, where undated layers' work and installs no dated layer has sit (and
+            // where the scrubber starts). By the scrubber, beside the layers at work, so it takes no line of its own.
+            var startPanel = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = false,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                Margin = new Padding(8, 0, 0, 0)
+            };
             projectStartLabel.Text = "Planner project start:";
             projectStartLabel.AutoSize = true;
             projectStartLabel.Margin = new Padding(0, 6, 3, 0);
@@ -149,6 +211,10 @@ namespace Max2Babylon
             projectStartPicker.ShowCheckBox = true;
             projectStartPicker.Width = 130;
             projectStartPicker.ValueChanged += ProjectStart_Changed;
+            // Its width is read off the control once it has a handle (after the control has set itself up: its format is
+            // given after the handle's event), and again when the display's scaling changes.
+            projectStartPicker.HandleCreated += (s, e) => projectStartPicker.BeginInvoke(new Action(FitPickerWidth));
+            projectStartPicker.DpiChangedAfterParent += (s, e) => FitPickerWidth();
             const string startTip = "The Planner workspace's project start: the first day of its Gantt (a new workspace starts on the day it is made). "
                 + "Generate from model moves it back to the earliest dated layer, never forward; undated (TBC) layers' work and installs no dated layer has sit on it. "
                 + "Tick it and give the date when the workspace starts before its works. Unticked, the tab takes the earliest dated layer. Kept with the scene.";
@@ -156,9 +222,8 @@ namespace Max2Babylon
             toolTip.SetToolTip(projectStartPicker, startTip);
             startPanel.Controls.Add(projectStartLabel);
             startPanel.Controls.Add(projectStartPicker);
-            buttons.Controls.Add(startPanel);
 
-            var top = new TableLayoutPanel
+            summaryPanel = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
                 AutoSize = true,
@@ -167,7 +232,7 @@ namespace Max2Babylon
                 RowCount = 4,
                 Padding = new Padding(6, 6, 6, 4)
             };
-            top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            summaryPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             foreach (var label in new[] { listLabel, sceneLabel, notesLabel })
             {
                 label.AutoSize = true;
@@ -176,10 +241,10 @@ namespace Max2Babylon
             }
             listLabel.Font = boldFont;
             notesLabel.ForeColor = SystemColors.GrayText;
-            top.Controls.Add(buttons, 0, 0);
-            top.Controls.Add(listLabel, 0, 1);
-            top.Controls.Add(sceneLabel, 0, 2);
-            top.Controls.Add(notesLabel, 0, 3);
+            summaryPanel.Controls.Add(buttons, 0, 0);
+            summaryPanel.Controls.Add(listLabel, 0, 1);
+            summaryPanel.Controls.Add(sceneLabel, 0, 2);
+            summaryPanel.Controls.Add(notesLabel, 0, 3);
 
             SetUpGrid(grid);
             AddColumn(grid, "Layer", 40);
@@ -240,20 +305,112 @@ namespace Max2Babylon
             bottomTabs.Dock = DockStyle.Fill;
             bottomTabs.TabPages.Add(unlistedPage);
             bottomTabs.TabPages.Add(notScheduledPage);
+            // TabControl.ItemSize reads 0 until the strip has a handle: its tabs' own height from then (FitWidths takes
+            // the font's before).
+            bottomTabs.HandleCreated += (s, e) =>
+            {
+                listsMinHeight = ListsStripHeight();
+                FitSplit();
+                PerformLayout();
+            };
+
+            // The tree's groups fold: a triangle before a row with rows under it (click it, double-click the row, or Left and
+            // Right), the triangle in the Layer header folds or opens them all, as do Expand all and Collapse all in the
+            // tree's menu; the Gantt shows the same rows.
+            grid.CellPainting += Grid_CellPainting;
+            grid.CellMouseDown += Grid_CellMouseDown;
+            grid.CellDoubleClick += (s, e) =>
+            {
+                if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && RowHasChildren(e.RowIndex))
+                {
+                    Toggle(e.RowIndex);
+                }
+            };
+            grid.ColumnHeaderMouseClick += Grid_ColumnHeaderMouseClick;
+            grid.KeyDown += Grid_KeyDown;
+            treeMenu.Items.Add(new ToolStripMenuItem("Expand all", null, (s, e) => ExpandAll(true)));
+            treeMenu.Items.Add(new ToolStripMenuItem("Collapse all", null, (s, e) => ExpandAll(false)));
+            treeMenu.Items.Add(new ToolStripSeparator());
+            showGanttItem.Checked = true;
+            showGanttItem.CheckOnClick = true;
+            showGanttItem.CheckedChanged += (s, e) =>
+            {
+                // Hidden, the tree has the whole width with every column, and its own one-line header.
+                fittingTree = true;
+                try
+                {
+                    ganttSplit.Panel2Collapsed = !showGanttItem.Checked;
+                }
+                finally
+                {
+                    fittingTree = false;
+                }
+                ShowTreeColumns();
+                FitHeader();
+                FitTreeWidth();
+                FitSplit();
+                PerformLayout();
+            };
+            treeMenu.Items.Add(showGanttItem);
+            treeMenu.Opening += (s, e) =>
+            {
+                treeMenu.Items[0].Enabled = shownRows.Where((r, i) => RowHasChildren(i)).Any(r => collapsed.Contains(PlannerGanttModel.KeyOf(r)));
+                treeMenu.Items[1].Enabled = shownRows.Where((r, i) => RowHasChildren(i)).Any(r => !collapsed.Contains(PlannerGanttModel.KeyOf(r)));
+            };
+            grid.ContextMenuStrip = treeMenu;
+            gantt = new PlannerGanttView(grid) { Dock = DockStyle.Fill };
+            gantt.DayClicked += Gantt_DayClicked;
+            gantt.HideRequested += () => showGanttItem.Checked = false;
+            ganttSplit.Dock = DockStyle.Fill;
+            ganttSplit.Orientation = Orientation.Vertical;
+            ganttSplit.FixedPanel = FixedPanel.Panel1;
+            ganttSplit.Panel1.Controls.Add(grid);
+            ganttSplit.Panel2.Controls.Add(gantt);
+            ShowTreeColumns();
+            // On its own: it is resized while the split above it moves (PlaceSplitter and FitSplit), which must not see it.
+            ganttSplit.SizeChanged += (s, e) =>
+            {
+                ganttSplitSize = ganttSplit.Size;
+                FitGanttSplit();
+                PlaceGanttSplitter();
+                FitTreeWidth();
+            };
+            // A move while the split keeps its size is the modeller's: the tree keeps that width from then on.
+            ganttSplit.SplitterMoved += (s, e) =>
+            {
+                if (!fittingTree && ganttPlaced && ganttSplit.Size == ganttSplitSize)
+                {
+                    treeWidth = ganttSplit.SplitterDistance;
+                    treeDragged = true;
+                }
+            };
 
             split.Dock = DockStyle.Fill;
             split.Orientation = Orientation.Horizontal;
             split.FixedPanel = FixedPanel.Panel2;
-            split.Panel1.Controls.Add(grid);
+            split.Panel1.Controls.Add(ganttSplit);
             split.Panel2.Controls.Add(bottomTabs);
             // The lists below get a quarter of the height, once the tab has its real size; they then keep their height
-            // when the window is resized.
-            split.SizeChanged += (s, e) => PlaceSplitter();
+            // when the window is resized, except that the tree keeps a few rows (FitSplit).
+            split.SizeChanged += (s, e) =>
+            {
+                splitSize = split.Size;
+                PlaceSplitter();
+                FitSplit();
+            };
+            // A move while the split keeps its size is the modeller's (one while it is resized is the split's own).
+            split.SplitterMoved += (s, e) =>
+            {
+                if (!fittingSplit && splitPlaced && split.Size == splitSize)
+                {
+                    listsHeight = split.Panel2.Height;
+                }
+            };
 
             // The side list: the chosen row's IN and RM.
             sideLabel.Dock = DockStyle.Top;
             sideLabel.AutoSize = true;
-            sideLabel.Padding = new Padding(4, 4, 4, 4);
+            sideLabel.Padding = new Padding(4, 3, 4, 2);
             sideLabel.Font = boldFont;
             SetUpGrid(sideGrid);
             AddColumn(sideGrid, "", 8);
@@ -268,12 +425,13 @@ namespace Max2Babylon
                     SelectInMax(sideGrid.SelectedRows.Cast<DataGridViewRow>().Select(r => r.Tag).OfType<SideEntry>().Select(x => x.Key));
                 }
             };
-            var sideButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(2) };
-            SetUpButton(addInButton, "Add selected to IN\u2026", (s, e) => AddSelected(PlannerTaskType.Install),
+            sideButtons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(2, 0, 2, 0) };
+            // Short names, so the three fit on one line under the list (the tooltips say what each does).
+            SetUpButton(addInButton, "Add to IN\u2026", (s, e) => AddSelected(PlannerTaskType.Install),
                 "Give the objects selected in 3ds Max this layer's install tag (their names change; nothing is moved or linked), after a review.");
-            SetUpButton(addRmButton, "Add selected to RM\u2026", (s, e) => AddSelected(PlannerTaskType.Dismantle),
+            SetUpButton(addRmButton, "Add to RM\u2026", (s, e) => AddSelected(PlannerTaskType.Dismantle),
                 "Give the objects selected in 3ds Max this layer's removal tag (their names change; nothing is moved or linked), after a review.");
-            SetUpButton(removeButton, "Remove from the list\u2026", RemoveButton_Click,
+            SetUpButton(removeButton, "Remove from list\u2026", RemoveButton_Click,
                 "Take the objects chosen in this list out of it: their tag of that column is taken out of their names, after a review.");
             sideButtons.Controls.Add(addInButton);
             sideButtons.Controls.Add(addRmButton);
@@ -290,11 +448,11 @@ namespace Max2Babylon
             // The date scrubber. Nothing in its row changes size as it moves (the date and the count have room for their
             // longest text, the layers at work get two lines and the rest in the tooltip), so the slider stays put under the
             // pointer while it is dragged; see FitWidths.
-            var scrub = new TableLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 4, RowCount = 2, Padding = new Padding(6, 2, 6, 4) };
-            scrub.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            scrub.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            scrub.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            scrub.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            scrubPanel = new TableLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 4, RowCount = 2, Padding = new Padding(6, 2, 6, 4) };
+            scrubPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            scrubPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            scrubPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            scrubPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             previewBox.Appearance = Appearance.Button;
             previewBox.Text = "Preview in the viewport";
             previewBox.AutoSize = true;
@@ -304,6 +462,8 @@ namespace Max2Babylon
             toolTip.SetToolTip(previewBox, "Hide the objects the Planner's 4D view hides at the scrubber's date. Leaving gives every object its own hidden state back; it is never an undo step.");
             scrubber.Dock = DockStyle.Fill;
             scrubber.TickStyle = TickStyle.None;
+            // Its own height (FitWidths), not the 45 px a trackbar takes for its ticks: it has none.
+            scrubber.AutoSize = false;
             scrubber.Minimum = 0;
             scrubber.Maximum = 0;
             scrubber.ValueChanged += (s, e) => ScrubTo();
@@ -322,17 +482,18 @@ namespace Max2Babylon
             activeLabel.AutoSize = false;
             activeLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
             activeLabel.AutoEllipsis = true;
-            scrub.Controls.Add(previewBox, 0, 0);
-            scrub.Controls.Add(scrubber, 1, 0);
-            scrub.Controls.Add(endOfDayBox, 2, 0);
-            scrub.Controls.Add(selectDayButton, 3, 0);
-            scrub.Controls.Add(dateLabel, 0, 1);
-            scrub.Controls.Add(activeLabel, 1, 1);
-            scrub.SetColumnSpan(activeLabel, 3);
+            scrubPanel.Controls.Add(previewBox, 0, 0);
+            scrubPanel.Controls.Add(scrubber, 1, 0);
+            scrubPanel.Controls.Add(endOfDayBox, 2, 0);
+            scrubPanel.Controls.Add(selectDayButton, 3, 0);
+            scrubPanel.Controls.Add(dateLabel, 0, 1);
+            scrubPanel.Controls.Add(activeLabel, 1, 1);
+            scrubPanel.Controls.Add(startPanel, 2, 1);
+            scrubPanel.SetColumnSpan(startPanel, 2);
 
             Controls.Add(sideSplit);
-            Controls.Add(scrub);
-            Controls.Add(top);
+            Controls.Add(scrubPanel);
+            Controls.Add(summaryPanel);
             FitWidths();
             ResumeLayout(false);
             PerformLayout();
@@ -353,6 +514,13 @@ namespace Max2Babylon
                 {
                     EndPreview();
                 }
+                else if (!ganttSettled)
+                {
+                    // Shown for the first time: the tree and the Gantt are placed for the window as it opened.
+                    FitGanttSplit();
+                    PlaceGanttSplitter();
+                    FitTreeWidth();
+                }
             };
 
             LoadSavedList();
@@ -367,27 +535,245 @@ namespace Max2Babylon
                 preview.Dispose();
                 WatchScene(false);
                 toolTip.Dispose();
+                treeMenu.Dispose();
                 boldFont.Dispose();
             }
             base.Dispose(disposing);
         }
 
+        // Each split is placed once it has its real size, the side list by the width alone (so a window opened small
+        // still gets a side list wide enough for its buttons), the Gantt beside the tree in the width the side list leaves
+        // (PlaceGanttSplitter), the lists below the tree once there is height for them; the tree keeps its few rows at the
+        // smallest sizes (see FitSplit).
         private void PlaceSplitter()
         {
-            if (splitPlaced || split.Height < 200 || sideSplit.Width < 400)
-            {
-                return;
-            }
-            splitPlaced = true;
             try
             {
-                split.SplitterDistance = Math.Max(split.Panel1MinSize, split.Height - Math.Max(120, split.Height / 4));
-                sideSplit.SplitterDistance = Math.Max(sideSplit.Panel1MinSize, sideSplit.Width - Math.Max(240, sideSplit.Width / 4));
+                if (!sidePlaced && sideSplit.Width >= 400)
+                {
+                    sidePlaced = true;
+                    sideSplit.SplitterDistance = Math.Max(sideSplit.Panel1MinSize, sideSplit.Width - sideSplit.SplitterWidth - Math.Max(sideWidth, sideSplit.Width / 4));
+                }
+                if (!splitPlaced && split.Height >= 200)
+                {
+                    listsHeight = Math.Max(120, split.Height / 4);
+                    fittingSplit = true;
+                    split.SplitterDistance = Math.Max(split.Panel1MinSize, split.Height - split.SplitterWidth - listsHeight);
+                    splitPlaced = true;
+                }
             }
             catch (Exception)
             {
                 // The splits keep their own division.
             }
+            finally
+            {
+                fittingSplit = false;
+            }
+        }
+
+        // The lists below the tree keep the height they are meant to have, but at the smallest window sizes they give way
+        // (down to their tab strip) so the tree keeps its header and three rows.
+        private void FitSplit()
+        {
+            int room = split.Height - split.SplitterWidth;
+            if (fittingSplit || room <= 0)
+            {
+                return;
+            }
+            int lists = listsHeight >= 0 ? listsHeight : split.Panel2.Height;
+            FitCompact(room, lists);
+            int distance = Math.Max(room - lists, Math.Min(treeMinHeight, room - listsMinHeight));
+            distance = Math.Max(split.Panel1MinSize, Math.Min(distance, room - split.Panel2MinSize));
+            if (distance == split.SplitterDistance)
+            {
+                return;
+            }
+            try
+            {
+                fittingSplit = true;
+                split.SplitterDistance = distance;
+            }
+            catch (Exception)
+            {
+                // The split keeps its own division.
+            }
+            finally
+            {
+                fittingSplit = false;
+            }
+        }
+
+        // Where the lists below give way so that the tree keeps its least height (its header and three rows), the Gantt's
+        // header, and the tree's with it, goes down to one row, and the lists keep the difference: at the smallest window
+        // heights they have what they had before the Gantt was beside the tree. It gets its two rows back as the window
+        // grows. Decided by the height the split has and the lists are meant to have, not by the notes, which give way to
+        // what the tree keeps (SplitMinHeight) and are fitted again on the next layout.
+        private void FitCompact(int room, int lists)
+        {
+            if (gantt == null)
+            {
+                return;
+            }
+            bool compact = room < TreeMinHeight(gantt.HeaderHeight(false)) + lists;
+            if (compact == gantt.Compact)
+            {
+                return;
+            }
+            gantt.Compact = compact;
+            FitHeader();
+            notesFitted = null;
+        }
+
+        // The tree's header holds the Gantt's, so their rows line up: its two rows (months over days), one where the tree
+        // is held at its least height (FitCompact), or the tree's own line while the Gantt is hidden. The tree keeps that
+        // header and three rows (treeMinHeight).
+        private void FitHeader()
+        {
+            if (gantt != null)
+            {
+                int header = gantt.HeaderHeight(ganttSplit.Panel2Collapsed || gantt.Compact);
+                if (grid.ColumnHeadersHeight != header)
+                {
+                    grid.ColumnHeadersHeight = header;
+                }
+            }
+            treeMinHeight = TreeMinHeight(grid.ColumnHeadersHeight);
+        }
+
+        // The tree's header of this height and three rows.
+        private int TreeMinHeight(int header)
+        {
+            int row = Math.Max(grid.RowTemplate.Height, grid.Font.Height + 9);
+            return Math.Max(header, grid.Font.Height + 10) + 3 * row + 4;
+        }
+
+        // The lists' tab strip: its tabs and the page's border. TabControl.ItemSize reads 0 until the strip has a handle, so
+        // until then a tab is taken to be its font's height and 5 px, as the strip draws it.
+        private int ListsStripHeight()
+        {
+            int tabs = bottomTabs.Font.Height + 5;
+            if (bottomTabs.IsHandleCreated)
+            {
+                tabs = Math.Max(tabs, bottomTabs.ItemSize.Height);
+            }
+            return tabs + 4;
+        }
+
+        // The least the tree and the side list beside it keep while the notes give way: the tree's header and three rows
+        // over the lists' tab strip, and the side list's label, header, two rows and buttons.
+        private int SplitMinHeight()
+        {
+            int tree = treeMinHeight + split.SplitterWidth + listsMinHeight;
+            int side = sideLabel.Height + sideButtons.Height + sideRowsMinHeight;
+            return Math.Max(tree, side);
+        }
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            if (FitNotes())
+            {
+                // The summary above changed height: the lists below take up the difference.
+                base.OnLayout(e);
+            }
+        }
+
+        // The notes give way at the smallest window sizes, after the lists below the tree (FitSplit): as many of them are
+        // written out (up to NoteLines) as leave the tree and the side list what SplitMinHeight says, and a last line
+        // counts the rest, down to one line saying how many there are. They get their lines back as the window grows, and
+        // the tooltip always holds every one. True when the text changed, and the summary's height with it.
+        private bool FitNotes()
+        {
+            if (fittingNotes || summaryPanel == null || scrubPanel == null || sideButtons == null || notes.Count == 0)
+            {
+                return false;
+            }
+            int width = 0;
+            int room = 0;
+            try
+            {
+                var columns = summaryPanel.GetColumnWidths();
+                var rows = summaryPanel.GetRowHeights();
+                int notesRow = summaryPanel.GetRow(notesLabel);
+                if (columns.Length > 0 && notesRow >= 0 && notesRow < rows.Length && DisplayRectangle.Height > 0)
+                {
+                    width = columns[0] - notesLabel.Margin.Horizontal;
+                    // The tab less the summary without its notes, the scrubber and what the tree and side list keep.
+                    room = DisplayRectangle.Height - (summaryPanel.Height - rows[notesRow]) - scrubPanel.Height - SplitMinHeight();
+                }
+            }
+            catch (Exception)
+            {
+                width = 0;
+            }
+            // Not laid out yet: every line.
+            string fit = width > 0 ? width.ToString(CultureInfo.InvariantCulture) + "|" + room.ToString(CultureInfo.InvariantCulture) : "all";
+            if (fit == notesFitted)
+            {
+                return false;
+            }
+            notesFitted = fit;
+            string before = notesLabel.Text;
+            int most = Math.Min(notes.Count, NoteLines);
+            string text = NotesText(most);
+            fittingNotes = true;
+            summaryPanel.SuspendLayout();
+            try
+            {
+                if (width > 0)
+                {
+                    // The most notes written out that fit; when none do, the shortest text.
+                    string shortest = null;
+                    int shortestHeight = int.MaxValue;
+                    bool fits = false;
+                    for (int shown = most; shown >= 0 && !fits; shown--)
+                    {
+                        var candidate = NotesText(shown);
+                        notesLabel.Text = candidate;
+                        int height = notesLabel.GetPreferredSize(new Size(width, 0)).Height + notesLabel.Margin.Vertical;
+                        if (height <= room)
+                        {
+                            text = candidate;
+                            fits = true;
+                        }
+                        else if (height < shortestHeight)
+                        {
+                            shortest = candidate;
+                            shortestHeight = height;
+                        }
+                    }
+                    if (!fits)
+                    {
+                        text = shortest;
+                    }
+                }
+                notesLabel.Text = text;
+            }
+            finally
+            {
+                summaryPanel.ResumeLayout(true);
+                fittingNotes = false;
+            }
+            return !string.Equals(before, text, StringComparison.Ordinal);
+        }
+
+        // The notes with the first `shown` written out and a last line counting the rest (with none written out, one line
+        // saying how many there are).
+        private string NotesText(int shown)
+        {
+            if (shown >= notes.Count)
+            {
+                return string.Join("\r\n", notes.ToArray());
+            }
+            if (shown <= 0)
+            {
+                return notes.Count == 1
+                    ? "1 note (hover to read it)."
+                    : notes.Count.ToString(CultureInfo.InvariantCulture) + " notes (hover to read them all).";
+            }
+            return string.Join("\r\n", notes.Take(shown).ToArray()) + "\r\n\u2026 and " + (notes.Count - shown).ToString(CultureInfo.InvariantCulture)
+                + " more (hover to read them all).";
         }
 
         protected override void OnFontChanged(EventArgs e)
@@ -422,15 +808,105 @@ namespace Max2Babylon
                 dateLabel.Size = new Size(dateWidth + 8, bold.Height + 6);
                 selectDayButton.Size = new Size(TextRenderer.MeasureText(SelectDayText(9999), selectDayButton.Font).Width + 24, Math.Max(23, selectDayButton.Font.Height + 10));
                 activeLabel.Height = activeLabel.Font.Height * 2 + 4;
+                scrubber.Height = Math.Max(26, scrubber.Font.Height + 14);
+                // The side list's three buttons on one line; the tree's header and three rows; the lists' tab strip; the side
+                // list's header and two rows.
+                sideWidth = Math.Max(240, new[] { addInButton, addRmButton, removeButton }.Sum(b => b.GetPreferredSize(Size.Empty).Width + b.Margin.Horizontal) + 12);
+                FitPickerWidth();
+                // The tree's header holds the Gantt's header (FitHeader), so their rows line up; the indent and the fold
+                // triangles follow the font, and the Layer header has room for its triangle.
+                indentStep = Math.Max(16, grid.Font.Height + 3);
+                glyphSize = Math.Max(7, grid.Font.Height * 3 / 5) | 1;
+                if (gantt != null)
+                {
+                    grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+                    grid.Columns[0].HeaderCell.Style.Padding = new Padding(glyphSize + 6, 0, 0, 0);
+                }
+                FitHeader();
+                listsMinHeight = ListsStripHeight();
+                split.Panel2MinSize = Math.Min(25, listsMinHeight);
+                int sideRow = Math.Max(sideGrid.RowTemplate.Height, sideGrid.Font.Height + 9);
+                sideRowsMinHeight = Math.Max(sideGrid.ColumnHeadersHeight, sideGrid.Font.Height + 10) + 2 * sideRow + 4;
                 int dateColumn = TextRenderer.MeasureText("2026-10-17", grid.Font).Width + 14;
                 grid.Columns[1].MinimumWidth = TextRenderer.MeasureText("Group", grid.Font).Width + 14;
                 grid.Columns[2].MinimumWidth = dateColumn;
                 grid.Columns[3].MinimumWidth = dateColumn;
                 grid.Columns[4].MinimumWidth = TextRenderer.MeasureText("TBC", grid.Font).Width + 14;
+                // Beside the Gantt the tree keeps its columns' least widths; its width is worked out again for the new
+                // font unless the modeller has set it: the Layer column's aim follows the font (not the window's size now),
+                // the tree's width the columns' new least widths.
+                if (gantt != null)
+                {
+                    FitGanttSplit();
+                    if (ganttPlaced && !treeDragged && layerAim > 0)
+                    {
+                        if (layerAimFont > 0 && layerAimFont != grid.Font.Height)
+                        {
+                            layerAim = (int)Math.Round(layerAim * (double)grid.Font.Height / layerAimFont);
+                            layerAimFont = grid.Font.Height;
+                        }
+                        treeWidth = TreeWidthFor(layerAim);
+                    }
+                    FitTreeWidth();
+                }
             }
             catch (Exception)
             {
                 // The controls keep the sizes they have.
+            }
+        }
+
+        // DTM_GETIDEALSIZE: the size a date picker needs to show its text whole, its own parts included.
+        private const int DtmGetIdealSize = 0x1000 + 15;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeSize
+        {
+            public int Width;
+            public int Height;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, ref NativeSize lParam);
+
+        // The project start picker holds its longest date whole. Its own parts (the tick box, the drop-down button and the
+        // border) grow with the display's scaling, which its font alone does not tell at every scaling: they are read off
+        // the control once it has a handle (the width it asks for its text, less that text), and are never taken as less
+        // than the 56 px they need at 96 DPI, scaled to the display's DPI (the control's, or the screen's when larger: the
+        // .NET Framework gives 96 for the control unless the host opts in to its DPI handling).
+        private void FitPickerWidth()
+        {
+            if (IsDisposed || projectStartPicker.IsDisposed)
+            {
+                return;
+            }
+            try
+            {
+                var font = projectStartPicker.Font;
+                int text = 0;
+                for (var day = new DateTime(2026, 1, 1); day.Year == 2026; day = day.AddDays(1))
+                {
+                    text = Math.Max(text, TextRenderer.MeasureText(day.ToString(projectStartPicker.CustomFormat, CultureInfo.CurrentCulture), font).Width);
+                }
+                float dpi = projectStartPicker.DeviceDpi;
+                using (var screen = Graphics.FromHwnd(IntPtr.Zero))
+                {
+                    dpi = Math.Max(dpi, screen.DpiX);
+                }
+                int chrome = (int)Math.Ceiling(56 * dpi / 96.0);
+                if (projectStartPicker.IsHandleCreated)
+                {
+                    var ideal = new NativeSize();
+                    if (SendMessage(projectStartPicker.Handle, DtmGetIdealSize, IntPtr.Zero, ref ideal) != IntPtr.Zero && ideal.Width > 0)
+                    {
+                        chrome = Math.Max(chrome, ideal.Width - TextRenderer.MeasureText(projectStartPicker.Text, font).Width);
+                    }
+                }
+                projectStartPicker.Width = text + chrome;
+            }
+            catch (Exception)
+            {
+                // The picker keeps the width it has.
             }
         }
 
@@ -842,36 +1318,54 @@ namespace Max2Babylon
             treeRows = PlannerScheduleRows.Tree(list, plan, sceneModel, added, filled ? schedule : null);
             unlistedRows = PlannerScheduleRows.Unlisted(plan, added, filled ? schedule : null);
             var extra = filled ? PlannerScheduleRows.Extra(treeRows.Concat(unlistedRows), schedule) : new List<PlannerScheduleRow>();
+            // The Gantt charts the same rows, in the same order; a row under a collapsed group is hidden in both. A scene
+            // layer the list does not have whose work the Planner reads gets a row after the list's too (it stays in the list
+            // of such layers below), so the Gantt charts every layer the scrubber finds at work.
+            shownRows = treeRows.Concat(PlannerScheduleRows.UnlistedAtWork(unlistedRows)).Concat(extra).ToList();
+            ganttModel = PlannerGanttModel.Build(shownRows, filled ? schedule : null, DateTime.Today);
+            var shown = Shown();
             var lines = new List<DataGridViewRow>();
-            foreach (var row in treeRows.Concat(extra))
+            for (int index = 0; index < shownRows.Count; index++)
             {
-                var line = new DataGridViewRow { Tag = row };
+                var row = shownRows[index];
+                var line = new DataGridViewRow { Tag = row, Visible = shown[index] };
                 line.CreateCells(grid, row.Name, row.Kind, row.Start, row.Finish, row.Tbc ? "Yes" : string.Empty, Count(row, true), Count(row, false), row.Status);
-                // The tree: each level indented.
-                line.Cells[0].Style.Padding = new Padding(4 + 16 * row.Depth, 0, 0, 0);
+                // The tree: each level indented, room for a fold triangle before every name.
+                line.Cells[0].Style.Padding = new Padding(TextIndent(row.Depth), 0, 0, 0);
                 if (row.Kind == "Group")
                 {
                     line.Cells[0].Style.Font = boldFont;
                 }
                 line.DefaultCellStyle.BackColor = BackOf(row);
                 line.Cells[7].ToolTipText = Details(row);
-                line.Cells[0].ToolTipText = row.ListRow != null
-                    ? "Planner ID " + row.ListRow.PlannerId + (row.ListRow.IdKey != null ? "; layer ID " + row.ListRow.IdKey : string.Empty)
-                    : row.LayerName ?? string.Empty;
+                // The whole name (it holds the dates, which beside the Gantt have no columns of their own).
+                line.Cells[0].ToolTipText = row.Name + (row.ListRow != null
+                    ? "\r\nPlanner ID " + row.ListRow.PlannerId + (row.ListRow.IdKey != null ? "; layer ID " + row.ListRow.IdKey : string.Empty)
+                    : row.LayerName != null && row.LayerName != row.Name ? "\r\n" + row.LayerName : string.Empty);
                 lines.Add(line);
             }
             grid.Rows.AddRange(lines.ToArray());
             if (firstRow >= 0 && grid.Rows.Count > 0)
             {
+                // The row that was at the top, or the shown row above it.
+                int top = Math.Min(firstRow, grid.Rows.Count - 1);
+                while (top > 0 && !shown[top])
+                {
+                    top--;
+                }
                 try
                 {
-                    grid.FirstDisplayedScrollingRowIndex = Math.Min(firstRow, grid.Rows.Count - 1);
+                    if (shown[top])
+                    {
+                        grid.FirstDisplayedScrollingRowIndex = top;
+                    }
                 }
                 catch (InvalidOperationException)
                 {
                     // The grid has no room to show rows; it starts at the top.
                 }
             }
+            gantt.Model = ganttModel;
 
             if (plan == null)
             {
@@ -916,7 +1410,10 @@ namespace Max2Babylon
                     var row = (PlannerScheduleRow)line.Tag;
                     if (string.Equals(row.LayerName ?? row.Name, chosen, StringComparison.Ordinal))
                     {
-                        line.Selected = true;
+                        if (line.Visible)
+                        {
+                            line.Selected = true;
+                        }
                         break;
                     }
                 }
@@ -942,23 +1439,27 @@ namespace Max2Babylon
                 + removals.ToString(CultureInfo.InvariantCulture) + " RM), " + PhasingFixScript.Count(schedule.NotScheduled.Count, "not scheduled", "not scheduled")
                 + "; project start " + schedule.ProjectStart.ToString("d MMM yyyy", CultureInfo.CurrentCulture)
                 + (!projectStart.HasValue
-                    ? " (the earliest dated layer, assumed to be the Planner's project start: give that start above when the workspace starts earlier)."
+                    ? " (the earliest dated layer, assumed to be the Planner's project start: give that start in Planner project start, by the scrubber, when the workspace starts earlier)."
                     : schedule.ProjectStart < projectStart.Value
                         ? " (the earliest dated layer, before the Planner's project start: Generate from model moves the start back to it)."
                         : " (the Planner's project start).");
         }
 
-        // The notes, a few lines of them; all of them in the tooltip.
-        private void ShowNotes(List<string> notes)
+        // The notes: a few lines of them, fewer at the smallest window sizes (FitNotes); all of them in the tooltip.
+        private void ShowNotes(List<string> all)
         {
-            var shown = notes.Take(NoteLines).ToList();
-            if (notes.Count > NoteLines)
+            notes = all;
+            notesFitted = null;
+            if (all.Count == 0)
             {
-                shown.Add("\u2026 and " + (notes.Count - NoteLines).ToString(CultureInfo.InvariantCulture) + " more (hover to read them all).");
+                notesLabel.Text = string.Empty;
             }
-            notesLabel.Text = string.Join("\r\n", shown.ToArray());
-            notesLabel.Visible = notes.Count > 0;
-            toolTip.SetToolTip(notesLabel, string.Join("\r\n", notes.ToArray()));
+            notesLabel.Visible = all.Count > 0;
+            toolTip.SetToolTip(notesLabel, string.Join("\r\n", all.ToArray()));
+            if (FitNotes())
+            {
+                PerformLayout();
+            }
         }
 
         private string Count(PlannerScheduleRow row, bool install)
@@ -979,6 +1480,7 @@ namespace Max2Babylon
                     return AddedBack;
                 case PlannerScheduleRowSource.Outside:
                 case PlannerScheduleRowSource.ByRule:
+                case PlannerScheduleRowSource.Unlisted:
                     return ExtraBack;
             }
             if (row.State == PlannerRowState.New)
@@ -995,6 +1497,11 @@ namespace Max2Babylon
         private static string Details(PlannerScheduleRow row)
         {
             var parts = new List<string>();
+            if (row.Source == PlannerScheduleRowSource.Unlisted && row.UnlistedItem != null)
+            {
+                parts.Add("Not in the Planner's list (" + row.UnlistedItem.What + ")" + (string.IsNullOrEmpty(row.UnlistedItem.Note) ? string.Empty : ": " + row.UnlistedItem.Note)
+                    + "; left as it is. The Planner reads its work, so it has a row here and on the Gantt.");
+            }
             var rowPlan = row.RowPlan;
             if (rowPlan != null && rowPlan.Unit != null)
             {
@@ -1026,6 +1533,411 @@ namespace Max2Babylon
                 parts.Add(row.Status);
             }
             return string.Join("\r\n", parts.ToArray());
+        }
+
+        // The tree's folds and the Gantt
+
+        // Which rows show: those under no collapsed group.
+        private bool[] Shown()
+        {
+            return PlannerGanttModel.Shown(shownRows, i => RowHasChildren(i) && collapsed.Contains(PlannerGanttModel.KeyOf(shownRows[i])));
+        }
+
+        private bool RowHasChildren(int index)
+        {
+            return ganttModel != null && index >= 0 && index < ganttModel.Rows.Count && ganttModel.Rows[index].HasChildren;
+        }
+
+        // Where a row's name starts: its indent and room for a fold triangle.
+        private int TextIndent(int depth)
+        {
+            return 4 + indentStep * depth + glyphSize + 4;
+        }
+
+        private Rectangle GlyphBounds(Rectangle cell, int depth)
+        {
+            return new Rectangle(cell.X + 4 + indentStep * depth, cell.Y + (cell.Height - glyphSize) / 2, glyphSize, glyphSize);
+        }
+
+        // A group is open when any group is (the Layer header's triangle then folds them all).
+        private bool AnyOpen()
+        {
+            for (int i = 0; i < shownRows.Count; i++)
+            {
+                if (RowHasChildren(i) && !collapsed.Contains(PlannerGanttModel.KeyOf(shownRows[i])))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool AnyGroup()
+        {
+            return ganttModel != null && ganttModel.Rows.Any(r => r.HasChildren);
+        }
+
+        // A row with rows under it gets a triangle before its name, pointing right when folded and down when open; the
+        // Layer header gets one for all of them.
+        private void Grid_CellPainting(object sender, DataGridViewCellPaintingEventArgs e)
+        {
+            if (e.ColumnIndex != 0 || (e.RowIndex >= 0 && !RowHasChildren(e.RowIndex)) || (e.RowIndex < 0 && !AnyGroup()))
+            {
+                return;
+            }
+            e.Paint(e.ClipBounds, DataGridViewPaintParts.All);
+            var box = GlyphBounds(e.CellBounds, e.RowIndex >= 0 ? shownRows[e.RowIndex].Depth : 0);
+            bool open = e.RowIndex >= 0 ? !collapsed.Contains(PlannerGanttModel.KeyOf(shownRows[e.RowIndex])) : AnyOpen();
+            var points = open
+                ? new[] { new Point(box.Left, box.Top + box.Height / 4), new Point(box.Right, box.Top + box.Height / 4), new Point(box.Left + box.Width / 2, box.Bottom - box.Height / 4) }
+                : new[] { new Point(box.Left + box.Width / 4, box.Top), new Point(box.Left + box.Width / 4, box.Bottom), new Point(box.Right - box.Width / 4, box.Top + box.Height / 2) };
+            bool selected = e.RowIndex >= 0 && (e.State & DataGridViewElementStates.Selected) != 0;
+            using (var brush = new SolidBrush(selected ? e.CellStyle.SelectionForeColor : SystemColors.ControlDarkDark))
+            {
+                var smoothing = e.Graphics.SmoothingMode;
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                e.Graphics.FillPolygon(brush, points);
+                e.Graphics.SmoothingMode = smoothing;
+            }
+            e.Handled = true;
+        }
+
+        // The Layer header's triangle folds every group, or opens them all when none is open.
+        private void Grid_ColumnHeaderMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && e.ColumnIndex == 0 && AnyGroup() && e.X <= 4 + glyphSize + 4)
+            {
+                ExpandAll(!AnyOpen());
+            }
+        }
+
+        private void Grid_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || e.ColumnIndex != 0 || e.RowIndex < 0 || !RowHasChildren(e.RowIndex))
+            {
+                return;
+            }
+            int left = 4 + indentStep * shownRows[e.RowIndex].Depth;
+            if (e.X >= left - 3 && e.X <= left + glyphSize + 3)
+            {
+                Toggle(e.RowIndex);
+            }
+        }
+
+        // Left folds the chosen group, Right opens it.
+        private void Grid_KeyDown(object sender, KeyEventArgs e)
+        {
+            if ((e.KeyCode != Keys.Left && e.KeyCode != Keys.Right) || e.Modifiers != Keys.None || grid.CurrentCell == null)
+            {
+                return;
+            }
+            int index = grid.CurrentCell.RowIndex;
+            if (!RowHasChildren(index))
+            {
+                return;
+            }
+            bool open = !collapsed.Contains(PlannerGanttModel.KeyOf(shownRows[index]));
+            if (open == (e.KeyCode == Keys.Left))
+            {
+                Toggle(index);
+            }
+            e.Handled = true;
+        }
+
+        private void Toggle(int index)
+        {
+            var key = PlannerGanttModel.KeyOf(shownRows[index]);
+            if (!collapsed.Remove(key))
+            {
+                collapsed.Add(key);
+            }
+            ApplyShown();
+        }
+
+        private void ExpandAll(bool expand)
+        {
+            if (expand)
+            {
+                collapsed.Clear();
+            }
+            else
+            {
+                for (int i = 0; i < shownRows.Count; i++)
+                {
+                    if (RowHasChildren(i))
+                    {
+                        collapsed.Add(PlannerGanttModel.KeyOf(shownRows[i]));
+                    }
+                }
+            }
+            ApplyShown();
+        }
+
+        // Shows and hides the tree's rows as the folds say; a chosen row that goes is replaced by the group above it.
+        private void ApplyShown()
+        {
+            if (grid.Rows.Count != shownRows.Count)
+            {
+                return;
+            }
+            var shown = Shown();
+            var current = grid.CurrentCell != null ? grid.CurrentCell.RowIndex : -1;
+            if (current >= 0 && !shown[current])
+            {
+                int above = current;
+                while (above >= 0 && !shown[above])
+                {
+                    above = ganttModel.Rows[above].Parent;
+                }
+                try
+                {
+                    grid.CurrentCell = above >= 0 ? grid.Rows[above].Cells[0] : null;
+                    if (above >= 0)
+                    {
+                        grid.Rows[above].Selected = true;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // The grid keeps its current cell.
+                }
+            }
+            for (int i = 0; i < shown.Length; i++)
+            {
+                if ((grid.Rows.GetRowState(i) & DataGridViewElementStates.Visible) != 0 != shown[i])
+                {
+                    grid.Rows[i].Visible = shown[i];
+                }
+            }
+            grid.InvalidateColumn(0);
+            gantt.Invalidate();
+        }
+
+        // A day clicked in the Gantt: its row is chosen in the tree, and the scrubber moves there (the preview follows only
+        // when it is on).
+        private void Gantt_DayClicked(DateTime day, int index)
+        {
+            if (index >= 0 && index < grid.Rows.Count && (grid.Rows.GetRowState(index) & DataGridViewElementStates.Visible) != 0)
+            {
+                try
+                {
+                    grid.CurrentCell = grid.Rows[index].Cells[0];
+                    grid.Rows[index].Selected = true;
+                }
+                catch (InvalidOperationException)
+                {
+                    // The tree keeps its choice.
+                }
+            }
+            if (!scrubber.Enabled || firstDay == default(DateTime))
+            {
+                return;
+            }
+            var target = ganttModel != null ? ganttModel.ClampToScrubber(day) : day.Date;
+            int value = Math.Max(scrubber.Minimum, Math.Min(scrubber.Maximum, (int)Math.Round((target - firstDay).TotalDays)));
+            scrubFromGantt = true;
+            try
+            {
+                scrubber.Value = value;
+            }
+            finally
+            {
+                scrubFromGantt = false;
+            }
+        }
+
+        // Beside the Gantt the tree gives the room of its Start, Finish and TBC columns to it (ShowTreeColumns), and its
+        // Layer column keeps the width it had before the Gantt was there: the whole width shared by every column, at the
+        // size the window has when the tab first shows (and never less than about 20 characters of a name after its indent).
+        // The Gantt takes the rest, and every width the window gains or loses (until the modeller drags the splitter, which
+        // sets the tree's width from then on). Placed again for each width the split gets, the side list's taken out
+        // (PlaceSplitter), until the tab shows: the window is still being laid out until then.
+        private void PlaceGanttSplitter()
+        {
+            if (ganttSettled || treeDragged || !sidePlaced || ganttSplit.Width < 300)
+            {
+                return;
+            }
+            ganttPlaced = true;
+            ganttSettled = Visible;
+            var every = grid.Columns.Cast<DataGridViewColumn>().ToList();
+            int before = FillWidth(every, ganttSplit.Width - SystemInformation.VerticalScrollBarWidth, 0);
+            layerAim = Math.Max(TextIndent(1) + grid.Font.Height * 10, before);
+            layerAimFont = grid.Font.Height;
+            treeWidth = TreeWidthFor(layerAim);
+        }
+
+        // The tree's width beside the Gantt that gives its Layer column `layer` pixels, its vertical scroll bar showing.
+        private int TreeWidthFor(int layer)
+        {
+            var columns = TreeColumns(true);
+            int least = columns.Sum(c => c.MinimumWidth);
+            int width = least;
+            while (width < least + 8000 && FillWidth(columns, width, 0) < layer)
+            {
+                width += 2;
+            }
+            return width + SystemInformation.VerticalScrollBarWidth + 4;
+        }
+
+        // The tree's columns: beside the Gantt, all but Start, Finish and TBC (the Gantt draws each row's dates, and the names
+        // hold them); with the Gantt hidden, every one.
+        private List<DataGridViewColumn> TreeColumns(bool besideGantt)
+        {
+            return grid.Columns.Cast<DataGridViewColumn>().Where(c => !besideGantt || !IsDateColumn(c)).ToList();
+        }
+
+        private static bool IsDateColumn(DataGridViewColumn column)
+        {
+            return column.Index >= 2 && column.Index <= 4;
+        }
+
+        // The tree shows its date columns only while the Gantt is hidden.
+        private void ShowTreeColumns()
+        {
+            bool beside = !ganttSplit.Panel2Collapsed;
+            foreach (var column in grid.Columns.Cast<DataGridViewColumn>().Where(IsDateColumn))
+            {
+                if (column.Visible == beside)
+                {
+                    column.Visible = !beside;
+                }
+            }
+        }
+
+        // The width a column gets when the grid shares out `available` pixels among `columns` as its Fill sizing does, laid
+        // out afresh: by fill weight, every column held at its least width when its share would be less.
+        private static int FillWidth(List<DataGridViewColumn> columns, int available, int index)
+        {
+            var held = new bool[columns.Count];
+            while (true)
+            {
+                float weights = 0;
+                int rest = available;
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    if (held[i])
+                    {
+                        rest -= columns[i].MinimumWidth;
+                    }
+                    else
+                    {
+                        weights += columns[i].FillWeight;
+                    }
+                }
+                bool changed = false;
+                for (int i = 0; i < columns.Count && weights > 0; i++)
+                {
+                    if (!held[i] && rest * columns[i].FillWeight / weights < columns[i].MinimumWidth)
+                    {
+                        held[i] = true;
+                        changed = true;
+                    }
+                }
+                if (!changed)
+                {
+                    return held[index] || weights <= 0 ? columns[index].MinimumWidth : (int)(rest * columns[index].FillWeight / weights);
+                }
+            }
+        }
+
+        // The tree at the width it is meant to have, as far as the split allows (the Gantt keeps its least width; at the
+        // smallest window the tree gives way down to its columns' least widths), and back to it as the window grows. A grid
+        // shares a new width out by the widths its columns had (squeezed to their least widths, it goes on sharing as they
+        // were), so after each change it is laid out afresh, by its columns' weights, and once it shows its Layer column is
+        // measured: where it falls short of its aim and the split has room, the tree widens until it has it (a grid that
+        // does not show lays its columns out only once it does).
+        private void FitTreeWidth()
+        {
+            if (!ganttPlaced || treeWidth < 0 || ganttSplit.Panel2Collapsed || fittingTree)
+            {
+                return;
+            }
+            for (int pass = 0; pass < 3; pass++)
+            {
+                int most = ganttSplit.Width - ganttSplit.SplitterWidth - ganttSplit.Panel2MinSize;
+                int distance = Math.Max(ganttSplit.Panel1MinSize, Math.Min(treeWidth, most));
+                if (distance <= 0)
+                {
+                    return;
+                }
+                if (distance != ganttSplit.SplitterDistance)
+                {
+                    try
+                    {
+                        fittingTree = true;
+                        ganttSplit.SplitterDistance = distance;
+                        ResetFill();
+                    }
+                    catch (Exception)
+                    {
+                        // The split keeps its own division.
+                        return;
+                    }
+                    finally
+                    {
+                        fittingTree = false;
+                    }
+                }
+                int shortBy = layerAim - grid.Columns[0].Width;
+                if (treeDragged || layerAim <= 0 || shortBy <= 1 || distance < treeWidth || !grid.Visible || !grid.IsHandleCreated)
+                {
+                    return;
+                }
+                float weights = TreeColumns(true).Sum(c => c.FillWeight);
+                treeWidth += Math.Max(2, (int)Math.Ceiling(shortBy * weights / grid.Columns[0].FillWeight));
+            }
+        }
+
+        // The grid lays its columns out afresh, sharing its width by their weights (a weight changed and put back has it
+        // forget the widths they had).
+        private void ResetFill()
+        {
+            var column = grid.Columns[0];
+            float weight = column.FillWeight;
+            column.FillWeight = weight + 1;
+            column.FillWeight = weight;
+        }
+
+        // The tree keeps room for every column it shows beside the Gantt at its least width (a scroll bar under it would take
+        // a row's height at the smallest window), the Gantt for a week or so of days; the tree first when there is not room
+        // for both.
+        private void FitGanttSplit()
+        {
+            int tree = TreeColumns(true).Sum(c => c.MinimumWidth) + SystemInformation.VerticalScrollBarWidth + 4;
+            int chart = grid.Font.Height * 6;
+            // A move of the splitter the new least sizes make is the split's own, not the modeller's.
+            bool wasFitting = fittingTree;
+            fittingTree = true;
+            try
+            {
+                int room = ganttSplit.Width - ganttSplit.SplitterWidth;
+                if (room <= 0)
+                {
+                    return;
+                }
+                tree = Math.Min(tree, Math.Max(25, room - chart));
+                chart = Math.Min(chart, Math.Max(25, room - tree));
+                // The one being made smaller first, so the two never ask for more than there is.
+                if (tree < ganttSplit.Panel1MinSize)
+                {
+                    ganttSplit.Panel1MinSize = tree;
+                    ganttSplit.Panel2MinSize = chart;
+                }
+                else
+                {
+                    ganttSplit.Panel2MinSize = chart;
+                    ganttSplit.Panel1MinSize = tree;
+                }
+            }
+            catch (Exception)
+            {
+                // The split keeps the least sizes it has.
+            }
+            finally
+            {
+                fittingTree = wasFitting;
+            }
         }
 
         // The side list: the chosen row's IN and RM
@@ -1120,6 +2032,11 @@ namespace Max2Babylon
             if (obj != null && obj.FiledIn != null && obj.FiledIn != row.Layer)
             {
                 parts.Add("sits in " + obj.FiledIn.Raw);
+            }
+            if (obj != null && obj.MisfiledStage != null)
+            {
+                parts.Add("a naming error: taken away and put back in " + obj.MisfiledStage + ", it belongs in that stage's layer; correct it in 3ds Max (move it there, or retag it as "
+                    + obj.Retagged + ")");
             }
             if (activity.Unresolved)
             {
@@ -1454,6 +2371,7 @@ namespace Max2Babylon
                 EndPreview();
                 dateLabel.Text = "Date";
                 activeLabel.Text = filled && schedule != null ? schedule.Message : "Fill IN / RM from names to scrub through the schedule.";
+                gantt.SetScrub(null, false, false);
                 return;
             }
             DateTime first, last;
@@ -1480,6 +2398,8 @@ namespace Max2Babylon
             }
             var day = ScrubDay;
             bool tbcZone = schedule.WorksEnd.HasValue && day > schedule.WorksEnd.Value;
+            // The Gantt's line follows, and scrolls into view unless the day was clicked there.
+            gantt.SetScrub(day, endOfDayBox.Checked, !scrubFromGantt);
             dateLabel.Text = DateText(day, endOfDayBox.Checked);
             dateLabel.BackColor = tbcZone ? TbcZoneBack : SystemColors.Control;
             var active = schedule.ActiveOn(day);

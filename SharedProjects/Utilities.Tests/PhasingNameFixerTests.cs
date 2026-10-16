@@ -1689,6 +1689,55 @@ namespace Utilities.Tests
             Assert.Equal(4, scene.Plan().Counts.Helpers);
         }
 
+        /// <summary>
+        /// An object taken away and put back in one stage that sits in another stage's layer (Ph2_St02_RM_Bench_Ph2_St02_IN
+        /// under 02_01) is a naming error the modeller corrects (2026-10-15): it is left as it is, with a Check line giving
+        /// the Planner's advice, rather than its removal tag alone given the layer's stage (which would take it away in 02_01
+        /// and put it back in 02_02, which nothing reports), and the export's pointer to the fixer does not count it. One
+        /// whose stage the review gives the layer is the layer's own work, corrected as usual.
+        /// </summary>
+        [Fact]
+        public void AnObjectTakenAwayAndPutBackInAnotherStagesLayerIsLeftForTheModeller()
+        {
+            const string kerbsName = "02_01_Kerbs_01-09-26_05-09-26";
+            var scene = new FixerScene();
+            var top = scene.Add(Top, null, true);
+            var zone = scene.Add("_02_Zone", top, true);
+            var kerbs = scene.Add(kerbsName, zone, true);
+            scene.Add("Ph2_St01_IN_Kerb", kerbs);
+            scene.Add("Ph2_St02_RM_Bench_Ph2_St02_IN", kerbs);
+            scene.Add("ph2_st04-1_RM_Old_Bench_Ph2_St04-1_in", kerbs);
+            scene.Add("Ph2_St03_RM_Seat_Ph2_St03_IN", kerbs);
+            scene.Add("Ph2_St01_RM_Gate_Ph2_St01_IN", kerbs);
+            scene.Add("Ph2_St02_IN_Strip", scene.Add("02_02_Strip_08-09-26", zone, true));
+            scene.AddMaxLayer(Top);
+            scene.AddMaxLayer("_02_Zone", Top);
+            scene.AddMaxLayer(kerbsName, "_02_Zone");
+            scene.AddMaxLayer("02_02_Strip_08-09-26", "_02_Zone");
+
+            var plan = scene.Plan();
+            Print(plan);
+            Assert.False(plan.HasChanges);
+            Assert.Equal("taken away and put back in Ph2_St02 (its removal tag, then its install tag), but it sits in this layer, which is not Ph2_St02's: the Planner lists it as a"
+                + " naming error; left as it is \u2014 correct it by hand: move it to the Ph2_St02 layer, or retag it for this layer as Ph2_St01_RM_Bench_Ph2_St01_IN",
+                RowFor(plan, "Ph2_St02_RM_Bench_Ph2_St02_IN", PhasingFixStatus.Check).WhatChanged);
+            Assert.EndsWith("move it to the Ph2_St04_1 layer, or retag it for this layer as Ph2_St01_RM_Old_Bench_Ph2_St01_IN",
+                RowFor(plan, "ph2_st04-1_RM_Old_Bench_Ph2_St04-1_in", PhasingFixStatus.Check).WhatChanged);
+            Assert.Contains("taken away and put back in Ph2_St03", RowFor(plan, "Ph2_St03_RM_Seat_Ph2_St03_IN", PhasingFixStatus.Check).WhatChanged);
+            Assert.Equal(kerbsName, RowFor(plan, "Ph2_St02_RM_Bench_Ph2_St02_IN", PhasingFixStatus.Check).LayerItSitsIn);
+            Assert.DoesNotContain(plan.Rows, r => r.CurrentName == "Ph2_St01_RM_Gate_Ph2_St01_IN" || r.CurrentName == "Ph2_St01_IN_Kerb");
+            Assert.Equal(0, PhasingFixScript.CorrectableCount(plan));
+            Assert.Null(PhasingFixScript.ExportWarning(plan));
+
+            // The layer given stage 3 in the review: the seat is its own work then, and keeps its name, which already names
+            // that stage; the bench is still another stage's.
+            var renumbered = scene.Plan(new Dictionary<long, int> { { kerbs, 3 } });
+            Print(renumbered);
+            Assert.Equal("Ph2_St03_IN_Kerb", renumbered.NodeRenames.Single(r => r.OldName == "Ph2_St01_IN_Kerb").NewName);
+            Assert.DoesNotContain(renumbered.Rows, r => r.CurrentName == "Ph2_St03_RM_Seat_Ph2_St03_IN");
+            Assert.Contains("retag it for this layer as Ph2_St03_RM_Bench_Ph2_St03_IN", RowFor(renumbered, "Ph2_St02_RM_Bench_Ph2_St02_IN", PhasingFixStatus.Check).WhatChanged);
+        }
+
         [Fact]
         public void AMaxLayerWithTheOldFullStopFollowsItsNode()
         {

@@ -44,6 +44,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerAddLayer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerScheduleRows.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerPreview.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerGantt.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingWordFixText.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TreeViewExtension.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Updates\UpdateCommandLine.cs" />

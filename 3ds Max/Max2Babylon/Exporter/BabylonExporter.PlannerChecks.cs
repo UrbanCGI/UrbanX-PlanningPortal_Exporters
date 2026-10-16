@@ -26,7 +26,9 @@ namespace Max2Babylon
 
             RaiseMessage("Checking Planner naming convention", Color.Blue);
             // The fixer's plan for the scene: which top node it corrects (the check says the layers of any other one are
-            // renamed by hand), its pointer to the button, and the phasing counts.
+            // renamed by hand), the objects it leaves for the modeller to correct (taken away and put back in one stage in
+            // another stage's layer: the check never says the fixer converts them), its pointer to the button, and the
+            // phasing counts.
             var phasing = PlanPhasingNames();
             NamingReport report;
             try
@@ -34,7 +36,7 @@ namespace Max2Babylon
                 // Without a plan the check takes the first top node with "phasing" in its name; with one that found no
                 // top node, none (an empty name).
                 var phasingTop = phasing != null ? (phasing.TopName ?? string.Empty) : null;
-                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene), DateTime.Today, phasingTop);
+                report = PlannerNamingValidator.Validate(CollectSceneNodes(gameScene), DateTime.Today, phasingTop, phasing != null ? phasing.LeftMisfiled : null);
             }
             catch (Exception e)
             {

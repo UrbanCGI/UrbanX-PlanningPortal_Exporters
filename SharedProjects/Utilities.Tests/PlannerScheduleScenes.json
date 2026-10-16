@@ -735,5 +735,1601 @@
     "mesh": true
    }
   ]
+ },
+ {
+  "id": "removal-ends-as-install-starts",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_02_Removal_03-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_RM_Old_Sign",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "01_04_Gate_Removal_10-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_RM_Old_Gate",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "01_05_Clear_15-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "ph1_st05_RM_Barrier_ph2_st05_IN",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Reinstate_04-09-26",
+    "parent": 8,
+    "mesh": false
+   },
+   {
+    "name": "ph1_st02_RM_Kerb_A_ph2_st01_IN",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "ph1_st02_RM_Kerb_B_ph2_st01_IN",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Gate_11-09-26",
+    "parent": 8,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Gate_Ph1_St04_RM",
+    "parent": 12,
+    "mesh": true
+   },
+   {
+    "name": "02_05_Return_16-09-26",
+    "parent": 8,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St05_IN_New_Barrier",
+    "parent": 14,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "same-layer-order",
+  "nodes": [
+   {
+    "name": "Site_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_03_Temporary_Removal_14-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_RM_Bollard_Ph1_St03_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Fence_Ph1_St03_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Aaa_New",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Zzz_Old",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "ph1_st03_RM_Cone_ph1_st03_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_04_Works_01-10-26_03-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St04_RM_Lamp_Ph2_St04_IN",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St04_IN_Lamp_B_Ph2_St04_RM",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St04_IN_Kiosk",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St04_RM_Hut",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Stray_Ph2_St04_RM",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-starts-uk-autumn",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Uk_Autumn_25-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_U01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U03",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U04",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U05",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U06",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U07",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U08",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U09",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U10",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U11",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U12",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U13",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U14",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U15",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U16",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U17",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U18",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U19",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_U20",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-starts-uk-spring",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_02_Uk_Spring_27-03-27_29-03-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St02_IN_V1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V6",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St02_IN_V7",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-starts-sydney-autumn",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_03_Syd_Autumn_04-04-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_W01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W03",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W04",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W05",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W06",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W07",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W08",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W09",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W10",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W11",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W12",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W13",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W14",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W15",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W16",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W17",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W18",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W19",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_W20",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_X",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-starts-sydney-spring",
+  "nodes": [
+   {
+    "name": "Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_04_Syd_Spring_02-10-27_04-10-27",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_IN_Y1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y6",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_IN_Y7",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_RM_Z",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-by-another-layer",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "ph2_st02_RM_Lamp_ph2_st02_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_IN_Sign_Ph2_St02_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Seat_Ph2_St03_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St04_RM_Rail_Ph2_St04_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St05_RM_Post_Ph2_St05_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Later_15-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Later",
+    "parent": 11,
+    "mesh": true
+   },
+   {
+    "name": "02_04_Sydney_Change_04-10-26_05-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St04_IN_Track",
+    "parent": 13,
+    "mesh": true
+   },
+   {
+    "name": "02_05_Uk_Change_25-10-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St05_IN_Path",
+    "parent": 15,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "one-description-opposite-orders",
+  "nodes": [
+   {
+    "name": "Site_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_03_Works_14-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_Pole_Ph1_St03_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Pole_Ph1_St03_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Aaa",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Fence_Ph1_St03_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Post_Ph1_St03_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_04_Bare_21-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_IN_Ph1_St04_RM",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St04_RM_Ph1_St04_IN",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_IN_Bench_Ph2_St02_RM",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Hut_Ph2_St02_IN",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Hut",
+    "parent": 15,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 15,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-by-a-sub-stage-layer",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_1_RM_Bench_Ph2_St02_1_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Seat_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_1_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_1_IN_Strip",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_07-09-26_10-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Whole",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-by-a-provisional-layer",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_TBC_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-on-a-uk-clock-change-day",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_25-10-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-on-a-sydney-clock-change-day",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_04-10-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-by-another-layer-one-description-both-orders",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_IN_Bench_Ph2_St02_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Seat_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26_09-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "removed-and-installed-by-two-other-layers",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_Post_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Lay_12-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Lay",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "own-removal-another-stages-install",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_RM_Gate_Ph2_St03_IN",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_Arch_Ph2_St02_IN",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Lay_12-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Lay",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-in-a-stage-no-layer-dates",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St05_RM_Bench_Ph2_St05_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "stray-lead-no-layer-dates",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St05_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-by-an-undated-layer",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_TBC",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-from-two-layers-one-description",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_Bench_Ph2_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_Bench_Ph2_St03_IN",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Lay_12-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Lay",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "put-back-in-an-earlier-workspace",
+  "workspaceStart": "2026-08-03",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Bench_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "one-layer-both-orders-mixed-spellings",
+  "nodes": [
+   {
+    "name": "Site_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_03_Works_14-09-26_16-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_Pole_Ph1_St03_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "ph1_st03_RM_Pole_ph1_st03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Aaa",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_IN_Ph1_St03_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Ph1_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Post_Ph1_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Post_2_Ph1_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "01_04_Later_18-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_IN_Later",
+    "parent": 10,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "one-description-both-orders-other-stage",
+  "nodes": [
+   {
+    "name": "Site_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_03_Works_14-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St03_IN_Pole_Ph1_St04_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St03_RM_Pole_Ph1_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "01_04_Later_18-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St04_IN_Later",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "misfiled-sub-stage-layer-old-spelling",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_2_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_2_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "ph2_st03-1_RM_Old_Bench_2_Ph2_St03-1_in (1)",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_RM_Plain_Ph2_St01_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_3_RM_Other_Ph2_St01_3_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_03_1_Y_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_1_IN_X",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "misfiled-one-number-layers",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "05_Works_01-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St05_IN_A",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St07_RM_Ph1_St07_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "06_More_03-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph3_St05_RM_Lone_Ph3_St05_IN",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "07_Later_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St07_IN_B",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "misfiled-controls",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_A_Ph2_St03_1_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_IN_B_Ph2_St03_RM",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_C_Ph2_St04_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_D_Ph1_St03_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St01_RM_E_Ph2_St01_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_03_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St03_IN_Strip",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St03_RM_F_Ph2_St03_IN",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "02_04_Top_10-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St04_IN_Top",
+    "parent": 12,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "misfiled-dupes-tbc-undated",
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs_01-09-26_05-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St01_IN_Kerb",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Zed_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Alpha_Ph2_St02_IN",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_01_Kerbs_02-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_RM_Copy_Ph2_St02_IN",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "02_05_Prov_TBC_12-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St05_IN_P",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Prov_Ph2_St02_IN",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "02_06_Undated_TBC",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St06_IN_U",
+    "parent": 11,
+    "mesh": true
+   },
+   {
+    "name": "Ph2_St02_RM_Und_Ph2_St02_IN",
+    "parent": 11,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Strip_08-09-26",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "Ph2_St02_IN_Strip",
+    "parent": 14,
+    "mesh": true
+   }
+  ]
  }
 ]

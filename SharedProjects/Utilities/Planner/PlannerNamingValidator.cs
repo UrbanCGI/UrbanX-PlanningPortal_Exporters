@@ -41,7 +41,7 @@ namespace Utilities.Planner
     public sealed class NamingReport
     {
         public readonly List<NamingIssue> Issues = new List<NamingIssue>();
-        /// <summary>Objects that carry a Ph/St tag.</summary>
+        /// <summary>Objects that carry a Ph/St tag, as the Planner reads them: a tagged group head counts, a split piece is part of its object.</summary>
         public int TaggedObjects;
         /// <summary>Distinct group names that read as an order number plus dates / TBC.</summary>
         public int DatedGroups;
@@ -87,11 +87,18 @@ namespace Utilities.Planner
     /// tag has the stage; one whose tag has the stage in another phase is reported when the Planner dates it from another
     /// layer or when only its trailing tag has the stage, naming the objects that set the phase when leading tags did).
     ///
+    /// The objects are read as the Planner reads them: the geometry, and the tagged nodes objects are linked under (a Max
+    /// group's head, which Add to IN / Add to RM tags for a closed group; the export passes these as groups), each split
+    /// piece (Name_N linked under Name) as part of its object, checked only for what its own name writes; an untagged node
+    /// linked under a scheduled object is shown and hidden with it.
+    ///
     /// Severity guide:
     ///   Error   - the Planner cannot read the name at all, or two exported objects share a name.
     ///   Warning - the name reads, but the Planner will schedule it differently from what was meant
     ///             (unfiled, undated, phase or stage mismatch, a tag whose phase and stage no layer has, gathered
-    ///             in one warning for removal tags and one for install tags, empty description, case-only twins),
+    ///             in one warning for removal tags and one for install tags, empty description, case-only twins,
+    ///             objects taken away and put back in one stage that sit in another stage's layer, which the Planner lists
+    ///             as a naming error, gathered in one warning with what each should be retagged as),
     ///             or the name breaks the convention although it reads (a space anywhere in a tagged object's or a
     ///             dated group's name; a sub-stage written an old way, with a hyphen or a full stop, in object tags
     ///             or group names, one warning for each with the count and some of the names; a group of one number
@@ -137,6 +144,21 @@ namespace Utilities.Planner
         /// </param>
         public static NamingReport Validate(IEnumerable<SceneNodeInfo> nodes, DateTime today, string phasingTop)
         {
+            return Validate(nodes, today, phasingTop, null);
+        }
+
+        /// <param name="nodes">The nodes about to be exported.</param>
+        /// <param name="today">For the check on odd years.</param>
+        /// <param name="phasingTop">The top node Fix phasing names corrects (see above).</param>
+        /// <param name="fixerLeavesMisfiled">
+        /// The names of the objects Fix phasing names leaves as they are because each is taken away and put back in one
+        /// stage while it sits in another stage's layer (<see cref="PhasingFixPlan.LeftMisfiled"/>, the fixer's own plan for
+        /// the scene), or null: then they are worked out from each layer's ID as the fixer reads it now
+        /// (<see cref="PhasingNameFixer.MisfiledIn(string, PhasingNameFixer.LayerRef)"/>), which can differ where the fixer
+        /// numbers a stage's layers again.
+        /// </param>
+        public static NamingReport Validate(IEnumerable<SceneNodeInfo> nodes, DateTime today, string phasingTop, ICollection<string> fixerLeavesMisfiled)
+        {
             var report = new NamingReport();
             var all = (nodes ?? Enumerable.Empty<SceneNodeInfo>()).Where(n => n != null && n.Name != null).ToList();
             foreach (var node in all)
@@ -180,9 +202,15 @@ namespace Utilities.Planner
             var hyphenObjects = new OldForms();
             var filed = new List<FiledObject>();
             var keptNames = KeptNames(all, groupNames);
-            foreach (var mesh in all.Where(n => n.IsMesh))
+            var objects = ObjectsRead(all);
+            var misfiled = MisfiledObjects(objects, datedGroups);
+            var misfiledNames = new HashSet<string>(misfiled.Select(m => m.Name), StringComparer.Ordinal);
+            // The objects the Planner schedules: a node linked under one is shown and hidden with it.
+            var scheduled = new HashSet<string>(objects.Where(o => o.Piece == null && o.Parsed != null && NearestDatedGroup(o.Node, datedGroups) != null)
+                .Select(o => o.Node.Name), StringComparer.Ordinal);
+            foreach (var item in objects)
             {
-                var placed = CheckMesh(mesh, datedGroups, phasing, report, legacyObjects, hyphenObjects, keptNames);
+                var placed = CheckMesh(item, datedGroups, phasing, report, legacyObjects, hyphenObjects, keptNames, misfiledNames, scheduled, fixerLeavesMisfiled);
                 if (placed != null)
                 {
                     filed.Add(placed);
@@ -191,7 +219,8 @@ namespace Utilities.Planner
             AddOldFormWarning(report, legacyObjects, "object", "Ph1_St04-2_IN_...", "Ph1_St04.2_IN_...", "Ph1_St04_2_IN_...", phasing.FixerTop);
             AddHyphenWarning(report, hyphenObjects, phasing.FixerTop);
             CheckOneNumberGroups(oneNumber, datedGroups, filed, phasing, report);
-            CheckStagesWithoutLayer(filed, datedGroups, phasing, report);
+            CheckStagesWithoutLayer(filed, datedGroups, phasing, report, misfiledNames);
+            AddMisfiledWarning(report, misfiled);
             CheckDuplicates(all, report);
 
             // Errors first so the log leads with what actually blocks the Planner. OrderBy is stable.
@@ -370,13 +399,182 @@ namespace Utilities.Planner
             return text;
         }
 
-        /// <returns>The object and its dated group when it carries a tag and sits in one, else null.</returns>
-        /// <param name="keptNames">The names Fix phasing names leaves as they are (<see cref="KeptNames"/>).</param>
-        private static FiledObject CheckMesh(SceneNodeInfo mesh, Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing,
-            NamingReport report, OldForms legacyObjects, OldForms hyphenObjects, HashSet<string> keptNames)
+        // The nearest dated group above a node (the Planner's layer for it), or null.
+        private static string NearestDatedGroup(SceneNodeInfo node, Dictionary<string, PlannerLayerName> datedGroups)
         {
+            return node.Ancestors.FirstOrDefault(a => a != null && datedGroups.ContainsKey(a));
+        }
+
+        /// <summary>A node the Planner reads as an object, or as a split piece of one.</summary>
+        private sealed class ObjectRead
+        {
+            public SceneNodeInfo Node;
+            /// <summary>Its tags; null when its name has none.</summary>
+            public PlannerMeshName Parsed;
+            /// <summary>A split piece (Name_N linked under Name): the object it is part of; else null.</summary>
+            public string Piece;
+        }
+
+        /// <summary>
+        /// The nodes as the Planner reads them as objects (the viewport's name index, phasingFromModel.ts toObjects): every
+        /// exported node by its name, the geometry first, then the nodes objects are linked under that the export passes as
+        /// groups (a Max group's head, a dummy), of which only a tagged one can be scheduled, the first node of a name
+        /// standing for it; a split piece (Name_N, Name_primitiveN linked under a node named Name, meshes.ts mergedName) is
+        /// read as part of its object, never as an object of its own.
+        /// </summary>
+        private static List<ObjectRead> ObjectsRead(List<SceneNodeInfo> all)
+        {
+            var result = new List<ObjectRead>();
+            var meshNames = new HashSet<string>(all.Where(n => n.IsMesh).Select(n => n.Name), StringComparer.Ordinal);
+            var groupsSeen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var node in all.Where(n => n.IsMesh))
+            {
+                result.Add(new ObjectRead { Node = node, Parsed = PlannerNaming.ParseMeshName(node.Name), Piece = PieceOf(node) });
+            }
+            foreach (var node in all.Where(n => !n.IsMesh))
+            {
+                if (meshNames.Contains(node.Name) || !groupsSeen.Add(node.Name))
+                {
+                    continue;
+                }
+                var parsed = PlannerNaming.ParseMeshName(node.Name);
+                if (parsed != null)
+                {
+                    result.Add(new ObjectRead { Node = node, Parsed = parsed, Piece = PieceOf(node) });
+                }
+            }
+            return result;
+        }
+
+        // The object a split piece belongs to, or null when the node is not one: its name less "_N" (or "_primitiveN"),
+        // again while that is the name of a node it is linked under (meshes.ts mergedName).
+        private static string PieceOf(SceneNodeInfo node)
+        {
+            var current = node.Name;
+            while (PlannerSchedule.SplitSuffix.IsMatch(current))
+            {
+                var stripped = PlannerSchedule.SplitSuffix.Replace(current, string.Empty, 1);
+                if (stripped.Length == 0 || !node.Ancestors.Contains(stripped))
+                {
+                    break;
+                }
+                current = stripped;
+            }
+            return current == node.Name ? null : current;
+        }
+
+        /// <summary>An object taken away and put back in one stage that sits in another stage's layer.</summary>
+        private sealed class Misfiled
+        {
+            public string Name;
+            public string Group;
+            /// <summary>"Ph2_St02": the stage it is taken away and put back in.</summary>
+            public string Stage;
+            /// <summary>Its name with both tags giving the layer it sits in.</summary>
+            public string Retagged;
+            /// <summary>Its split pieces, which are renamed with it.</summary>
+            public int Pieces;
+        }
+
+        /// <summary>
+        /// The objects whose names take them away and put them back in one stage (the removal tag first, then the install
+        /// tag, the same phase, stage and sub-stage) while they sit in a dated group that owns neither tag's work: another
+        /// stage's layer. The Planner lists each as a naming error ("Layer names that need attention"): such an object
+        /// belongs in that stage's layer. Read as the Planner reads them (<see cref="PlannerSchedule"/>, its classification of
+        /// a layer's objects): the objects are <see cref="ObjectsRead"/>'s (group heads included, split pieces folded into
+        /// their object), the nearest dated group is the object's layer, and groups of one label are one layer; a group named
+        /// phase then stage owns that phase and stage, one named with one number its stage in the phase
+        /// <see cref="GroupPhase(PlannerLayerName, IEnumerable{PlannerMeshName})"/> reads off the objects of its label. In the
+        /// order the objects are read.
+        /// </summary>
+        private static List<Misfiled> MisfiledObjects(List<ObjectRead> objects, Dictionary<string, PlannerLayerName> datedGroups)
+        {
+            var filed = new List<KeyValuePair<string, KeyValuePair<string, PlannerMeshName>>>();
+            foreach (var item in objects.Where(o => o.Piece == null && o.Parsed != null))
+            {
+                var group = NearestDatedGroup(item.Node, datedGroups);
+                if (group != null)
+                {
+                    filed.Add(new KeyValuePair<string, KeyValuePair<string, PlannerMeshName>>(group, new KeyValuePair<string, PlannerMeshName>(item.Node.Name, item.Parsed)));
+                }
+            }
+            var pieces = objects.Where(o => o.Piece != null).GroupBy(o => o.Piece, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+            // The Planner reads groups of one label (the ID and name, without dates or a " (1)") as one layer: its phase is
+            // read off all their objects.
+            var members = filed.ToLookup(f => datedGroups[f.Key].Label, f => f.Value.Value, StringComparer.Ordinal);
+            var phases = new Dictionary<string, int?>(StringComparer.Ordinal);
+            var result = new List<Misfiled>();
+            foreach (var item in filed)
+            {
+                var parsed = item.Value.Value;
+                var lead = parsed.Lead;
+                var trail = parsed.Trail;
+                if (trail == null || lead.Type != PlannerTaskType.Dismantle || trail.Type != PlannerTaskType.Install
+                    || lead.Phase != trail.Phase || lead.Stage != trail.Stage || lead.SubStage != trail.SubStage)
+                {
+                    continue;
+                }
+                var group = datedGroups[item.Key];
+                int? phase;
+                if (!phases.TryGetValue(group.Label, out phase))
+                {
+                    phase = GroupPhase(group, members[group.Label]);
+                    phases[group.Label] = phase;
+                }
+                Func<PlannerMeshSegment, bool> owns = s => PlannerNaming.SameStage(s.Stage, s.SubStage, group.Stage, group.SubStage) && (!phase.HasValue || s.Phase == phase.Value);
+                if (owns(lead) || owns(trail))
+                {
+                    continue;
+                }
+                int count;
+                pieces.TryGetValue(item.Value.Key, out count);
+                result.Add(new Misfiled
+                {
+                    Name = item.Value.Key,
+                    Group = item.Key,
+                    Stage = "Ph" + lead.Phase.ToString(CultureInfo.InvariantCulture) + "_" + PlannerSchedule.StageTag(lead),
+                    Retagged = PlannerSchedule.Retagged(item.Value.Key, phase ?? lead.Phase, group.Stage, group.SubStage),
+                    Pieces = count
+                });
+            }
+            return result;
+        }
+
+        // One warning for every object taken away and put back in one stage that sits in another stage's layer, with the
+        // Planner's advice for each (its split pieces, Name_N linked under it, renamed with it: the Planner reads them as
+        // part of it only while their names start with its own).
+        private static void AddMisfiledWarning(NamingReport report, List<Misfiled> misfiled)
+        {
+            if (misfiled.Count == 0)
+            {
+                return;
+            }
+            var each = misfiled.Select(m => string.Format(CultureInfo.InvariantCulture, "'{0}' in '{1}' (move it to the {2} layer, or retag it as {3}{4})", m.Name, m.Group, m.Stage, m.Retagged,
+                    m.Pieces == 0 ? string.Empty : m.Pieces == 1 ? ", and its split piece likewise" : ", and its " + m.Pieces.ToString(CultureInfo.InvariantCulture) + " split pieces likewise"))
+                .ToList();
+            Add(report, NamingSeverity.Warning, misfiled[0].Name, string.Format(CultureInfo.InvariantCulture,
+                "{0} object(s) are taken away and put back in one stage (a removal tag, then an install tag of the same phase and stage) but sit in another stage's layer, "
+                + "which the Planner lists as a naming error: an object taken away and put back in one stage belongs in that stage's layer. Correct each in 3ds Max: move it "
+                + "to that stage's layer, or retag it for the layer it sits in: {1}.",
+                misfiled.Count, PhasingFixScript.FirstNames(each, NamesShown)));
+        }
+
+        /// <returns>The object and its dated group when it carries a tag and sits in one, else null.</returns>
+        /// <param name="item">An object as the Planner reads it (<see cref="ObjectsRead"/>). A split piece is read as part of
+        /// its object, which is checked on its own: only what its own name writes (spaces, hyphens, a sub-stage written an
+        /// old way) is told about it.</param>
+        /// <param name="keptNames">The names Fix phasing names leaves as they are (<see cref="KeptNames"/>).</param>
+        /// <param name="misfiled">The objects <see cref="MisfiledObjects"/> finds, told in a warning of their own.</param>
+        /// <param name="scheduled">The objects the Planner schedules: an untagged node linked under one is shown and hidden with it.</param>
+        /// <param name="fixerLeavesMisfiled">The fixer's own list of the objects it leaves as taken away and put back in another stage's layer, or null.</param>
+        private static FiledObject CheckMesh(ObjectRead item, Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing,
+            NamingReport report, OldForms legacyObjects, OldForms hyphenObjects, HashSet<string> keptNames, HashSet<string> misfiled, HashSet<string> scheduled,
+            ICollection<string> fixerLeavesMisfiled)
+        {
+            var mesh = item.Node;
             var name = mesh.Name;
-            var parsed = PlannerNaming.ParseMeshName(name);
+            var parsed = item.Parsed;
+            bool piece = item.Piece != null;
 
             string datedGroupName = null;
             PlannerLayerName datedGroup = null;
@@ -401,20 +599,29 @@ namespace Utilities.Planner
 
             if (parsed == null)
             {
-                if (LooksTagged.IsMatch(name))
+                if (piece)
+                {
+                    // Its object is told about.
+                }
+                else if (LooksTagged.IsMatch(name))
                 {
                     Add(report, NamingSeverity.Error, name, string.Format(
                         "'{0}': the leading tag is malformed. Objects are tagged Ph<n>_St<nn>_IN|RM_<description>, with an optional sub-stage St<nn>_<m>, e.g. Ph1_St03_IN_Sheet_Pile_1 or Ph1_St03_2_IN_Sheet_Pile_1.", name));
                 }
-                else if (datedGroup != null)
+                else if (datedGroup != null && !mesh.Ancestors.Any(a => a != null && scheduled.Contains(a)))
                 {
+                    // One linked under a scheduled object (a member of its Max group, a part linked under it) is shown and
+                    // hidden with it.
                     Add(report, NamingSeverity.Note, name, string.Format(
                         "'{0}' sits inside the dated group '{1}' but carries no Ph/St tag, so the Planner will not schedule it.", name, datedGroupName));
                 }
                 return null;
             }
 
-            report.TaggedObjects++;
+            if (!piece)
+            {
+                report.TaggedObjects++;
+            }
             // Where the fixer would convert the name, it does not when the name it would take is one that another node keeps
             // (KeepTakenNames: "Kerb-1" beside "Kerb_1"). The name it takes is told here by its underscores only: the fixer
             // also gives the object its layer's tag, which may differ, but a clash that the underscores alone make is the
@@ -426,6 +633,24 @@ namespace Utilities.Planner
             {
                 converts = false;
                 byHandWhy = "Fix phasing names\u2026 leaves a name as it is when the one it would take with underscores is already another node's";
+            }
+            // Taken away and put back in one stage while its layer is another stage's: the fixer leaves the object as it is,
+            // for the modeller to correct, so nothing here sends it there. By the fixer's own plan when given, else by the
+            // layer's ID as the fixer reads it now (PhasingNameFixer.MisfiledIn).
+            PhasingLayerId fixerLayer;
+            if (converts && (fixerLeavesMisfiled != null
+                ? fixerLeavesMisfiled.Contains(name)
+                : phasing.Layers.TryGetValue(parent, out fixerLayer) && PhasingNameFixer.MisfiledIn(name, new PhasingNameFixer.LayerRef
+                {
+                    Phase = fixerLayer.Phase,
+                    OldStage = fixerLayer.Stage,
+                    OldSplit = fixerLayer.Split,
+                    Stage = fixerLayer.Stage,
+                    Split = fixerLayer.Split
+                }) != null))
+            {
+                converts = false;
+                byHandWhy = "Fix phasing names\u2026 leaves an object taken away and put back in one stage that sits in another stage's layer as it is, for the modeller to correct";
             }
             foreach (var segment in new[] { parsed.Lead, parsed.Trail })
             {
@@ -448,6 +673,13 @@ namespace Utilities.Planner
             {
                 Add(report, NamingSeverity.Warning, name, string.Format(
                     "'{0}' contains a space. Names must not contain spaces: use underscores, and keep notes out of the name.", name));
+            }
+
+            if (piece)
+            {
+                // A split piece: the Planner reads it as part of its object, with its object's tags, layer and work, which
+                // are checked on the object ("Kerb_Ph2_St02_RM_1" carries its object's trailing tag before its number).
+                return null;
             }
 
             if (parsed.Trail == null && StrayTrail.IsMatch(parsed.Description))
@@ -505,6 +737,12 @@ namespace Utilities.Planner
             }
 
             var placed = new FiledObject { Name = name, Parsed = parsed, Group = datedGroupName };
+            if (misfiled.Contains(name))
+            {
+                // Taken away and put back in one stage, in another stage's layer: told with the others like it, with the
+                // Planner's advice (AddMisfiledWarning), rather than as a tag that does not match its layer.
+                return placed;
+            }
             if (inPhasingLayer)
             {
                 // A layer of the phasing hierarchy: its ID gives the phase and stage, as Fix phasing names reads it.
@@ -579,7 +817,8 @@ namespace Utilities.Planner
         /// group's own). Each warning says how the group got its phase and, when leading tags set it, names the objects
         /// that did: when they are fewer than the objects warned in the group, the slip is more likely theirs.
         /// </summary>
-        private static void CheckStagesWithoutLayer(List<FiledObject> filed, Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing, NamingReport report)
+        private static void CheckStagesWithoutLayer(List<FiledObject> filed, Dictionary<string, PlannerLayerName> datedGroups, PhasingTree phasing, NamingReport report,
+            HashSet<string> misfiled)
         {
             var members = filed.ToLookup(f => f.Group, StringComparer.Ordinal);
             // The groups the Planner reads as layers that own a phase and stage, and the groups that would own one but hold
@@ -614,7 +853,7 @@ namespace Utilities.Planner
                 {
                     if (!leadOwn) elsewhere.Add(lead);
                 }
-                else
+                else if (!misfiled.Contains(item.Name))
                 {
                     var warning = CheckPhaseOfOneNumberGroup(item, datedGroups[item.Group], group, layers, phasing);
                     if (warning != null)

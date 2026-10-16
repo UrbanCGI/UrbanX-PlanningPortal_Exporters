@@ -251,6 +251,92 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void AnEditLeavingAnObjectInActivitiesThatNeedTheOtherOrderIsNoted()
+        {
+            // Add to IN on a removal-only pole beside a pole put up, then taken down (one description, phase and stage):
+            // renamed Ph2_St01_RM_Pole_Ph2_St01_IN it is taken away, then put back, yet shares their install and removal,
+            // which cannot show both in order. The tags are as asked, so it is renamed, and the review notes what the
+            // Planner's Generate will list. A pole with a description of its own gives no note.
+            var scene = new TestScene();
+            var kerbs = scene.Unit(Kerbs, "Work_Phasing", scene.Unit("Work_Phasing", null, null));
+            scene.Object("Ph2_St01_IN_Pole_Ph2_St01_RM", kerbs, Kerbs);
+            scene.Object("Ph2_St01_RM_Pole", kerbs, Kerbs);
+            scene.Object("Ph2_St01_RM_Post", kerbs, Kerbs);
+            var plan = AddTo(scene, PlannerTaskType.Install, Kerbs, "Ph2_St01_RM_Pole");
+            Assert.Equal(0, plan.ProblemCount);
+            Assert.Equal(new[] { "Ph2_St01_RM_Pole_Ph2_St01_IN" }, plan.Renames.Select(r => r.NewName).ToArray());
+            Assert.Contains("After the renames, Generate from model lists " + Kerbs + ": \"Ph2_St01_RM_Pole_Ph2_St01_IN\" is taken away, then put back (its name"
+                + " writes RM first), but \"Pole_Ph2_St01_RM\" and \"Pole_Ph2_St01_IN\" also hold other objects and put it back before it is taken away — give it"
+                + " a description of its own.", plan.Notes);
+            var own = AddTo(scene, PlannerTaskType.Install, Kerbs, "Ph2_St01_RM_Post");
+            Assert.Equal(new[] { "Ph2_St01_RM_Post_Ph2_St01_IN" }, own.Renames.Select(r => r.NewName).ToArray());
+            Assert.DoesNotContain(own.Notes, n => n.StartsWith("After the renames", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void AnEditThatWouldHaveAnObjectTakenAwayAndPutBackInAnotherStagesLayerIsRefused()
+        {
+            // An object taken away and put back in one stage belongs in that stage's layer (the Planner lists it otherwise
+            // as a naming error, 2026-10-16), and the tool never moves objects: Add to IN or Add to RM that would write such
+            // a name for an object sitting in another stage's layer is a Problem, and nothing of it is renamed.
+            var scene = new TestScene();
+            var root = scene.Unit("Work_Phasing", null, null);
+            var kerbs = scene.Unit(Kerbs, "Work_Phasing", root);
+            scene.Object("Ph2_St01_IN_KerbA", kerbs, Kerbs);
+            scene.Object("Ph2_St02_RM_Bench", kerbs, Kerbs);
+            scene.Object("Ph2_St03_RM_Post_Ph2_St02_IN", kerbs, Kerbs);
+            scene.Object("Ph2_St02_IN_Seat", kerbs, Kerbs);
+            scene.Object("Ph2_St02_RM_Chair_Ph2_St02_IN", kerbs, Kerbs);
+            var wall = scene.Object("Ph2_St02_RM_Wall", kerbs, Kerbs);
+            scene.Object("Ph2_St02_RM_Wall_1", wall, Kerbs);
+            scene.Object("Ph2_St02_RM_Old", scene.Unit(Strip, "Work_Phasing", root), Strip);
+            var options = PlannerScheduleTests.Utc;
+            var before = PlannerSchedule.Build(scene.Snapshot, options);
+            Assert.Equal("Ph2_St02", before.Objects["Ph2_St02_RM_Chair_Ph2_St02_IN"].MisfiledStage);
+
+            // Add to IN of 02_02 on a removal of stage 2 sitting in 02_01: refused, with the Planner's advice.
+            var bench = AddTo(scene, PlannerTaskType.Install, Strip, "Ph2_St02_RM_Bench");
+            Assert.Empty(bench.Renames);
+            Assert.Equal(1, bench.ProblemCount);
+            var problem = bench.Review.Single();
+            Assert.Equal("Problem", problem.Status);
+            Assert.Equal("Ph2_St02_RM_Bench_Ph2_St02_IN", problem.To);
+            Assert.Equal("it would be taken away and put back in Ph2_St02, but it sits in " + Kerbs + ", which is not Ph2_St02's layer: an object taken away and put back in one"
+                + " stage belongs in that stage's layer, and the Planner lists it as a naming error. Correct it in 3ds Max: move it to the Ph2_St02 layer (this tool never"
+                + " moves objects), or retag it for the layer it sits in as Ph2_St01_RM_Bench_Ph2_St01_IN", problem.Why);
+
+            // Add to RM of 02_02 that would make the same of a removal of another stage: refused too.
+            var post = AddTo(scene, PlannerTaskType.Dismantle, Strip, "Ph2_St03_RM_Post_Ph2_St02_IN");
+            Assert.Empty(post.Renames);
+            Assert.Contains("taken away and put back in Ph2_St02", post.Review.Single().Why);
+            Assert.Equal("Ph2_St02_RM_Post_Ph2_St02_IN", post.Review.Single().To);
+
+            // With its split piece: neither is renamed. Others in the same edit still are.
+            var mixed = AddTo(scene, PlannerTaskType.Install, Strip, "Ph2_St02_RM_Wall", "Ph2_St01_IN_KerbA");
+            Assert.Equal(1, mixed.ProblemCount);
+            Assert.Contains("taken away and put back in Ph2_St02", mixed.Review.Single(r => r.Status == "Problem" && r.Name == "Ph2_St02_RM_Wall").Why);
+            Assert.DoesNotContain(mixed.Renames, r => r.OldName.StartsWith("Ph2_St02_RM_Wall", StringComparison.Ordinal));
+            Assert.Equal(new[] { "Ph2_St02_IN_KerbA" }, mixed.Renames.Select(r => r.NewName).ToArray());
+
+            // Put up, then taken down in one stage is not the case: renamed.
+            var seat = AddTo(scene, PlannerTaskType.Dismantle, Strip, "Ph2_St02_IN_Seat");
+            Assert.Equal(new[] { "Ph2_St02_IN_Seat_Ph2_St02_RM" }, seat.Renames.Select(r => r.NewName).ToArray());
+
+            // The edits that correct a name towards the layer it sits in go ahead: the install of 02_01 for the bench, and
+            // each tag of 02_01 in turn for the chair, which then reads as 02_01's own work, and no longer listed.
+            var fix = AddTo(scene, PlannerTaskType.Install, Kerbs, "Ph2_St02_RM_Bench");
+            Assert.Equal(new[] { "Ph2_St02_RM_Bench_Ph2_St01_IN" }, fix.Renames.Select(r => r.NewName).ToArray());
+            var chair = AddTo(scene, PlannerTaskType.Dismantle, Kerbs, "Ph2_St02_RM_Chair_Ph2_St02_IN");
+            Assert.Equal(new[] { "Ph2_St01_RM_Chair_Ph2_St02_IN" }, chair.Renames.Select(r => r.NewName).ToArray());
+            var renamed = new TestScene(Apply(scene.Snapshot, chair));
+            var chair2 = AddTo(renamed, PlannerTaskType.Install, Kerbs, "Ph2_St01_RM_Chair_Ph2_St02_IN");
+            Assert.Equal(new[] { "Ph2_St01_RM_Chair_Ph2_St01_IN" }, chair2.Renames.Select(r => r.NewName).ToArray());
+            var fixedChair = PlannerSchedule.Build(Apply(renamed.Snapshot, chair2), options);
+            Assert.Null(fixedChair.Objects["Ph2_St01_RM_Chair_Ph2_St01_IN"].MisfiledStage);
+            Assert.DoesNotContain(fixedChair.LayerIssues, i => i.Contains("Chair"));
+        }
+
+        [Fact]
         public void AClosedGroupSelectedWholeIsEditedByItsHead()
         {
             // Clicking a closed group in 3ds Max selects its head and every member: the head takes the tag, the untagged
@@ -332,6 +418,53 @@ namespace Utilities.Tests
             var blocked = AddTo(scene, PlannerTaskType.Dismantle, Strip, "Ph2_St01_IN_Wall");
             Assert.Empty(blocked.Renames);
             Assert.Contains("its split piece Ph2_St01_IN_Wall_2 would be called Ph2_St01_IN_Wall_Ph2_St02_RM_2, which another node is called already", blocked.Review.Single().Why);
+        }
+
+        [Fact]
+        public void SplitPiecesGoWithAnObjectThatLosesOrGainsItsOnlyTag()
+        {
+            // The Planner folds a piece into its object by name and ancestor alone, whether the object is tagged or not:
+            // taking out an object's only tag takes its pieces' tags out with it, and an untagged object given a tag gives
+            // it to its pieces.
+            var scene = SelectionScene();
+            var kerb = scene.Find("Ph2_St01_IN_KerbA");
+            var piece = scene.Object("Ph2_St01_IN_KerbA_2", kerb, Kerbs);
+            var options = PlannerScheduleTests.Utc;
+            var before = PlannerSchedule.Build(scene.Snapshot, options);
+            Assert.Equal(kerb.Key, before.PieceOf(piece.Key).Key);
+            var removal = PlannerTagEdit.Plan(scene.Snapshot, options, new[]
+            {
+                Request(scene, "Ph2_St01_IN_KerbA", PlannerTaskType.Install, PlannerTagEditKind.Remove, Target(before, Kerbs))
+            });
+            Assert.Equal(0, removal.ProblemCount);
+            Assert.Equal(new[] { "KerbA", "KerbA_2" }, removal.Renames.Select(r => r.NewName).ToArray());
+            Assert.DoesNotContain(removal.Review, r => r.Status == "Also");
+            var untagged = new TestScene(Apply(scene.Snapshot, removal));
+            var unscheduled = PlannerSchedule.Build(untagged.Snapshot, options);
+            Assert.Null(unscheduled.ObjectOf(kerb.Key));
+            Assert.Null(unscheduled.PieceOf(piece.Key));
+            Assert.Equal(kerb.Key, unscheduled.MergedOwnerOf(piece.Key).Key);
+            Assert.DoesNotContain(unscheduled.NotScheduled, n => n.Key == piece.Key);
+
+            // Back into the IN: the piece goes with it, and is read as part of it again.
+            var addition = PlannerTagEdit.Plan(untagged.Snapshot, options, new[]
+            {
+                Request(untagged, "KerbA", PlannerTaskType.Install, PlannerTagEditKind.Add, Target(unscheduled, Kerbs))
+            });
+            Assert.Equal(0, addition.ProblemCount);
+            Assert.Equal(new[] { "Ph2_St01_IN_KerbA", "Ph2_St01_IN_KerbA_2" }, addition.Renames.Select(r => r.NewName).ToArray());
+            Assert.StartsWith("a split piece of KerbA: renamed with it", addition.Renames[1].Why);
+            var again = PlannerSchedule.Build(Apply(untagged.Snapshot, addition), options);
+            Assert.Equal(kerb.Key, again.PieceOf(piece.Key).Key);
+            Assert.Equal(new[] { "IN 02_01_Kerbs" }, again.PlacesOfNode(kerb.Key).ToArray());
+
+            // A piece of an untagged object chosen alone is a Problem, as for a tagged one: choose its object.
+            var alone = PlannerTagEdit.Plan(untagged.Snapshot, options, new[]
+            {
+                Request(untagged, "KerbA_2", PlannerTaskType.Install, PlannerTagEditKind.Add, Target(unscheduled, Kerbs))
+            });
+            Assert.Contains("it is a split piece of KerbA", alone.Review.Single().Why);
+            Assert.Empty(alone.Renames);
         }
 
         [Fact]
