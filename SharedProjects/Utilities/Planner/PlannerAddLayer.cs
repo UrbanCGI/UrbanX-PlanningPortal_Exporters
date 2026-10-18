@@ -7,23 +7,29 @@ using System.Text.RegularExpressions;
 
 namespace Utilities.Planner
 {
-    /// <summary>What Add layer asks for.</summary>
+    /// <summary>What Add layer asks for: the ID and the name (the parent is the dialog's Under). No date: every date comes from the Planner's layer list (D20).</summary>
     public sealed class PlannerNewLayer
     {
         /// <summary>A group (holds layers) or a layer (holds work).</summary>
         public PlannerLayerKind Kind = PlannerLayerKind.Layer;
-        /// <summary>A layer's phase (null for an ID of one number, the stage); a group's phase number (_&lt;n&gt;_), which it needs.</summary>
+        /// <summary>A layer's phase, which it needs (a layer ID has two or three numbers); a group's phase number (_&lt;n&gt;_), which it needs too.</summary>
         public int? Phase;
         public int Stage;
         public int? SubStage;
         /// <summary>The descriptive name; spaces become underscores.</summary>
         public string Name;
-        public DateTime? Start;
-        public DateTime? Finish;
-        public bool Tbc;
     }
 
-    /// <summary>A layer added in 3ds Max and not yet in the Planner's list, kept with the scene.</summary>
+    /// <summary>A phase group Add layer can add under (<see cref="PlannerAddLayer.Parents"/>).</summary>
+    public sealed class PlannerAddLayerParent
+    {
+        /// <summary>Its name: the Max layer's and its helper's.</summary>
+        public string Layer;
+        /// <summary>How many of the phase groups listed with it are above it (0 for one directly in the phasing root's tree).</summary>
+        public int Depth;
+    }
+
+    /// <summary>A layer added in 3ds Max and not yet in the Planner's list, kept with the scene. It holds no date (D20).</summary>
     public sealed class PlannerAddedLayer
     {
         /// <summary>Its name: the Max layer's and its helper's.</summary>
@@ -35,20 +41,28 @@ namespace Utilities.Planner
         /// <summary>Its layer ID as the list writes it ("02_01_2"), or empty.</summary>
         public string Id = string.Empty;
         public string Name = string.Empty;
-        /// <summary>ISO yyyy-mm-dd, or empty.</summary>
-        public string Start = string.Empty;
-        public string Finish = string.Empty;
-        public bool Tbc;
+        /// <summary>
+        /// Its layer, parent layer, ID and name before Clean up scene graph renamed it with its layer (empty when it never
+        /// was): an Edit > Undo of the clean-up puts the layer back under that name, and the record follows it.
+        /// </summary>
+        public string WasLayer = string.Empty;
+        public string WasParentLayer = string.Empty;
+        public string WasId = string.Empty;
+        public string WasName = string.Empty;
     }
 
     /// <summary>
-    /// The layers added in Max as they are kept with the scene: a short header and a CSV (byte order mark left out) with
-    /// the columns Layer, Parent layer, Kind, ID, Name, Start, Finish, TBC.
+    /// The layers added in Max as they are kept with the scene: a short header ("PlannerAddedLayers 2") and a CSV (byte order
+    /// mark left out) with the columns Layer, Parent layer, Kind, ID, Name, then the names before Clean up scene graph renamed
+    /// it (Was layer, Was parent layer, Was ID, Was name). No date is kept (D20). A record of the first version
+    /// ("PlannerAddedLayers 1", with Start, Finish and TBC after Name, and perhaps no Was columns) is still read, its dates
+    /// passed over, and is written again in this form.
     /// </summary>
     public static class PlannerAddedLayerStore
     {
-        private const string Magic = "PlannerAddedLayers 1";
-        public const string Header = "Layer,Parent layer,Kind,ID,Name,Start,Finish,TBC";
+        private const string Magic = "PlannerAddedLayers 2";
+        private const string MagicVersion1 = "PlannerAddedLayers 1";
+        public const string Header = "Layer,Parent layer,Kind,ID,Name,Was layer,Was parent layer,Was ID,Was name";
 
         public static string Write(IEnumerable<PlannerAddedLayer> layers)
         {
@@ -56,21 +70,28 @@ namespace Utilities.Planner
             text.Append(Magic).Append('\n').Append(Header).Append("\r\n");
             foreach (var layer in layers ?? Enumerable.Empty<PlannerAddedLayer>())
             {
-                var cells = new[] { layer.Layer, layer.ParentLayer, layer.Kind, layer.Id, layer.Name, layer.Start, layer.Finish, layer.Tbc ? "Yes" : string.Empty };
-                text.Append(string.Join(",", cells.Select(PlannerReview.Field).ToArray())).Append("\r\n");
+                var cells = new[]
+                {
+                    layer.Layer, layer.ParentLayer, layer.Kind, layer.Id, layer.Name,
+                    layer.WasLayer, layer.WasParentLayer, layer.WasId, layer.WasName
+                };
+                text.Append(string.Join(",", cells.Select(c => PlannerReview.Field(c ?? string.Empty)).ToArray())).Append("\r\n");
             }
             return text.ToString();
         }
 
-        /// <summary>Reads what <see cref="Write"/> wrote; an empty list when the text is not in that form.</summary>
+        /// <summary>Reads what <see cref="Write"/> wrote, or a record of the first version (its dates passed over); an empty list when the text is in neither form.</summary>
         public static List<PlannerAddedLayer> Read(string stored)
         {
             var result = new List<PlannerAddedLayer>();
-            if (stored == null || !stored.StartsWith(Magic + "\n", StringComparison.Ordinal))
+            bool version1 = stored != null && stored.StartsWith(MagicVersion1 + "\n", StringComparison.Ordinal);
+            if (stored == null || (!version1 && !stored.StartsWith(Magic + "\n", StringComparison.Ordinal)))
             {
                 return result;
             }
-            var records = PlannerLayerList.ReadRecords(stored.Substring(Magic.Length + 1), ',');
+            // The first version has Start, Finish and TBC after Name: the Was columns come three later.
+            int was = version1 ? 8 : 5;
+            var records = PlannerLayerList.ReadRecords(stored.Substring((version1 ? MagicVersion1 : Magic).Length + 1), ',');
             foreach (var record in records.Skip(1))
             {
                 var f = record.Fields;
@@ -86,9 +107,10 @@ namespace Utilities.Planner
                     Kind = cell(2),
                     Id = cell(3),
                     Name = cell(4),
-                    Start = cell(5),
-                    Finish = cell(6),
-                    Tbc = string.Equals(cell(7), "Yes", StringComparison.OrdinalIgnoreCase)
+                    WasLayer = cell(was),
+                    WasParentLayer = cell(was + 1),
+                    WasId = cell(was + 2),
+                    WasName = cell(was + 3)
                 });
             }
             return result;
@@ -125,11 +147,83 @@ namespace Utilities.Planner
         /// <summary>
         /// The added layers whose Max layer the scene still has (any capitals): the scene is the truth, so a layer taken back
         /// with Edit > Undo, deleted or renamed by hand since is no longer an added layer, and its ID and name are free again.
+        /// A record Clean up scene graph renamed (its layer, or its parent's) whose layers have their names from before (the
+        /// clean-up taken back with Edit > Undo, or put back again with Redo) follows them: its names and its names before
+        /// change places. Nothing is changed in the records kept with the scene (<see cref="ForScene"/>).
         /// </summary>
         public static List<PlannerAddedLayer> Present(IEnumerable<PlannerAddedLayer> added, PlannerSceneModel scene)
         {
+            return Placed(added, scene, false);
+        }
+
+        /// <summary>
+        /// The records kept with the scene, each as the scene names its layer now (<see cref="Present"/>), and the records whose
+        /// layer the scene does not have now kept as they are: an Edit > Redo may bring the layer back, so such a record stays
+        /// with the scene (left out of what the tab shows and checks) until a layer of its name is added again or the Planner's
+        /// list has it.
+        /// </summary>
+        public static List<PlannerAddedLayer> ForScene(IEnumerable<PlannerAddedLayer> added, PlannerSceneModel scene)
+        {
+            return Placed(added, scene, true);
+        }
+
+        private static List<PlannerAddedLayer> Placed(IEnumerable<PlannerAddedLayer> added, PlannerSceneModel scene, bool keepAbsent)
+        {
             var list = (added ?? Enumerable.Empty<PlannerAddedLayer>()).Where(a => a != null && !string.IsNullOrEmpty(a.Layer)).ToList();
-            return scene == null ? list : list.Where(a => scene.LayerByName.ContainsKey(a.Layer)).ToList();
+            if (scene == null)
+            {
+                return list;
+            }
+            Func<string, bool> has = name => !string.IsNullOrEmpty(name) && scene.LayerByName.ContainsKey(name);
+            var result = new List<PlannerAddedLayer>();
+            foreach (var a in list)
+            {
+                // Its names now, unless the scene has its names from before and not its parent now (a rename taken back).
+                bool layerNow = has(a.Layer);
+                bool layerWas = has(a.WasLayer);
+                bool parentNow = string.IsNullOrEmpty(a.ParentLayer) || has(a.ParentLayer);
+                bool parentWas = string.IsNullOrEmpty(a.WasParentLayer) || has(a.WasParentLayer);
+                if (layerNow && (parentNow || !layerWas || !parentWas))
+                {
+                    result.Add(a);
+                }
+                else if (layerWas)
+                {
+                    result.Add(new PlannerAddedLayer
+                    {
+                        Layer = a.WasLayer,
+                        ParentLayer = a.WasParentLayer ?? string.Empty,
+                        Kind = a.Kind,
+                        Id = a.WasId ?? string.Empty,
+                        Name = a.WasName ?? string.Empty,
+                        WasLayer = a.Layer,
+                        WasParentLayer = a.ParentLayer ?? string.Empty,
+                        WasId = a.Id ?? string.Empty,
+                        WasName = a.Name ?? string.Empty
+                    });
+                }
+                else if (keepAbsent)
+                {
+                    result.Add(a);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// The records to keep with the scene once a layer is added: the scene's own records (read from it, so a record
+        /// another run saved is kept), any record of the same layer name dropped (a layer added before and taken back, now
+        /// added again), then the new one.
+        /// </summary>
+        public static List<PlannerAddedLayer> WithAdded(IEnumerable<PlannerAddedLayer> stored, PlannerAddedLayer fresh)
+        {
+            var result = (stored ?? Enumerable.Empty<PlannerAddedLayer>())
+                .Where(a => a != null && (fresh == null || !string.Equals(a.Layer, fresh.Layer, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (fresh != null)
+            {
+                result.Add(fresh);
+            }
+            return result;
         }
 
         /// <summary>
@@ -164,18 +258,27 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// Add layer in the Schedule tab: a phase group or a layer made in 3ds Max under the selected row (the phasing root or
-    /// a phase group, as the Planner files layers only there), its name composed in the convention
-    /// (&lt;ID&gt;_&lt;Name&gt;[_TBC][_dd-mm-yy[_dd-mm-yy]], a group _&lt;nn&gt;_&lt;Name&gt;), checked to read back with the ID and
-    /// dates intended and not to clash with a layer, node, ID, phase number or list row already there, then built with
-    /// Build layers and helpers' own batch: the Max layer under its parent's layer and a Dummy of the same name on it,
-    /// linked under the parent's helper. Pure logic, no 3ds Max.
+    /// Add layer in the Schedule tab: a phase group or a layer made in 3ds Max under the phasing root or a phase group, as
+    /// the Planner files layers only there (<see cref="Parents"/>; the dialog starts on the row chosen, <see
+    /// cref="StartUnder"/>), its name composed in the new names' convention
+    /// (&lt;ID&gt;_&lt;Name&gt;, the ID two or three numbers; a group _&lt;nn&gt;_&lt;Name&gt;) with no date (D20: every date comes
+    /// from the Planner's layer list), checked to read back with the ID and the name intended (<see
+    /// cref="PlannerNaming.ParseLayerNameV2"/>) and not to clash with a layer, node, ID, phase number or list row already
+    /// there, then built with the layer builder's own batch (<see cref="PlannerLayerScript"/>): the Max layer under its
+    /// parent's layer and a Dummy of the same name on it, linked under the parent's helper. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerAddLayer
     {
+        /// <summary>Why Add layer waits on a scene that reads as the old Ph/St names (D23).</summary>
+        public const string OldNamesProblem = "the scene uses the old Ph/St names, and Add layer waits until it reads as the new names: run Clean up scene graph first";
+
         private static readonly Regex Spaces = new Regex(PlannerNaming.JavaScriptSpace + "+", RegexOptions.CultureInvariant);
 
-        /// <summary>The name the convention gives the new layer or group, or null with why it cannot be written.</summary>
+        /// <summary>
+        /// The name the convention gives the new layer or group, or null with why it cannot be written: a layer
+        /// &lt;ID&gt;_&lt;Name&gt; ("02_01_3_Barrier_works"), its phase needed, which must read back as that ID and that name (a
+        /// name led by a number would be read as part of the ID) with no date or TBC in it; a group _&lt;nn&gt;_&lt;Name&gt;.
+        /// </summary>
         public static string Compose(PlannerNewLayer spec, out string problem)
         {
             problem = null;
@@ -207,11 +310,6 @@ namespace Utilities.Planner
                 }
                 var group = "_" + spec.Phase.Value.ToString("00", CultureInfo.InvariantCulture) + "_" + name;
                 int phase;
-                if (PlannerNaming.ParseLayerName(group) != null)
-                {
-                    problem = "the name " + group + " would read as a layer (it starts with a number); a group's name must not";
-                    return null;
-                }
                 if (!PhasingNameFixer.TryReadPhaseGroup(group, out phase) || phase != spec.Phase.Value || PlannerSchedule.ParsePhaseGroup(group) == null)
                 {
                     problem = "the name " + group + " does not read back as the group of phase " + spec.Phase.Value.ToString(CultureInfo.InvariantCulture);
@@ -220,101 +318,56 @@ namespace Utilities.Planner
                 return group;
             }
 
-            if (spec.Stage < 0 || spec.Stage > 99 || (spec.Phase.HasValue && (spec.Phase.Value < 0 || spec.Phase.Value > 99))
+            if (!spec.Phase.HasValue)
+            {
+                // One number is no layer on the new names (spec 2.1).
+                problem = "give it its phase: a layer ID has two or three numbers (phase, stage, and a sub-stage if it has one)";
+                return null;
+            }
+            if (spec.Phase.Value < 0 || spec.Phase.Value > 99 || spec.Stage < 0 || spec.Stage > 99
                 || (spec.SubStage.HasValue && (spec.SubStage.Value < 1 || spec.SubStage.Value > 99)))
             {
                 problem = "each number of a layer ID has one or two digits (a sub-stage from 1)";
                 return null;
             }
-            if (spec.SubStage.HasValue && !spec.Phase.HasValue)
-            {
-                problem = "an ID of one number cannot carry a sub-stage: give the layer its phase";
-                return null;
-            }
-            if (!spec.Start.HasValue && !spec.Tbc)
-            {
-                problem = "give it a start (and a finish), or mark it TBC";
-                return null;
-            }
-            if (spec.Finish.HasValue && !spec.Start.HasValue)
-            {
-                problem = "give it a start as well as a finish";
-                return null;
-            }
-            var start = spec.Start.HasValue ? spec.Start.Value.Date : (DateTime?)null;
-            var finish = spec.Finish.HasValue ? spec.Finish.Value.Date : start;
-            if (start.HasValue && (start.Value.Year < 2000 || start.Value.Year > 2099 || finish.Value.Year > 2099))
-            {
-                problem = "the convention writes years with two digits, 2000 to 2099";
-                return null;
-            }
-            if (start.HasValue && finish.Value < start.Value)
-            {
-                problem = "its finish is before its start";
-                return null;
-            }
             var id = Id(spec);
-            Func<bool, string> write = twice =>
-            {
-                var text = new StringBuilder(id).Append('_').Append(name);
-                if (spec.Tbc)
-                {
-                    text.Append("_TBC");
-                }
-                if (start.HasValue)
-                {
-                    text.Append('_').Append(Date(start.Value));
-                    if (finish.Value != start.Value || twice)
-                    {
-                        text.Append('_').Append(Date(finish.Value));
-                    }
-                }
-                return text.ToString();
-            };
-            var composed = write(false);
-            // A single day after a date in the name would read as a range with it: written twice, as the Planner's list
-            // writes it.
-            var once = PlannerNaming.ParseLayerName(composed);
-            if (start.HasValue && finish.Value == start.Value && once != null && once.Start != start)
-            {
-                composed = write(true);
-            }
+            var composed = id + "_" + name;
 
-            // It must read back exactly as meant.
-            var parsed = PlannerNaming.ParseLayerName(composed);
-            var key = PlannerLayerIdKey.FromName(composed);
-            if (parsed == null || key == null || key.Phase != spec.Phase || key.Stage != spec.Stage || key.SubStage != spec.SubStage)
+            // It must read back exactly as meant: the ID, then the name as written. After the ID a name led by a number and an
+            // underscore reads as a further number of the ID ("02_05" and "3_Storey_Frame" give 02_05_3). A "(n)" at the end is
+            // read as the copy number 3ds Max gives a copied node, and dropped ("Hoarding (1)" reads as "Hoarding_").
+            var parsed = PlannerNaming.ParseLayerNameV2(composed);
+            if (parsed == null || PlannerNaming.LayerIdKey(parsed.Id) != PlannerNaming.LayerIdKey(new PlannerLayerIdKey(spec.Phase, spec.Stage, spec.SubStage)))
             {
-                problem = "the name " + composed + " does not read back with the ID " + id + " (check the name: it must not start with a number)";
+                problem = "the name " + composed + " does not read back with the ID " + id
+                    + (parsed != null ? " (it reads as " + PlannerNaming.LayerIdText(parsed.Id) + ")" : string.Empty) + ": the name must not start with a number";
                 return null;
             }
-            if (parsed.Start != start || parsed.End != (start.HasValue ? finish : null) || parsed.Tbc != (spec.Tbc || !start.HasValue))
+            if (!string.Equals(parsed.Name, name, StringComparison.Ordinal))
             {
-                problem = "the name " + composed + " does not read back with the dates and TBC meant: its name must not hold TBC or end in a date";
+                problem = PlannerNaming.DuplicateSuffix.IsMatch(composed)
+                    ? "the name must not end in a number in brackets: the Planner reads \"" + PlannerNaming.DuplicateSuffix.Match(composed).Value.Trim(PlannerNaming.JavaScriptSpaceChars)
+                        + "\" at the end of a name as the copy number 3ds Max gives a copied node, and drops it"
+                    : "the name " + composed + " reads back as " + id + (parsed.Name.Length > 0 ? "_" + parsed.Name : string.Empty) + ", not as written";
+                return null;
+            }
+            if (parsed.Issues.Contains(PlannerNamingCode.Dates))
+            {
+                problem = "its name must not hold a date or TBC: the Planner holds every date";
                 return null;
             }
             if (parsed.Issues.Count > 0)
             {
-                problem = "the name " + composed + " reads with a problem: " + string.Join("; ", parsed.Issues.ToArray());
-                return null;
-            }
-            if (!string.Equals(parsed.Label, id + "_" + name, StringComparison.Ordinal))
-            {
-                problem = "the name " + composed + " reads as " + parsed.Label + ": its name must not hold a date or TBC";
+                problem = "the name " + composed + " reads with a problem: " + string.Join(" ", parsed.Issues.Select(i => PlannerNaming.NamingIssueV2[i].Text).ToArray());
                 return null;
             }
             return composed;
         }
 
-        /// <summary>"02_01_2", "02_01" or "06".</summary>
+        /// <summary>The layer ID the convention writes: "02_01_2" or "02_01".</summary>
         public static string Id(PlannerNewLayer spec)
         {
             return new PlannerLayerIdKey(spec.Phase, spec.Stage, spec.SubStage).ToString();
-        }
-
-        private static string Date(DateTime day)
-        {
-            return day.ToString("dd-MM-yy", CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -331,8 +384,95 @@ namespace Utilities.Planner
                 return null;
             }
             return "the Planner files a layer in the phase group above it (or at the top), not under " + parentLayer + ", so the next layer list from the "
-                + "Planner would move it out from under " + parentLayer + ": choose " + (groupAbove != null ? groupAbove + "'s row" : "a phase group's row")
-                + ", or no row for the phasing root";
+                + "Planner would move it out from under " + parentLayer + ": add it under " + (groupAbove ?? "a phase group") + " or the phasing root instead";
+        }
+
+        /// <summary>
+        /// Where a layer or a phase group can be added, besides the phasing root (Add layer's Under list): the phase groups of
+        /// the phasing tree with their Max layer and their helper, as <see cref="Plan"/> takes them, in the tree's order: from
+        /// the phasing root down, a group's own groups after it, siblings in the Planner's name order. Each has its depth: how
+        /// many of the groups listed are above it. A phase group may sit in another: the Planner reads it as one.
+        /// </summary>
+        public static List<PlannerAddLayerParent> Parents(PlannerSceneModel scene)
+        {
+            var result = new List<PlannerAddLayerParent>();
+            if (scene == null || scene.RootLayer == null)
+            {
+                return result;
+            }
+            var units = new Dictionary<string, PlannerSceneUnit>(StringComparer.OrdinalIgnoreCase);
+            foreach (var unit in scene.Units.Where(u => u.Layer != null))
+            {
+                if (!units.ContainsKey(unit.Layer.Name))
+                {
+                    units[unit.Layer.Name] = unit;
+                }
+            }
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { scene.RootLayer.Name };
+            Action<string, int> walk = null;
+            walk = (layerName, depth) =>
+            {
+                foreach (var child in scene.ChildLayersOf(layerName).OrderBy(l => l.Name, PlannerNaturalOrder.Comparer).ToList())
+                {
+                    if (!seen.Add(child.Name))
+                    {
+                        continue;
+                    }
+                    PlannerSceneUnit unit;
+                    bool takes = PlannerSchedule.ParsePhaseGroup(child.Name) != null && units.TryGetValue(child.Name, out unit) && unit.Helper != null && unit.InPhasingTree;
+                    if (takes)
+                    {
+                        result.Add(new PlannerAddLayerParent { Layer = child.Name, Depth = depth });
+                    }
+                    walk(child.Name, takes ? depth + 1 : depth);
+                }
+            };
+            walk(scene.RootLayer.Name, 0);
+            return result;
+        }
+
+        /// <summary>
+        /// Where Add layer's Under starts for the row chosen in the tab, by its Max layer (null or empty: no row chosen, the
+        /// phasing root): that layer when it is one of <paramref name="parents"/>; else the nearest phase group above it that
+        /// is, or the phasing root (null), and <paramref name="note"/> says why, for the dialog to show. The note is null when
+        /// Under starts on the row chosen, or none was chosen.
+        /// </summary>
+        public static string StartUnder(PlannerSceneModel scene, IList<PlannerAddLayerParent> parents, string chosenLayer, out string note)
+        {
+            note = null;
+            if (scene == null || string.IsNullOrEmpty(chosenLayer))
+            {
+                return null;
+            }
+            parents = parents ?? new List<PlannerAddLayerParent>();
+            var own = parents.FirstOrDefault(p => string.Equals(p.Layer, chosenLayer, StringComparison.OrdinalIgnoreCase));
+            if (own != null)
+            {
+                return own.Layer;
+            }
+            PhasingMaxLayer layer;
+            if (!scene.LayerByName.TryGetValue(chosenLayer, out layer) || (scene.RootLayer != null && string.Equals(layer.Name, scene.RootLayer.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+            string why;
+            if (!scene.TreeLayers.Contains(layer.Name))
+            {
+                why = layer.Name + " is outside the phasing root";
+            }
+            else if (PlannerSchedule.ParsePhaseGroup(layer.Name) != null)
+            {
+                why = layer.Name + " has no helper of its name yet (Clean up scene graph with the Planner's list imported makes it)";
+            }
+            else
+            {
+                why = layer.Name + " is not a phase group, and the Planner files a layer in the phase group above it (or at the top)";
+            }
+            var above = scene.LayerAncestors(layer).Select(l => parents.FirstOrDefault(p => string.Equals(p.Layer, l.Name, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(p => p != null);
+            var start = above != null ? above.Layer : null;
+            note = why + ", so Under starts on " + (start ?? "the phasing root") + ".";
+            return start;
         }
 
         /// <summary>The nearest phase group (_&lt;n&gt;_&lt;name&gt;) among the Max layers above a layer, or null.</summary>
@@ -371,6 +511,14 @@ namespace Utilities.Planner
                 plan.Problem = problem;
                 return plan;
             }
+            // On a scene that reads as the old Ph/St names Add layer waits for Clean up scene graph (D23). The scene is read as
+            // it is now, so a clean-up taken back with Edit > Undo since the tab last read it is caught too.
+            var naming = PlannerSchedule.NamingOfScene(new PlannerScheduleModel(snapshot));
+            if (naming != null && naming.Naming == PlannerNamingKind.Old)
+            {
+                plan.Problem = OldNamesProblem;
+                return plan;
+            }
             // A layer added before and since undone, deleted or renamed by hand is no longer an added layer.
             var addedList = PlannerAddedLayerStore.Present(added, scene);
             var rows = list != null && list.Usable ? list.Rows : new List<PlannerLayerRow>();
@@ -395,7 +543,7 @@ namespace Utilities.Planner
             }
             // The ID, and for a group its name without capitals and its phase number: a layer or group of the phasing tree,
             // a row, a layer added before.
-            var parsed = PlannerNaming.ParseLayerName(name);
+            var parsed = PlannerNaming.ParseLayerNameV2(name);
             if (spec.Kind == PlannerLayerKind.Layer)
             {
                 var key = PlannerLayerIdKey.FromName(name);
@@ -426,22 +574,22 @@ namespace Utilities.Planner
                     plan.Problem = "the phasing tree has a group called " + unit.Name + " already";
                     return plan;
                 }
-                // Build takes a phase group for the list's group of its phase number when that number is on one row of
-                // the list and one group of the phasing tree (a group renamed in the Planner): a second group of a phase
-                // would be taken for the other.
+                // Clean up scene graph takes a phase group for the list's group of its phase number when that number is on
+                // one row of the list and one group of the phasing tree (a group renamed in the Planner): a second group of a
+                // phase would be taken for the other.
                 int phase = spec.Phase.Value;
                 var sameGroup = scene.Units.FirstOrDefault(u => u.InPhasingTree && u.IdKey == null && PhaseOf(u.Name) == phase);
                 if (sameGroup != null)
                 {
                     plan.Problem = "the phasing tree has a group of phase " + phase.ToString(CultureInfo.InvariantCulture) + " already (" + sameGroup.Name
-                        + "): add the layers under it, as Build takes a group for the list's group of the same phase number";
+                        + "): add the layers under it, as Clean up scene graph takes a group for the list's group of the same phase number";
                     return plan;
                 }
                 var sameGroupRow = rows.FirstOrDefault(r => PhaseOf(r.Layer) == phase);
                 if (sameGroupRow != null)
                 {
                     plan.Problem = "the Planner's list has a group of phase " + phase.ToString(CultureInfo.InvariantCulture) + " already (" + sameGroupRow.Layer
-                        + "): build the layers and helpers to make it, then add the layers under it, as Build would take a second group of that phase for it";
+                        + "): run Clean up scene graph with the list imported to make it, then add the layers under it, as Clean up would take a second group of that phase for it";
                     return plan;
                 }
             }
@@ -462,17 +610,17 @@ namespace Utilities.Planner
                 var parent = scene.UnitOfLayer(parentLayer);
                 if (parent == null || parent.Layer == null)
                 {
-                    plan.Problem = "its parent " + parentLayer + " is not a Max layer of the scene: build the layers and helpers first";
+                    plan.Problem = "its parent " + parentLayer + " is not a Max layer of the scene: run Clean up scene graph with the Planner's list imported first";
                     return plan;
                 }
                 if (parent.Helper == null)
                 {
-                    plan.Problem = "its parent " + parent.Layer.Name + " has no helper of its name: build the layers and helpers first";
+                    plan.Problem = "its parent " + parent.Layer.Name + " has no helper of its name: run Clean up scene graph with the Planner's list imported first";
                     return plan;
                 }
                 if (!parent.InPhasingTree)
                 {
-                    plan.Problem = "its parent " + parent.Layer.Name + " is outside the phasing root: build the layers and helpers first";
+                    plan.Problem = "its parent " + parent.Layer.Name + " is outside the phasing root: run Clean up scene graph with the Planner's list imported first";
                     return plan;
                 }
                 var parentProblem = ParentProblem(parent.Layer.Name, PhaseGroupAbove(scene, parent.Layer.Name));
@@ -545,20 +693,21 @@ namespace Utilities.Planner
                 ParentLayer = parentLayerIndex == 0 ? string.Empty : build.BuildLayers[parentLayerIndex].FinalName,
                 Kind = kind,
                 Id = spec.Kind == PlannerLayerKind.Layer ? Id(spec) : string.Empty,
-                Name = spec.Kind == PlannerLayerKind.Layer && parsed != null ? parsed.Name : Spaces.Replace((spec.Name ?? string.Empty).Trim(PlannerNaming.JavaScriptSpaceChars), "_"),
-                Start = spec.Kind == PlannerLayerKind.Layer && parsed != null && parsed.Start.HasValue ? PlannerNaming.ToIsoDate(parsed.Start) : string.Empty,
-                Finish = spec.Kind == PlannerLayerKind.Layer && parsed != null && parsed.End.HasValue ? PlannerNaming.ToIsoDate(parsed.End) : string.Empty,
-                Tbc = spec.Kind == PlannerLayerKind.Layer && spec.Tbc
+                Name = spec.Kind == PlannerLayerKind.Layer && parsed != null ? parsed.Name : Spaces.Replace((spec.Name ?? string.Empty).Trim(PlannerNaming.JavaScriptSpaceChars), "_")
             };
             return plan;
         }
 
-        /// <summary>How a layer or group added in Max ("Layer" or "Group") reaches the Planner, for the review and the tab.</summary>
+        /// <summary>
+        /// How a layer or group added in Max ("Layer" or "Group") reaches the Planner, for the review and the tab (spec 5.5): a
+        /// layer with the next GLB even while empty, as long as its helper is exported, arriving TBC (the tab highlights it TBC
+        /// until the Planner's list has it, D21).
+        /// </summary>
         public static string ReachesThePlanner(string kind)
         {
             return string.Equals(kind, "Group", StringComparison.OrdinalIgnoreCase)
-                ? "added in Max (phase group): not yet in the Planner; it reaches it with the next GLB once a layer in it holds a tagged object (Generate from model with Merge)"
-                : "added in Max (layer): not yet in the Planner; it reaches it with the next GLB once a tagged object is linked under its helper (Generate from model with Merge)";
+                ? "added in Max (phase group): not yet in the Planner; it reaches it with the next GLB once a layer in it does (Generate from model with Merge)"
+                : "added in Max (layer): not yet in the Planner; it reaches it with the next GLB, even while empty, as long as its helper is exported, and arrives TBC (Generate from model with Merge)";
         }
     }
 }

@@ -141,6 +141,29 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void TwoRowsWithOneLayerIdAreAProblemForTheSecond()
+        {
+            // No two layers share an ID (D2): the Planner's export only warns of it, so the second row is a problem, as a
+            // second row of one name is. A sub-stage is another ID, a one-number ID is no layer, and a row of the same name is
+            // told of its name only.
+            var list = TestCsv.List(
+                TestCsv.Row("g6", null, "_06_Weekend_Closure"),
+                TestCsv.Row("f82", "g6", "06_06_Full_Closure_of_Main_Road", "Layer"),
+                TestCsv.Row("f83", "g6", "06_06_1_Closure_Signs", "Layer"),
+                TestCsv.Row("f84", "g6", "06_Hoarding", "Layer"),
+                TestCsv.Row("f85", "g6", "06_Fencing", "Layer"),
+                TestCsv.Row("f86", "g6", "06_06_FULL_CLOSURE_OF_MAIN_ROAD", "Layer"),
+                TestCsv.Row("f999", "g6", "6_6_Review_Planned", "Layer"));
+            Assert.Empty(list.Rows[1].Problems);
+            Assert.Empty(list.Rows[2].Problems);
+            Assert.Empty(list.Rows[3].Problems);
+            Assert.Empty(list.Rows[4].Problems);
+            Assert.Equal("line 3 has the same layer name in other capitals (3ds Max layer names must differ)", list.Rows[5].Problems.Single());
+            Assert.Equal("line 3 has the same layer ID, 06_06 (no two layers may share an ID: give one of the folders another ID in the Planner)", list.Rows[6].Problems.Single());
+            Assert.Equal(2, list.RowsWithProblems);
+        }
+
+        [Fact]
         public void RowsUnderARowWithAProblemCannotBeBuiltEither()
         {
             var list = TestCsv.List(
@@ -152,18 +175,22 @@ namespace Utilities.Tests
         }
 
         [Fact]
-        public void OutlineFollowsParentsAndTheOrderColumn()
+        public void OutlineFollowsParentsAndSortsSiblingsByNameNotByTheOrderColumn()
         {
+            // D24: the list keeps no particular folder order, so its Order column (here the opposite of the names) is not used;
+            // siblings come in the order the Planner sorts names in (numbers as numbers: 02_10 after 02_02).
             var text = Header + "\r\n"
-                + "b,,_02_B,Group,,,,,,,,,2\r\n"
-                + "b2,b,02_02_Y_01-02-27,Layer,02_02,2,2,,,,,,2\r\n"
-                + "a,,_01_A,Group,,,,,,,,,1\r\n"
-                + "b1,b,02_01_X_01-02-27,Layer,02_01,2,1,,,,,,1\r\n"
+                + "b,,_02_B,Group,,,,,,,,,1\r\n"
+                + "b2,b,02_02_Y_01-02-27,Layer,02_02,2,2,,,,,,1\r\n"
+                + "a,,_01_A,Group,,,,,,,,,2\r\n"
+                + "b1,b,02_01_X_01-02-27,Layer,02_01,2,1,,,,,,3\r\n"
+                + "b10,b,02_10_Z_01-02-27,Layer,02_10,2,10,,,,,,0\r\n"
                 + "b11,b1,02_01_1_X_01-02-27,Layer,02_01_1,2,1,1,,,,,1\r\n";
             var list = PlannerLayerList.Parse(text);
-            Assert.Equal(new[] { "a", "b", "b1", "b11", "b2" }, list.Outline().Select(r => r.PlannerId).ToArray());
-            Assert.Equal(new[] { 0, 0, 1, 2, 1 }, list.Outline().Select(r => r.Depth).ToArray());
-            Assert.Equal("5 rows: 2 groups and 3 layers.", list.Describe());
+            Assert.Equal(new[] { "a", "b", "b1", "b11", "b2", "b10" }, list.Outline().Select(r => r.PlannerId).ToArray());
+            Assert.Equal(new[] { "a", "b" }, list.TopRows.Select(r => r.PlannerId).ToArray());
+            Assert.Equal(new[] { 0, 0, 1, 2, 1, 1 }, list.Outline().Select(r => r.Depth).ToArray());
+            Assert.Equal("6 rows: 2 groups and 4 layers.", list.Describe());
         }
 
         [Fact]

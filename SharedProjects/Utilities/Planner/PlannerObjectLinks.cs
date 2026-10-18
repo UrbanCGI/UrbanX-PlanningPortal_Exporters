@@ -90,7 +90,7 @@ namespace Utilities.Planner
     /// </summary>
     public static class PlannerLinkPlanner
     {
-        public const string NoRoot = "The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): build the layers and helpers first.";
+        public const string NoRoot = "The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): import the Planner's layer list and run Clean up scene graph first.";
 
         public static PlannerLinkPlan Plan(PlannerSceneSnapshot snapshot)
         {
@@ -102,7 +102,7 @@ namespace Utilities.Planner
             var plan = new PlannerLinkPlan();
             if (scene.RootLayer == null)
             {
-                plan.Message = scene.RootNode == null ? NoRoot : "The phasing root " + scene.RootNode.Name + " has no layer of its name, so the scene has no phasing layers yet: build the layers and helpers first.";
+                plan.Message = scene.RootNode == null ? NoRoot : "The phasing root " + scene.RootNode.Name + " has no layer of its name, so the scene has no phasing layers yet: import the Planner's layer list and run Clean up scene graph first.";
                 return plan;
             }
             var byLayer = scene.Nodes.Where(n => n.LayerName != null).ToLookup(n => n.LayerName, StringComparer.OrdinalIgnoreCase);
@@ -120,7 +120,7 @@ namespace Utilities.Planner
                 if (helper == null)
                 {
                     problems.Add(Problem(PhasingFixScript.Count(objects.Count, "object", "objects"), layerName,
-                        "the layer " + layerName + " has no helper of its name yet: Build layers and helpers adds one when the Planner's list has this layer"
+                        "the layer " + layerName + " has no helper of its name yet: Clean up scene graph adds one when the Planner's list has this layer"
                         + " (otherwise, make a Dummy of the layer's name on it, linked under its parent layer's helper)"));
                     continue;
                 }

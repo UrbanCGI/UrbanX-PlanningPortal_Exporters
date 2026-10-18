@@ -1,0 +1,1292 @@
+[
+ {
+  "id": "unicode-own-name-order",
+  "zone": "Europe/London",
+  "naming": "new",
+  "namingFrom": "objects",
+  "mode": "layers",
+  "projectStart": "2026-10-05",
+  "folders": [
+   {
+    "name": "03_01_Kerbs",
+    "parent": null,
+    "tbc": false,
+    "path": "03_01_Kerbs"
+   }
+  ],
+  "activities": [
+   {
+    "name": "Kerb\u200b_2_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791249840000,
+    "endMs": 1791258480000,
+    "members": [
+     "IN_Kerb\u200b_2"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Kerb\u200b_2",
+    "after": "Ke\u0301rb_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "\uff2berb_3_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791258480000,
+    "endMs": 1791267120000,
+    "members": [
+     "IN_\uff2berb_3"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_\uff2berb_3",
+    "after": "Kerb\u200b_2_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb\u180e_4_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791267120000,
+    "endMs": 1791275760000,
+    "members": [
+     "IN_Kerb\u180e_4"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Kerb\u180e_4",
+    "after": "\uff2berb_3_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb_10_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791275760000,
+    "endMs": 1791284400000,
+    "members": [
+     "IN_Kerb_10"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Kerb_10",
+    "after": "Kerb\u180e_4_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Ke\u0301rb_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791241200000,
+    "endMs": 1791249840000,
+    "members": [
+     "IN_Ke\u0301rb"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Ke\u0301rb",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerc_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791284400000,
+    "endMs": 1791293040000,
+    "members": [
+     "IN_Kerc"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Kerc",
+    "after": "Kerb_10_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Wall_II_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791293040000,
+    "endMs": 1791301680000,
+    "members": [
+     "IN_Wall_II"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Wall_II",
+    "after": "Kerc_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Wall_\u2162_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791301680000,
+    "endMs": 1791310320000,
+    "members": [
+     "IN_Wall_\u2162"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Wall_\u2162",
+    "after": "Wall_II_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "\u03b4T_1_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791310320000,
+    "endMs": 1791318960000,
+    "members": [
+     "IN_\u03b4T_1"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_\u03b4T_1",
+    "after": "Wall_\u2162_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "\u0394T_2_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791318960000,
+    "endMs": 1791327600000,
+    "members": [
+     "IN_\u0394T_2"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_\u0394T_2",
+    "after": "\u03b4T_1_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   }
+  ],
+  "layerList": [
+   {
+    "layer": "03_01_Kerbs",
+    "kind": "Layer",
+    "id": "03_01",
+    "start": "2026-10-06",
+    "finish": "2026-10-06",
+    "tbc": false
+   }
+  ],
+  "instants": [
+   1790982000000,
+   1791068400000,
+   1791154800000,
+   1791241140000,
+   1791241200000,
+   1791241260000,
+   1791249780000,
+   1791249840000,
+   1791249900000,
+   1791258420000,
+   1791258480000,
+   1791258540000,
+   1791267060000,
+   1791267120000,
+   1791267180000,
+   1791275700000,
+   1791275760000,
+   1791275820000,
+   1791284340000,
+   1791284400000,
+   1791284460000,
+   1791292980000,
+   1791293040000,
+   1791293100000,
+   1791301620000,
+   1791301680000,
+   1791301740000,
+   1791310260000,
+   1791310320000,
+   1791310380000,
+   1791318900000,
+   1791318960000,
+   1791319020000,
+   1791327600000,
+   1791414000000
+  ],
+  "hidden": [
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Ke\u0301rb",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Ke\u0301rb",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Ke\u0301rb",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Ke\u0301rb",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerb\u200b_2",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1",
+    "IN_\uff2berb_3"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerb\u180e_4",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerb_10",
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Kerc",
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_II",
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_Wall_\u2162",
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_\u0394T_2",
+    "IN_\u03b4T_1"
+   ],
+   [
+    "IN_\u0394T_2"
+   ],
+   [
+    "IN_\u0394T_2"
+   ],
+   [
+    "IN_\u0394T_2"
+   ],
+   [],
+   [],
+   [],
+   []
+  ],
+  "matched": [
+   "IN_Kerc",
+   "IN_Ke\u0301rb",
+   "IN_Kerb\u200b_2",
+   "IN_Kerb_10",
+   "IN_\u0394T_2",
+   "IN_\u03b4T_1",
+   "IN_\uff2berb_3",
+   "IN_Kerb\u180e_4",
+   "IN_Wall_\u2162",
+   "IN_Wall_II"
+  ],
+  "skipped": [],
+  "unfiled": [],
+  "layerIssues": [],
+  "tbcActivities": [],
+  "createdActivities": 10,
+  "createdFolders": 0,
+  "duplicateNames": [],
+  "unresolvedBindings": [],
+  "v2": {
+   "parkedLayers": [],
+   "missingLayers": [],
+   "namingIssues": [],
+   "otherNaming": [],
+   "foldersWithoutLayer": [],
+   "idDiffers": [],
+   "renamedLayers": [],
+   "sharedIds": [],
+   "numberedBindings": [],
+   "wrongOrder": [],
+   "followed": [],
+   "renamed": [],
+   "otherLayer": [],
+   "removals": {
+    "names": [],
+    "overLimit": false,
+    "applied": false,
+    "now": []
+   }
+  }
+ },
+ {
+  "id": "duplicate-names-order",
+  "zone": "Europe/London",
+  "naming": "new",
+  "namingFrom": "objects",
+  "mode": "layers",
+  "projectStart": "2026-10-05",
+  "folders": [
+   {
+    "name": "03_01_Kerbs",
+    "parent": null,
+    "tbc": false,
+    "path": "03_01_Kerbs"
+   }
+  ],
+  "activities": [
+   {
+    "name": "Gate_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791241200000,
+    "endMs": 1791262800000,
+    "members": [
+     "IN_Gate"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Gate",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "gate_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791262800000,
+    "endMs": 1791284400000,
+    "members": [
+     "IN_gate"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_gate",
+    "after": "Gate_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "gate_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791284400000,
+    "endMs": 1791306000000,
+    "members": [
+     "IN_gate (1)"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_gate (1)",
+    "after": "gate_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Gate_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791306000000,
+    "endMs": 1791327600000,
+    "members": [
+     "IN_Gate (1)"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-06",
+    "layer": "03_01",
+    "object": "IN_Gate (1)",
+    "after": "gate_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb01_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791327600000,
+    "endMs": 1791349200000,
+    "members": [
+     "IN_Kerb01"
+    ],
+    "startDate": "2026-10-07",
+    "endDate": "2026-10-07",
+    "layer": "03_01",
+    "object": "IN_Kerb01",
+    "after": "Gate_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb1_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791349200000,
+    "endMs": 1791370800000,
+    "members": [
+     "IN_Kerb1"
+    ],
+    "startDate": "2026-10-07",
+    "endDate": "2026-10-07",
+    "layer": "03_01",
+    "object": "IN_Kerb1",
+    "after": "Kerb01_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb1_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791370800000,
+    "endMs": 1791392400000,
+    "members": [
+     "IN_Kerb1 (1)"
+    ],
+    "startDate": "2026-10-07",
+    "endDate": "2026-10-07",
+    "layer": "03_01",
+    "object": "IN_Kerb1 (1)",
+    "after": "Kerb1_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb01_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791392400000,
+    "endMs": 1791414000000,
+    "members": [
+     "IN_Kerb01 (1)"
+    ],
+    "startDate": "2026-10-07",
+    "endDate": "2026-10-07",
+    "layer": "03_01",
+    "object": "IN_Kerb01 (1)",
+    "after": "Kerb1_IN_03_01",
+    "folderPath": "03_01_Kerbs"
+   }
+  ],
+  "layerList": [
+   {
+    "layer": "03_01_Kerbs",
+    "kind": "Layer",
+    "id": "03_01",
+    "start": "2026-10-06",
+    "finish": "2026-10-07",
+    "tbc": false
+   }
+  ],
+  "instants": [
+   1790982000000,
+   1791068400000,
+   1791154800000,
+   1791241140000,
+   1791241200000,
+   1791241260000,
+   1791262740000,
+   1791262800000,
+   1791262860000,
+   1791284340000,
+   1791284400000,
+   1791284460000,
+   1791305940000,
+   1791306000000,
+   1791306060000,
+   1791327540000,
+   1791327600000,
+   1791327660000,
+   1791349140000,
+   1791349200000,
+   1791349260000,
+   1791370740000,
+   1791370800000,
+   1791370860000,
+   1791392340000,
+   1791392400000,
+   1791392460000,
+   1791414000000,
+   1791500400000
+  ],
+  "hidden": [
+   [
+    "IN_Gate",
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate",
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate",
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate",
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)",
+    "IN_gate (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Gate (1)",
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01",
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)",
+    "IN_Kerb1 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)"
+   ],
+   [
+    "IN_Kerb01 (1)"
+   ],
+   [],
+   [],
+   [],
+   []
+  ],
+  "matched": [
+   "IN_Kerb01",
+   "IN_Kerb1",
+   "IN_Kerb1 (1)",
+   "IN_Kerb01 (1)",
+   "IN_Gate",
+   "IN_gate",
+   "IN_gate (1)",
+   "IN_Gate (1)"
+  ],
+  "skipped": [],
+  "unfiled": [],
+  "layerIssues": [],
+  "tbcActivities": [],
+  "createdActivities": 8,
+  "createdFolders": 0,
+  "duplicateNames": [
+   "Gate_IN_03_01",
+   "gate_IN_03_01",
+   "Kerb01_IN_03_01",
+   "Kerb1_IN_03_01"
+  ],
+  "unresolvedBindings": [],
+  "v2": {
+   "parkedLayers": [],
+   "missingLayers": [],
+   "namingIssues": [
+    {
+     "code": "duplicate-export",
+     "names": [
+      "IN_Kerb01",
+      "IN_Kerb01 (1)"
+     ]
+    },
+    {
+     "code": "duplicate-export",
+     "names": [
+      "IN_Kerb1",
+      "IN_Kerb1 (1)"
+     ]
+    },
+    {
+     "code": "duplicate-export",
+     "names": [
+      "IN_Gate",
+      "IN_Gate (1)"
+     ]
+    },
+    {
+     "code": "duplicate-export",
+     "names": [
+      "IN_gate",
+      "IN_gate (1)"
+     ]
+    }
+   ],
+   "otherNaming": [],
+   "foldersWithoutLayer": [],
+   "idDiffers": [],
+   "renamedLayers": [],
+   "sharedIds": [],
+   "numberedBindings": [
+    "IN_Kerb1 (1)",
+    "IN_Kerb01 (1)",
+    "IN_gate (1)",
+    "IN_Gate (1)"
+   ],
+   "wrongOrder": [],
+   "followed": [],
+   "renamed": [],
+   "otherLayer": [],
+   "removals": {
+    "names": [],
+    "overLimit": false,
+    "applied": false,
+    "now": []
+   }
+  }
+ },
+ {
+  "id": "same-name-folders",
+  "zone": "Europe/London",
+  "naming": "new",
+  "namingFrom": "objects",
+  "mode": "layers",
+  "projectStart": "2026-10-05",
+  "folders": [
+   {
+    "name": "Planner_Group",
+    "parent": null,
+    "tbc": false,
+    "path": "Planner_Group"
+   },
+   {
+    "name": "03_01_Kerbs",
+    "parent": null,
+    "tbc": false,
+    "path": "03_01_Kerbs"
+   },
+   {
+    "name": "88_01_X",
+    "parent": null,
+    "tbc": true,
+    "path": "88_01_X"
+   },
+   {
+    "name": "88_01_X",
+    "parent": "Planner_Group",
+    "tbc": false,
+    "path": "Planner_Group / 88_01_X"
+   }
+  ],
+  "activities": [
+   {
+    "name": "Kerb_IN_03_01",
+    "type": "Install",
+    "folder": "03_01_Kerbs",
+    "tbc": false,
+    "startMs": 1791241200000,
+    "endMs": 1791500400000,
+    "members": [
+     "IN_Kerb_RM_88_01"
+    ],
+    "startDate": "2026-10-06",
+    "endDate": "2026-10-08",
+    "layer": "03_01",
+    "object": "IN_Kerb_RM_88_01",
+    "folderPath": "03_01_Kerbs"
+   },
+   {
+    "name": "Kerb_RM_88_01",
+    "type": "Dismantle",
+    "folder": "88_01_X",
+    "tbc": false,
+    "startMs": 1791586800000,
+    "endMs": 1791759600000,
+    "members": [
+     "IN_Kerb_RM_88_01"
+    ],
+    "startDate": "2026-10-10",
+    "endDate": "2026-10-11",
+    "layer": "88_01",
+    "object": "IN_Kerb_RM_88_01",
+    "folderPath": "Planner_Group / 88_01_X"
+   }
+  ],
+  "layerList": [
+   {
+    "layer": "03_01_Kerbs",
+    "kind": "Layer",
+    "id": "03_01",
+    "start": "2026-10-06",
+    "finish": "2026-10-08",
+    "tbc": false
+   },
+   {
+    "layer": "88_01_X",
+    "kind": "Layer",
+    "id": "88_01",
+    "start": "2026-10-20",
+    "finish": "2026-10-22",
+    "tbc": true
+   },
+   {
+    "layer": "Planner_Group",
+    "kind": "Group",
+    "id": "",
+    "start": null,
+    "finish": null,
+    "tbc": false
+   },
+   {
+    "layer": "88_01_X",
+    "kind": "Layer",
+    "id": "88_01",
+    "start": "2026-10-10",
+    "finish": "2026-10-11",
+    "tbc": false
+   }
+  ],
+  "instants": [
+   1790982000000,
+   1791068400000,
+   1791154800000,
+   1791241140000,
+   1791241200000,
+   1791241260000,
+   1791327600000,
+   1791414000000,
+   1791500400000,
+   1791586800000,
+   1791673200000,
+   1791759540000,
+   1791759600000,
+   1791759660000,
+   1791846000000,
+   1791932400000
+  ],
+  "hidden": [
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ],
+   [
+    "IN_Kerb_RM_88_01"
+   ]
+  ],
+  "matched": [
+   "IN_Kerb_RM_88_01"
+  ],
+  "skipped": [],
+  "unfiled": [],
+  "layerIssues": [],
+  "tbcActivities": [],
+  "createdActivities": 2,
+  "createdFolders": 0,
+  "duplicateNames": [],
+  "unresolvedBindings": [],
+  "v2": {
+   "parkedLayers": [],
+   "missingLayers": [],
+   "namingIssues": [],
+   "otherNaming": [],
+   "foldersWithoutLayer": [
+    "88_01_X"
+   ],
+   "idDiffers": [],
+   "renamedLayers": [],
+   "sharedIds": [
+    {
+     "id": "88_01",
+     "kind": "folders",
+     "names": [
+      "88_01_X",
+      "88_01_X"
+     ]
+    }
+   ],
+   "numberedBindings": [],
+   "wrongOrder": [],
+   "followed": [],
+   "renamed": [],
+   "otherLayer": [],
+   "removals": {
+    "names": [],
+    "overLimit": false,
+    "applied": false,
+    "now": []
+   }
+  }
+ },
+ {
+  "id": "shared-id-stored-order",
+  "zone": "Europe/London",
+  "naming": "new",
+  "namingFrom": "objects",
+  "mode": "layers",
+  "projectStart": "2026-10-05",
+  "folders": [
+   {
+    "name": "03_09_Kerbs",
+    "parent": null,
+    "tbc": false,
+    "path": "03_09_Kerbs"
+   },
+   {
+    "name": "03_09_Alt",
+    "parent": null,
+    "tbc": false,
+    "path": "03_09_Alt"
+   }
+  ],
+  "activities": [
+   {
+    "name": "Kerb_A_IN_03_09",
+    "type": "Install",
+    "folder": "03_09_Kerbs",
+    "tbc": false,
+    "startMs": 1791327600000,
+    "endMs": 1792450800000,
+    "members": [
+     "IN_Kerb_A"
+    ],
+    "startDate": "2026-10-07",
+    "endDate": "2026-10-19",
+    "layer": "03_09",
+    "object": "IN_Kerb_A",
+    "folderPath": "03_09_Kerbs"
+   }
+  ],
+  "layerList": [
+   {
+    "layer": "03_09_Alt",
+    "kind": "Layer",
+    "id": "03_09",
+    "start": "2026-10-13",
+    "finish": "2026-10-19",
+    "tbc": false
+   },
+   {
+    "layer": "03_09_Kerbs",
+    "kind": "Layer",
+    "id": "03_09",
+    "start": "2026-10-07",
+    "finish": "2026-10-19",
+    "tbc": false
+   }
+  ],
+  "instants": [
+   1790982000000,
+   1791068400000,
+   1791154800000,
+   1791241200000,
+   1791327540000,
+   1791327600000,
+   1791327660000,
+   1791414000000,
+   1791500400000
+  ],
+  "hidden": [
+   [
+    "IN_Kerb_A"
+   ],
+   [
+    "IN_Kerb_A"
+   ],
+   [
+    "IN_Kerb_A"
+   ],
+   [
+    "IN_Kerb_A"
+   ],
+   [
+    "IN_Kerb_A"
+   ],
+   [],
+   [],
+   [],
+   []
+  ],
+  "matched": [
+   "IN_Kerb_A"
+  ],
+  "skipped": [],
+  "unfiled": [],
+  "layerIssues": [],
+  "tbcActivities": [],
+  "createdActivities": 1,
+  "createdFolders": 0,
+  "duplicateNames": [],
+  "unresolvedBindings": [],
+  "v2": {
+   "parkedLayers": [],
+   "missingLayers": [],
+   "namingIssues": [],
+   "otherNaming": [],
+   "foldersWithoutLayer": [],
+   "idDiffers": [],
+   "renamedLayers": [],
+   "sharedIds": [
+    {
+     "id": "03_09",
+     "kind": "folders",
+     "names": [
+      "03_09_Kerbs",
+      "03_09_Alt"
+     ]
+    }
+   ],
+   "numberedBindings": [],
+   "wrongOrder": [],
+   "followed": [],
+   "renamed": [],
+   "otherLayer": [],
+   "removals": {
+    "names": [],
+    "overLimit": false,
+    "applied": false,
+    "now": []
+   }
+  }
+ }
+]

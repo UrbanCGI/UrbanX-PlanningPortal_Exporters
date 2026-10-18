@@ -1,0 +1,2520 @@
+[
+ {
+  "id": "forms-own-layer",
+  "about": "Every form a name can take in its own layer: leading tags during the layer (removals first), trailing tags at its end over the last slot, an untagged object not scheduled.",
+  "rules": [
+   "2.2 meanings",
+   "3.2 table",
+   "3.3 groups 1 and 3",
+   "D11"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerb",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_Bench",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Hoarding_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_Sign_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Fence_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Gate_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Lamp",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "forms-other-layer",
+  "about": "Trailing tags naming another layer: each event filed in, and dated by, the layer it names (group 2); X_IN_M is installed in M while filed under L.",
+  "rules": [
+   "2.2 meanings",
+   "3.2 table",
+   "3.3 group 2",
+   "D3"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-03",
+    "finish": "2026-09-04",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Strip",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Hoarding_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_Bench_IN_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Kerb_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Kerb2_IN_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Own",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Reinstate",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Path",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "group1-natural-order",
+  "about": "Group 1: removals, then installs, each by own name in natural order: numbers as numbers, capitals ignored, hyphens read as underscores.",
+  "rules": [
+   "3.3 group 1",
+   "2.2 warned: hyphens"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Piles",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Pile_10",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Pile_2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_pile_3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Pile-4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_b_Kerb",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_A_Kerb",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Pile_1",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "group2-order",
+  "about": "Group 2: other layers’ objects naming this layer, by the ID of the layer they sit in compared as numbers, then own name; installs and removals mixed.",
+  "rules": [
+   "3.3 group 2",
+   "2.1 comparing IDs"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "02_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "02_02_1": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   },
+   "02_02_3": {
+    "start": "2026-09-03",
+    "finish": "2026-09-03",
+    "tbc": false
+   },
+   "02_02_10": {
+    "start": "2026-09-04",
+    "finish": "2026-09-04",
+    "tbc": false
+   },
+   "03_09": {
+    "start": "2026-09-10",
+    "finish": "2026-09-10",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Z_RM_03_09",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_02_10_Closure",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A_RM_03_09",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "02_02_3_Hoarding",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B_RM_03_09",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "C_IN_03_09",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "02_02_1_Barrier",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_D_RM_03_09",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "03_09_Tarmac",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "RM_Own",
+    "parent": 10,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "group3-over-last-slot",
+  "about": "Group 3: end-of-layer removals then installs, by own name, all over the last slot of groups 1 and 2 (D11).",
+  "rules": [
+   "3.3 group 3",
+   "3.4 even split",
+   "D11"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-03",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Z_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Y_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "X_RM",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "end-only-layer",
+  "about": "A layer holding only end-of-layer events: they run over the whole layer (D11).",
+  "rules": [
+   "D11"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "X_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Y_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "W_IN",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "d19-half-slot",
+  "about": "An object holding the last slot with an end-of-layer event of its own: its leading event takes the first half of the slot, the end event the second (D19); IN_X_RM and RM_X_IN alike.",
+  "rules": [
+   "D19",
+   "3.4"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-02",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-03",
+    "finish": "2026-09-04",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "C_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "RM_C2",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "RM_D_IN",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "d19-single-object",
+  "about": "A layer of one object put up and taken down at its end (v30 03_04_1): the install the first half, the removal the second (D19).",
+  "rules": [
+   "D19"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "03_04_1": {
+    "start": "2026-10-26",
+    "finish": "2026-11-20",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "03_04_1_Hoarding",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_RC_HF_Outer_Full_Closure_RM",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "even-split-remainder",
+  "about": "The even split: the total in elapsed minutes divided by the count, rounded down, the last taking the remainder, chained finish to start.",
+  "rules": [
+   "3.4 even split"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-03",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A6",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A7",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Z_RM",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "parking-order",
+  "about": "Layers with no dates: each parked on one TBC day of its own, in layer-number order from the project start; an empty layer gets a TBC folder and no day.",
+  "rules": [
+   "D12",
+   "3.5",
+   "D6",
+   "3.1 empty layers"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_10_Late",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_a",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Mid",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_b",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "01_05_2_Sub",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_c",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "01_05_Early",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_d",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "01_00_START_DATE",
+    "parent": 0,
+    "mesh": false
+   }
+  ]
+ },
+ {
+  "id": "parking-mixed",
+  "about": "Dated and undated layers together: the undated ones park from the project start in layer order, the dated keep their dates; a list row with no dates (an empty Planner folder) parks too.",
+  "rules": [
+   "D12",
+   "3.4",
+   "5.4 precedence"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_02": {
+    "start": "2026-09-10",
+    "finish": "2026-09-12",
+    "tbc": false
+   },
+   "01_04": {
+    "start": null,
+    "finish": null,
+    "tbc": true
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_A",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_a",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_B",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_b",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "01_03_C",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_c",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "01_04_D",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_d",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "missing-ref-dated",
+  "about": "A reference to a layer nobody has: filed in its object’s folder, named for that ID, TBC; a removal parked the day after the last dated work ends, an install on the project start; listed.",
+  "rules": [
+   "3.6",
+   "3.2 event layer",
+   "2.2 warned: unknown layer"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-02",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-05",
+    "finish": "2026-09-05",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A_RM_99_99",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_B_IN_88_01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_C",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_D",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "missing-ref-undated",
+  "about": "A reference to a layer nobody has, with no dated work: the removal parked the day after the last parked day.",
+  "rules": [
+   "3.6",
+   "D12"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A_RM_99_99",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_C",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_D",
+    "parent": 4,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "list-only-dated",
+  "about": "A reference to an ID only a Planner folder has (planned before 3ds Max builds it): filed there in group 2, dated by it; the folder kept and listed.",
+  "rules": [
+   "3.6",
+   "3.1",
+   "5.6 list-only rows"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "02_02_2": {
+    "start": "2026-09-10",
+    "finish": "2026-09-10",
+    "tbc": false
+   }
+  },
+  "listOnly": [
+   {
+    "id": "02_02_2",
+    "name": "02_02_2_RB22_Removals"
+   }
+  ],
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Barrier_RM_02_02_2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier2_RM_02_02_2",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "list-only-undated",
+  "about": "A reference to an ID only an undated Planner folder has: filed there and parked with it.",
+  "rules": [
+   "3.6",
+   "D12"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "02_02_2": {
+    "start": null,
+    "finish": null,
+    "tbc": true
+   }
+  },
+  "listOnly": [
+   {
+    "id": "02_02_2",
+    "name": "02_02_2_RB22_Removals"
+   }
+  ],
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Barrier_RM_02_02_2",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "ids-as-numbers",
+  "about": "IDs compared as numbers: 6_5_2 is 06_05_2, a reference 06_05_02 names it, and 06_05 never matches 06_05_2; a new folder takes the ID written the current way.",
+  "rules": [
+   "2.1 comparing IDs",
+   "2.1 tools write IDs the current way"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "06_05": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "06_05_2": {
+    "start": "2026-09-03",
+    "finish": "2026-09-03",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "6_5_2_Gates",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Gate",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "06_05_Hoarding",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Hoard_RM_06_05_02",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "IN_Panel_RM_6_5_2",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "IN_Post",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "6_5_03_Gates2",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Gate3",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "one-number-layers",
+  "about": "One-number IDs are not layers: their tagged objects are not scheduled and the node is listed, also inside a layer; a 3ds Max group head such as 2.4 High Hoarding is passed over.",
+  "rules": [
+   "2.1",
+   "2.2 illegal: one-number layer",
+   "3.9 layer-node index"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "05_Retainment",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_C",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "07_Inner",
+    "parent": 4,
+    "mesh": false
+   },
+   {
+    "name": "IN_D",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "2.4 High Hoarding",
+    "parent": 4,
+    "mesh": false
+   },
+   {
+    "name": "IN_E",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "other-naming-listed",
+  "about": "An old Ph/St object in a new-name scene: listed, not scheduled; the counts decide the naming.",
+  "rules": [
+   "2.3",
+   "2.2 illegal: old tag"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_C",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_Old",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "illegal-names",
+  "about": "The illegal table: the same type at both ends (leading only), a doubled type word, two trailing tags (the last), a type word followed by digits that are no ID (no trailing tag), a layer ID before the tag (untagged), a tag after a space (not read), no own name (not an object).",
+  "rules": [
+   "2.2 parsing rule",
+   "2.2 illegal",
+   "2.2 worked cases"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerb_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_Kerb2_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "RM_RM_Marwood_Barrier3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "X_IN_01_02_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Y_RM_1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Z_RM001",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_W_RM_01_02_002",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_V_RM_01_02_3_4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_01_IN_Kerb3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Road Plates_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN__",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Path",
+    "parent": 13,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "warned-names",
+  "about": "The warned list: own names shared, near own names naming different layers, the old order without letters, a reference to the own layer (read as the plain tag), lower-case near-tags, a type word in the middle, a hyphen.",
+  "rules": [
+   "2.2 warned",
+   "2.2 step 7"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   },
+   "01_03": {
+    "start": "2026-09-03",
+    "finish": "2026-09-03",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Bollards",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier_01_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier_02_RM_01_03",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb_01_02_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_X_RM_01_01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "in_Lower",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Lower2_rm",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Pipe_RM_Trench",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Pipe-A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Bollards_RM_01_03",
+    "parent": 11,
+    "mesh": true
+   },
+   {
+    "name": "01_03_Last",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_End",
+    "parent": 13,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "duplicate-export",
+  "about": "Two exported objects with one name: the export renames the second `X (1)`; in one layer both activities get the same name; the binding ending ` (n)` is listed.",
+  "rules": [
+   "2.2 illegal: two exported objects",
+   "3.7 ` (n)` bindings"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Piles",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Sheet_Pile_4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Sheet_Pile_4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Sheet_Pile_5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Piles",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Sheet_Pile_5",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "split-piece-names-layer",
+  "about": "A split piece whose name read alone names a layer: it folds into its object, which is scheduled as its own name says, and it is listed.",
+  "rules": [
+   "2.2 step 1",
+   "2.2 warned: split piece"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "03_09": {
+    "start": "2026-09-10",
+    "finish": "2026-09-10",
+    "tbc": false
+   },
+   "03_09_1": {
+    "start": "2026-09-11",
+    "finish": "2026-09-11",
+    "tbc": false
+   },
+   "03_11": {
+    "start": "2026-09-01",
+    "finish": "2026-09-05",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "03_09_Closure",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "RM_X",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "03_09_1_Sub",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Y",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "03_11_Plates",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Road_Plates_RM_03_09",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "IN_Road_Plates_RM_03_09_1",
+    "parent": 6,
+    "mesh": true
+   },
+   {
+    "name": "IN_Other",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "layer-nodes-sharing-an-id",
+  "about": "Layer nodes sharing an ID are one layer and one folder: a helper copied in 3ds Max (`X (1)`) is the same layer; another name with the ID is listed.",
+  "rules": [
+   "2.1 unique ID",
+   "3.1 sharing an ID"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "02_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_01_Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "02_01_Kerbs_East",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_C",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "layer-node-copy-only",
+  "about": "A helper copied in 3ds Max (`X (1)` in the GLB) and nothing else sharing its ID: the same layer, one folder, nothing listed.",
+  "rules": [
+   "2.1 unique ID",
+   "3.1 sharing an ID"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "02_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "02_01_Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 3,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "phase-groups",
+  "about": "New layer folders inside their phase group’s folder; a layer outside any group at the top; an empty phase group.",
+  "rules": [
+   "3.1 new layers",
+   "2.1 unchanged: phase groups"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "02_01": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   },
+   "02_02": {
+    "start": "2026-09-03",
+    "finish": "2026-09-03",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "_01_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 1,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "_02_Zone",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_01_Works",
+    "parent": 4,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "02_02_Works",
+    "parent": 4,
+    "mesh": false
+   },
+   {
+    "name": "IN_C",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "_03_Empty",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "04_01_Top",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_D",
+    "parent": 10,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "empty-layers",
+  "about": "Empty layers make folders: 01_00_START_DATE (no day), and a layer only other layers’ tags name (v30’s new 02_02_2), which gets their removals.",
+  "rules": [
+   "3.1 empty layers",
+   "3.8 01_00_START_DATE"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "02_02_1": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_00_START_DATE",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "02_02_1_WaterBarrier_RB22",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_RB22_Barrier01_RM_02_02_2",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "IN_RB22_Barrier02_RM_02_02_2",
+    "parent": 2,
+    "mesh": true
+   },
+   {
+    "name": "02_02_2_RB22_Removal",
+    "parent": 0,
+    "mesh": false
+   }
+  ]
+ },
+ {
+  "id": "untagged-and-unfiled",
+  "about": "Untagged objects are not scheduled and stay visible; a tagged object outside any layer is listed as unfiled.",
+  "rules": [
+   "2.2 ignored"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Lamp_Post",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Stray",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "Context",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "Building",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "Kerb_Existing",
+    "parent": 5,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "layer-name-issues",
+  "about": "Layer names: dates and TBC listed but not read, a space, an ID with no name, and the trap — 02_05_3_Storey_Frame reads as ID 02_05_3.",
+  "rules": [
+   "2.1 rules",
+   "2.1 trap",
+   "2.2 ignored: dates in layer names"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "03_02_Works_TBC_01-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "03_03 Kerbs",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 3,
+    "mesh": true
+   },
+   {
+    "name": "03_04_",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_C",
+    "parent": 5,
+    "mesh": true
+   },
+   {
+    "name": "02_05_3_Storey_Frame",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_D",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-sydney",
+  "about": "Layers spanning Sydney’s clock changes (4 Oct 2026, 4 Apr 2027): the split runs in elapsed minutes, so the finish does not shift.",
+  "rules": [
+   "3.4 elapsed minutes"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-28",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-10-03",
+    "finish": "2026-10-05",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2027-04-03",
+    "finish": "2027-04-04",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A6",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Z_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B1",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "IN_B2",
+    "parent": 9,
+    "mesh": true
+   },
+   {
+    "name": "IN_B3",
+    "parent": 9,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "clock-change-london",
+  "about": "Layers spanning London’s clock changes (25 Oct 2026, 28 Mar 2027).",
+  "rules": [
+   "3.4 elapsed minutes"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-20",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-10-24",
+    "finish": "2026-10-26",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2027-03-27",
+    "finish": "2027-03-29",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A4",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A5",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "RM_B1",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "RM_B2",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "RM_B3",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "RM_B4",
+    "parent": 7,
+    "mesh": true
+   },
+   {
+    "name": "C_IN",
+    "parent": 7,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "parked-over-sydney-clock-change",
+  "about": "Undated layers parked one day each across Sydney’s 4 October 2026 (a 23-hour day).",
+  "rules": [
+   "D12",
+   "3.4 elapsed minutes"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-02",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_A",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_a1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_a2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_B",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_b1",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "IN_b2",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "IN_b3",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "01_03_C",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_c",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "01_04_D",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_d1",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "IN_d2",
+    "parent": 10,
+    "mesh": true
+   },
+   {
+    "name": "01_05_E",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_e",
+    "parent": 13,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "parked-over-london-clock-change",
+  "about": "Undated layers parked one day each across London’s 25 October 2026 (a 25-hour day).",
+  "rules": [
+   "D12",
+   "3.4 elapsed minutes"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-23",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_A",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_a1",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_a2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_B",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_b1",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "IN_b2",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "IN_b3",
+    "parent": 4,
+    "mesh": true
+   },
+   {
+    "name": "01_03_C",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_c",
+    "parent": 8,
+    "mesh": true
+   },
+   {
+    "name": "C_RM",
+    "parent": 8,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "naming-tie-dated",
+  "about": "A tie between old-kind and new-kind objects, a layer name dated: the scene reads old (no new-name schedule).",
+  "rules": [
+   "2.3"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works_01-09-26",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Kerb_RM",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "naming-tie-undated",
+  "about": "The same tie with no date in any layer name: the scene reads new; the Ph/St object is listed and not scheduled.",
+  "rules": [
+   "2.3"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Ph1_St01_IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Kerb_RM",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "naming-counts-win",
+  "about": "More new-kind than old-kind objects under a layer noting TBC: new, as the counts win and TBC alone decides nothing.",
+  "rules": [
+   "2.3"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {},
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works_TBC",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "Ph1_St01_IN_C",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "install-at-end-and-numbered-own-names",
+  "about": "Kerb_IN is installed at the end of its layer; own names ending in a copy number (Barrier_01) keep it, the type word marking where a reference starts.",
+  "rules": [
+   "2.2 notes",
+   "2.2 why the layer number goes after the type word"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "01_02": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "Kerb_IN",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier_01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier_02_RM",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Barrier_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Path",
+    "parent": 6,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "incoming-after-own-installs",
+  "about": "Incoming removals run after the layer’s own installs (v30 04_02_3): new work appears while what it replaces still stands.",
+  "rules": [
+   "3.8 incoming removals",
+   "3.3"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "02_02_9": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   },
+   "04_02_3": {
+    "start": "2026-09-10",
+    "finish": "2026-09-10",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "02_02_9_TM_Removal",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Bollard_RM_04_02_3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_Marking_RM_04_02_3",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "04_02_3_Binder_Course",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_Binder",
+    "parent": 4,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "dated-layer-tbc",
+  "about": "A dated layer the list marks TBC: its folder is flagged, its work is not (D13: dates never set or clear TBC).",
+  "rules": [
+   "D13",
+   "3.5",
+   "5.8 TBC"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": true
+   },
+   "01_02": {
+    "start": "2026-09-02",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_More",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_C",
+    "parent": 4,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "reference-to-undated-layer",
+  "about": "A reference to a model layer with no dates: filed in it (group 2), parked on its day with it.",
+  "rules": [
+   "3.2",
+   "D12"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-10",
+    "finish": "2026-09-10",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A_RM_01_02",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_A2",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Later",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 4,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "references-own-layer-and-end",
+  "about": "A reference to the object’s own layer reads as the plain trailing tag (warned); the end event shares the last slot.",
+  "rules": [
+   "2.2 step 7",
+   "D11"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-01",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-01",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Works",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_X_RM_01_01",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "IN_B",
+    "parent": 1,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "project-start-before-and-after",
+  "about": "The project start never moves for new names, even with dated layers before it; undated layers park from it.",
+  "rules": [
+   "3.4 the project start",
+   "D12"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-09-15",
+  "layerDates": {
+   "01_01": {
+    "start": "2026-09-01",
+    "finish": "2026-09-02",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "Work_Phasing",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "01_01_Early",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_A",
+    "parent": 1,
+    "mesh": true
+   },
+   {
+    "name": "01_02_Undated",
+    "parent": 0,
+    "mesh": false
+   },
+   {
+    "name": "IN_B",
+    "parent": 3,
+    "mesh": true
+   }
+  ]
+ }
+]

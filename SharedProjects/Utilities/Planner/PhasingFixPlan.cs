@@ -1,8 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
 
 namespace Utilities.Planner
 {
@@ -55,7 +52,7 @@ namespace Utilities.Planner
     /// The phasing hierarchy in numbers, to compare with the project's layer / activity matrix: the Max layers inside
     /// the phasing top layer's tree, the helper nodes (dummies, points, group heads) inside the phasing top node's
     /// hierarchy, and the tagged objects there. Worked out by <see cref="PhasingNameFixer.Plan"/> from its scene model;
-    /// the Fix phasing names window and the export log both show these.
+    /// the export log shows these for a scene on the old names.
     /// </summary>
     public sealed class PhasingCounts
     {
@@ -161,7 +158,7 @@ namespace Utilities.Planner
         Object
     }
 
-    /// <summary>One line of the review list (and of the CSV).</summary>
+    /// <summary>One line of the fixer's review list.</summary>
     public sealed class PhasingFixRow
     {
         public PhasingFixStatus Status;
@@ -173,16 +170,6 @@ namespace Utilities.Planner
         public string WhatChanged;
         /// <summary>The node the row is about, when it is about one node.</summary>
         public long? NodeKey;
-
-        public string StatusText
-        {
-            get { return Status == PhasingFixStatus.Changed ? "Changed" : "Check"; }
-        }
-
-        public string TypeText
-        {
-            get { return PhasingFixPlan.ItemText(Item); }
-        }
     }
 
     /// <summary>Rename one node, found by its handle.</summary>
@@ -224,6 +211,8 @@ namespace Utilities.Planner
     {
         public string Name;
         public string NewParentName;
+        /// <summary>Clean up only: the parent is a layer its batch creates, and <see cref="NewParentName"/> is that layer's name.</summary>
+        public bool NewParentIsNew;
     }
 
     /// <summary>A layer the fixer read, for the review list's Stage column.</summary>
@@ -247,11 +236,14 @@ namespace Utilities.Planner
         public bool StageOverridden;
     }
 
-    /// <summary>What the phasing name fixer would do: the review rows and the operations that carry them out.</summary>
+    /// <summary>
+    /// What the phasing name fixer reads of a scene on the old names and would do to it: the review rows and the operations
+    /// that carry them out. The export's naming check on the old names reads its top node, the objects it leaves for the
+    /// modeller (<see cref="LeftMisfiled"/>) and its counts; Fix phasing names, which showed the rows and carried the
+    /// operations out, is gone (Clean up scene graph replaces it).
+    /// </summary>
     public sealed class PhasingFixPlan
     {
-        public const string CsvHeader = "Status,Type,Layer it sits in (corrected name),Current name in Max,Corrected name,What changed";
-
         /// <summary>The phasing top node, or null when the scene has none.</summary>
         public long? TopKey;
         /// <summary>The top node's current name, or null.</summary>
@@ -270,83 +262,11 @@ namespace Utilities.Planner
         public readonly List<PhasingMaxLayerMove> MaxLayerMoves = new List<PhasingMaxLayerMove>();
         /// <summary>Every layer read, in the corrected (phase, stage, split) order.</summary>
         public readonly List<PhasingLayerInfo> Layers = new List<PhasingLayerInfo>();
-
-        /// <summary>Changed rows for the top layer, groups and layers.</summary>
-        public int LayersToChange
-        {
-            get { return Rows.Count(r => r.Status == PhasingFixStatus.Changed && r.Item != PhasingFixItem.Object); }
-        }
-
-        public int ObjectsToChange
-        {
-            get { return Rows.Count(r => r.Status == PhasingFixStatus.Changed && r.Item == PhasingFixItem.Object); }
-        }
-
-        public int ToCheck
-        {
-            get { return Rows.Count(r => r.Status == PhasingFixStatus.Check); }
-        }
-
-        /// <summary>True when applying the plan would rename or move anything.</summary>
-        public bool HasChanges
-        {
-            get { return NodeRenames.Count > 0 || NodeMoves.Count > 0 || MaxLayerRenames.Count > 0 || MaxLayerMoves.Count > 0; }
-        }
-
-        /// <summary>One line for the review window, e.g. "37 layers and 120 objects to change, 11 to check."</summary>
-        public string Summary()
-        {
-            if (TopKey == null)
-            {
-                return Message ?? string.Empty;
-            }
-            return string.Format(CultureInfo.InvariantCulture, "{0} and {1} to change, {2} to check.",
-                PhasingFixScript.Count(LayersToChange, "layer", "layers"), PhasingFixScript.Count(ObjectsToChange, "object", "objects"), ToCheck);
-        }
-
-        /// <summary>The review list as CSV, in the reference format: a byte order mark, the header, CRLF line ends.</summary>
-        public string ToCsv()
-        {
-            var text = new StringBuilder();
-            text.Append((char)0xFEFF).Append(CsvHeader);
-            foreach (var row in Rows)
-            {
-                text.Append("\r\n");
-                text.Append(CsvField(row.StatusText)).Append(',')
-                    .Append(CsvField(row.TypeText)).Append(',')
-                    .Append(CsvField(row.LayerItSitsIn)).Append(',')
-                    .Append(CsvField(row.CurrentName)).Append(',')
-                    .Append(CsvField(row.CorrectedName)).Append(',')
-                    .Append(CsvField(row.WhatChanged));
-            }
-            text.Append("\r\n");
-            return text.ToString();
-        }
-
-        public static string ItemText(PhasingFixItem item)
-        {
-            switch (item)
-            {
-                case PhasingFixItem.TopLayer:
-                    return "Top layer";
-                case PhasingFixItem.Group:
-                    return "Group";
-                case PhasingFixItem.Layer:
-                    return "Layer";
-                default:
-                    return "Object";
-            }
-        }
-
-        // Quoted only when it holds a quote, a comma or a line feed, as the reference writer does.
-        private static string CsvField(string value)
-        {
-            var text = value ?? string.Empty;
-            if (text.IndexOf('"') < 0 && text.IndexOf(',') < 0 && text.IndexOf('\n') < 0)
-            {
-                return text;
-            }
-            return "\"" + text.Replace("\"", "\"\"") + "\"";
-        }
+        /// <summary>
+        /// The objects left as they are, each with a Check line, because it is taken away and put back in one stage while
+        /// it sits in another stage's layer (a naming error for the modeller to correct), by their names: the export's
+        /// naming check does not send them here (<see cref="PlannerNamingValidator"/>).
+        /// </summary>
+        public readonly HashSet<string> LeftMisfiled = new HashSet<string>(StringComparer.Ordinal);
     }
 }

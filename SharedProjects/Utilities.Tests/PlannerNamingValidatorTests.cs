@@ -75,6 +75,201 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void ObjectsTakenAwayAndPutBackInAnotherStagesLayerAreOneWarningWithThePlannersAdvice()
+        {
+            // An object taken away and put back in one stage belongs in that stage's layer: the Planner lists one sitting in
+            // another stage's layer as a naming error (2026-10-16). One warning gathers them, each with what to retag it as,
+            // in place of the warning that its tags do not match its layer.
+            const string kerbs = "02_01_Kerbs_01-09-26_05-09-26";
+            const string sub = "02_01_2_Path_01-09-26_05-09-26";
+            const string five = "05_Works_01-09-26";
+            const string strip = "02_02_Strip_08-09-26";
+            var nodes = new List<SceneNodeInfo>
+            {
+                Group(kerbs), Group(sub), Group(five), Group(strip),
+                Mesh("Ph2_St01_IN_Kerb", kerbs),
+                Mesh("Ph2_St02_RM_Bench_Ph2_St02_IN", kerbs),
+                Mesh("Ph2_St01_2_IN_Path", sub),
+                Mesh("ph2_st03-1_RM_Old_Bench_Ph2_St03-1_in", sub),
+                Mesh("Ph1_St05_IN_A", five),
+                Mesh("Ph1_St07_RM_Ph1_St07_IN", five),
+                Mesh("Ph2_St02_IN_Strip", strip),
+                // Not the case: put up then taken down, two stages, a stage and its sub-stage, its own layer's stage.
+                Mesh("Ph2_St02_IN_Sign_Ph2_St02_RM", kerbs),
+                Mesh("Ph2_St02_RM_Seat_Ph2_St03_IN", kerbs),
+                Mesh("Ph2_St02_RM_Post_Ph2_St02_1_IN", kerbs),
+                Mesh("Ph2_St01_RM_Gate_Ph2_St01_IN", kerbs)
+            };
+            var report = PlannerNamingValidator.Validate(nodes, Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            var warning = Assert.Single(report.Issues, i => i.Message.Contains("object(s) are taken away and put back in one stage"));
+            Assert.Equal(NamingSeverity.Warning, warning.Severity);
+            Assert.Equal("Ph2_St02_RM_Bench_Ph2_St02_IN", warning.Subject);
+            Assert.Equal("3 object(s) are taken away and put back in one stage (a removal tag, then an install tag of the same phase and stage) but sit in another stage's"
+                + " layer, which the Planner lists as a naming error: an object taken away and put back in one stage belongs in that stage's layer. Correct each in 3ds Max:"
+                + " move it to that stage's layer, or retag it for the layer it sits in: "
+                + "'Ph2_St02_RM_Bench_Ph2_St02_IN' in '" + kerbs + "' (move it to the Ph2_St02 layer, or retag it as Ph2_St01_RM_Bench_Ph2_St01_IN), "
+                + "'ph2_st03-1_RM_Old_Bench_Ph2_St03-1_in' in '" + sub + "' (move it to the Ph2_St03_1 layer, or retag it as Ph2_St01_2_RM_Old_Bench_Ph2_St01_2_IN), "
+                + "'Ph1_St07_RM_Ph1_St07_IN' in '" + five + "' (move it to the Ph1_St07 layer, or retag it as Ph1_St05_RM_Ph1_St05_IN).", warning.Message);
+            // Not told again as a tag that does not match its layer; the others that do not match still are.
+            foreach (var name in new[] { "Ph2_St02_RM_Bench_Ph2_St02_IN", "ph2_st03-1_RM_Old_Bench_Ph2_St03-1_in", "Ph1_St07_RM_Ph1_St07_IN" })
+            {
+                Assert.DoesNotContain(report.Issues, i => i.Subject == name && i.Message.Contains("neither tag matches"));
+            }
+            Assert.Contains(report.Issues, i => i.Subject == "Ph2_St02_IN_Sign_Ph2_St02_RM" && i.Message.Contains("neither tag matches"));
+
+            // Each retagged as advised: no such warning.
+            var fixedNodes = nodes.Select(n => n.Name == "Ph2_St02_RM_Bench_Ph2_St02_IN" ? Mesh("Ph2_St01_RM_Bench_Ph2_St01_IN", kerbs)
+                : n.Name == "ph2_st03-1_RM_Old_Bench_Ph2_St03-1_in" ? Mesh("Ph2_St01_2_RM_Old_Bench_Ph2_St01_2_IN", sub)
+                : n.Name == "Ph1_St07_RM_Ph1_St07_IN" ? Mesh("Ph1_St05_RM_Ph1_St05_IN", five) : n).ToList();
+            Assert.DoesNotContain(PlannerNamingValidator.Validate(fixedNodes, Today).Issues, i => i.Message.Contains("object(s) are taken away and put back in one stage"));
+        }
+
+        // A scene as BabylonExporter.CollectSceneNodes passes it: each geometry node with its ancestors, then every node
+        // above one once, as a group. One line a node, indented two spaces a level; " [node]" marks one that is not geometry.
+        private static List<SceneNodeInfo> Collected(params string[] lines)
+        {
+            var names = new List<string>();
+            var parents = new List<int>();
+            var meshes = new List<bool>();
+            var open = new List<int>();
+            foreach (var line in lines)
+            {
+                int depth = (line.Length - line.TrimStart(' ').Length) / 2;
+                var name = line.Trim();
+                bool mesh = !name.EndsWith(" [node]", StringComparison.Ordinal);
+                name = mesh ? name : name.Substring(0, name.Length - " [node]".Length);
+                while (open.Count > depth)
+                {
+                    open.RemoveAt(open.Count - 1);
+                }
+                parents.Add(open.Count > 0 ? open[open.Count - 1] : -1);
+                names.Add(name);
+                meshes.Add(mesh);
+                open.Add(names.Count - 1);
+            }
+            Func<int, List<string>> chain = k =>
+            {
+                var result = new List<string>();
+                for (int p = parents[k]; p >= 0; p = parents[p])
+                {
+                    result.Add(names[p]);
+                }
+                return result;
+            };
+            var nodes = new List<SceneNodeInfo>();
+            var groups = new SortedDictionary<int, SceneNodeInfo>();
+            for (int k = 0; k < names.Count; k++)
+            {
+                if (!meshes[k])
+                {
+                    continue;
+                }
+                for (int p = parents[k]; p >= 0; p = parents[p])
+                {
+                    if (!groups.ContainsKey(p))
+                    {
+                        groups[p] = new SceneNodeInfo { Name = names[p], IsMesh = false, Ancestors = chain(p) };
+                    }
+                }
+                nodes.Add(new SceneNodeInfo { Name = names[k], IsMesh = true, Ancestors = chain(k) });
+            }
+            nodes.AddRange(groups.Values);
+            return nodes;
+        }
+
+        private static NamingIssue MisfiledWarning(NamingReport report)
+        {
+            return report.Issues.SingleOrDefault(i => i.Message.Contains("object(s) are taken away and put back in one stage"));
+        }
+
+        /// <summary>
+        /// The naming check reads the objects as the Planner reads them, as the Schedule tab does: a tagged Max group head
+        /// (the export passes it as a group; Add to IN / Add to RM tags a closed group on it) is an object, with a vote in a
+        /// one-number layer's phase, and its untagged members are shown and hidden with it; a split piece (Name_N linked
+        /// under Name) is part of its object, with no vote and no warnings of its own about its tags (2026-10-16 review).
+        /// </summary>
+        [Fact]
+        public void GroupHeadsAreObjectsAndSplitPiecesArePartOfTheirObject()
+        {
+            const string kerbs = "02_01_Kerbs_01-09-26_05-09-26";
+            const string advice = "(move it to the Ph2_St02 layer, or retag it as Ph2_St01_RM_Bench_Ph2_St01_IN";
+            // A misfiled closed group: warned on its head, its members not noted as unscheduled.
+            var report = PlannerNamingValidator.Validate(Collected(
+                "Work_Phasing [node]",
+                "  " + kerbs + " [node]",
+                "    Ph2_St01_IN_Kerb",
+                "    Ph2_St02_RM_Bench_Ph2_St02_IN [node]",
+                "      Bench_Seat",
+                "      Bench_Leg",
+                "  02_02_Strip_08-09-26 [node]",
+                "    Ph2_St02_IN_Strip"), Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            Assert.EndsWith("'Ph2_St02_RM_Bench_Ph2_St02_IN' in '" + kerbs + "' " + advice + ").", MisfiledWarning(report).Message);
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("carries no Ph/St tag"));
+            Assert.Equal(3, report.TaggedObjects);
+
+            // A one-number layer's phase from its objects' leading tags, group heads among them: phase 2 (A's 1 against G's,
+            // H's and X's 2), so X is its own work.
+            report = PlannerNamingValidator.Validate(Collected(
+                "Work_Phasing [node]",
+                "  05_Works_01-09-26 [node]",
+                "    Ph1_St05_IN_A",
+                "    Ph2_St05_IN_G [node]",
+                "      G_Part",
+                "    Ph2_St05_IN_H [node]",
+                "      H_Part",
+                "    Ph2_St05_RM_X_Ph2_St05_IN",
+                "  02_05_Other_10-09-26 [node]",
+                "    Ph2_St05_IN_Y"), Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            Assert.Null(MisfiledWarning(report));
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("carries no Ph/St tag"));
+
+            // Split pieces have no vote: phase 1 on a tie (A's and B's 1 against C's and X's 2), so X sits in another stage's
+            // layer; nor are they objects of their own.
+            report = PlannerNamingValidator.Validate(Collected(
+                "Work_Phasing [node]",
+                "  05_Works_01-09-26 [node]",
+                "    Ph1_St05_IN_A",
+                "    Ph1_St05_IN_B",
+                "    Ph2_St05_IN_C",
+                "      Ph2_St05_IN_C_1",
+                "      Ph2_St05_IN_C_2",
+                "    Ph2_St05_RM_X_Ph2_St05_IN",
+                "  02_05_Other_10-09-26 [node]",
+                "    Ph2_St05_IN_Y"), Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            Assert.EndsWith("'Ph2_St05_RM_X_Ph2_St05_IN' in '05_Works_01-09-26' (move it to the Ph2_St05 layer, or retag it as Ph1_St05_RM_X_Ph1_St05_IN).",
+                MisfiledWarning(report).Message);
+            Assert.Equal(5, report.TaggedObjects);
+
+            // A misfiled object's split piece: renamed with it, and not warned on its own (its name reads only a leading tag,
+            // its object's trailing tag before its number); nor is a piece of any two-tag object an error.
+            report = PlannerNamingValidator.Validate(Collected(
+                "Work_Phasing [node]",
+                "  _02_Zone [node]",
+                "    " + kerbs + " [node]",
+                "      Ph2_St01_IN_Kerb_Ph2_St03_RM",
+                "        Ph2_St01_IN_Kerb_Ph2_St03_RM_1",
+                "      Ph2_St02_RM_Bench_Ph2_St02_IN",
+                "        Ph2_St02_RM_Bench_Ph2_St02_IN_1",
+                "    02_02_Strip_08-09-26 [node]",
+                "      Ph2_St02_IN_Strip",
+                "    02_03_Cut_10-09-26 [node]",
+                "      Ph2_St03_IN_Cut-A",
+                "        Ph2_St03_IN_Cut-A_1"), Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            Assert.EndsWith("'Ph2_St02_RM_Bench_Ph2_St02_IN' in '" + kerbs + "' " + advice + ", and its split piece likewise).", MisfiledWarning(report).Message);
+            Assert.Equal(0, report.Errors);
+            Assert.DoesNotContain(report.Issues, i => i.Subject.EndsWith("_1", StringComparison.Ordinal) && !i.Message.Contains("hyphen"));
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("neither tag matches"));
+            // What a piece's own name writes is still told: a hyphen, which Unreal turns into an underscore.
+            Assert.Contains("Ph2_St03_IN_Cut-A_1", Assert.Single(report.Issues, i => i.Message.Contains("contain a hyphen")).Message);
+            Assert.Equal(4, report.TaggedObjects);
+        }
+
+        [Fact]
         public void CleanSceneHasNoIssues()
         {
             var report = PlannerNamingValidator.Validate(new[] { Group(Piling), Mesh("Ph1_St01_IN_Sheet_Pile_1", Piling), Mesh("EUS_Con_HRB_Kerb_001") }, Today);
@@ -132,7 +327,9 @@ namespace Utilities.Tests
             // One number with a sub-stage: the convention needs the phase in front, which the trailing tag of stage 06 gives.
             Assert.Contains(warnings, w => w.Subject == HoardingRemoval && w.Message == "Group '" + HoardingRemoval + "' is one number with a sub-stage written the old way (06-2). "
                 + "An ID of one number cannot carry a sub-stage, so the phase goes in front: <phase>_06_2_<name>. Its objects' tags say phase 1, so it becomes "
-                + "01_06_2 Hoarding Removal_20-10-26_23-10-26: rename it by hand (Fix phasing names\u2026 renames only the phasing layers).");
+                + "01_06_2 Hoarding Removal_20-10-26_23-10-26: rename it by hand.");
+            // No text sends the modeller to Fix phasing names, which is replaced by Clean up scene graph.
+            Assert.DoesNotContain(PlannerNamingValidator.Validate(RepresentativeScene(), Today).Issues, i => i.Message.Contains("Fix phasing names"));
         }
 
         [Fact]
@@ -297,19 +494,20 @@ namespace Utilities.Tests
             Assert.Equal(NamingSeverity.Warning, hyphens.Severity);
             Assert.Equal("Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF", hyphens.Subject);
             Assert.Equal("3 object name(s) contain a hyphen. Unreal's Datasmith import turns every hyphen in an object's name into an underscore, so these names would not match "
-                + "between the Planner and Unreal: use underscores instead. Rename them by hand (Fix phasing names\u2026 converts only the phasing layers and the objects directly in them): "
+                + "between the Planner and Unreal: use underscores instead. Rename them by hand: "
                 + "Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF, Ph2_St04_IN_Sign_17-08-26, Ph2_St04-1_IN_Line-Marking_Ph2_St05-1_RM.", hyphens.Message);
             var subStages = Assert.Single(report.Issues, i => i.Message.Contains("write the sub-stage the old way"));
             Assert.Equal("2 object name(s) write the sub-stage the old way, with a hyphen (Ph1_St04-2_IN_...); the convention now writes an underscore (Ph1_St04_2_IN_...). "
                 + "The Planner reads both the same, but Unreal's Datasmith import turns a hyphen in an object's name into an underscore, so the names would not match between the Planner and Unreal. "
-                + "Rename them by hand (Fix phasing names\u2026 converts only the phasing layers and the objects directly in them): Ph2_St04-1_IN_Edge_Kerb, Ph2_St04-1_IN_Line-Marking_Ph2_St05-1_RM.",
+                + "Rename them by hand: Ph2_St04-1_IN_Edge_Kerb, Ph2_St04-1_IN_Line-Marking_Ph2_St05-1_RM.",
                 subStages.Message);
             // The untagged object only has the note that it is not scheduled.
             Assert.DoesNotContain(report.Issues, i => (i.Message.Contains("Untagged-Box") && i.Severity != NamingSeverity.Note) || i.Message.Contains("Clean_Kerb") || i.Subject == layer);
 
-            // In the phasing layers of the top node, Fix phasing names replaces them.
+            // In the phasing layers of the top node too: no button corrects old names any more (Clean up scene graph converts
+            // a scene to the new names instead).
             var inLayer = PlannerNamingValidator.Validate(new[] { InLayer("Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF", layer, "_02_Phase_Two") }, Today);
-            Assert.EndsWith("use underscores instead. Fix phasing names\u2026 on the exporter window converts them: Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF.",
+            Assert.EndsWith("use underscores instead. Rename them by hand: Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF.",
                 Assert.Single(inLayer.Issues).Message);
         }
 
@@ -391,14 +589,13 @@ namespace Utilities.Tests
             Assert.Equal(5, warnings.Count);
             Assert.All(report.Issues.Where(OneNumberWarning), i => Assert.Equal(NamingSeverity.Warning, i.Severity));
             Assert.Equal("Group '" + inTree + "' is one number with a sub-stage written the old way (06-2). An ID of one number cannot carry a sub-stage, so the phase goes in front: "
-                + "<phase>_06_2_<name>. Its objects' tags say phase 3, so it becomes 03_06_2_Hoarding_Removal_20-10-26: Fix phasing names\u2026 on the exporter window renames it.",
+                + "<phase>_06_2_<name>. Its objects' tags say phase 3, so it becomes 03_06_2_Hoarding_Removal_20-10-26: rename it by hand.",
                 warnings[inTree]);
             Assert.EndsWith("(07.1). An ID of one number cannot carry a sub-stage, so the phase goes in front: <phase>_07_1_<name>. Its objects' tags say phase 3, so it becomes "
-                + "03_07_1_Kerbs_TBC: Fix phasing names\u2026 on the exporter window renames it.", warnings[dottedInTree]);
+                + "03_07_1_Kerbs_TBC: rename it by hand.", warnings[dottedInTree]);
             Assert.EndsWith("Its objects' tags of that stage carry phases 2 and 3, so rename it by hand with the phase it belongs to.", warnings[mixed]);
             Assert.EndsWith("None of its objects has a tag of stage 04_1 to give the phase, so rename it by hand with the phase it belongs to.", warnings[none]);
-            Assert.EndsWith("Its objects' tags say phase 4, so it becomes 04_08_2_Loose_01-12-26: rename it by hand (Fix phasing names\u2026 renames only the phasing layers under '"
-                + top + "').", warnings[outside]);
+            Assert.EndsWith("Its objects' tags say phase 4, so it becomes 04_08_2_Loose_01-12-26: rename it by hand.", warnings[outside]);
             // Read with its objects' phase, as the fixer reads it, a layer owns their work; the group with no tag of its stage
             // is told about the object as well.
             Assert.Equal(new[] { "Ph3_St09_IN_Post_C" }, report.Issues.Where(i => i.Message.Contains("neither tag matches")).Select(i => i.Subject).ToArray());
@@ -432,8 +629,8 @@ namespace Utilities.Tests
         }
 
         /// <summary>
-        /// When the stage of a group of one number already has another layer, Fix phasing names numbers the stage's layers
-        /// 1, 2, ... in start-date order, so the warning does not promise the sub-stage the group has today.
+        /// When the stage of a group of one number already has another layer, the warning does not promise the sub-stage the
+        /// group has today: it is renamed by hand with a sub-stage none of the others has (no tool renumbers a stage now).
         /// </summary>
         [Fact]
         public void AOneNumberGroupSharingItsStageIsNotPromisedItsSubStage()
@@ -446,8 +643,8 @@ namespace Utilities.Tests
             var report = PlannerNamingValidator.Validate(NodesOf(scene), Today);
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             Assert.Equal("Group '06-2_Hoarding_17-08-26' is one number with a sub-stage written the old way (06-2). An ID of one number cannot carry a sub-stage, so the phase goes "
-                + "in front: <phase>_06_2_<name>. Its objects' tags say phase 3, so it becomes 03_06_<m>_Hoarding_17-08-26: stage 03_06 has other layers, and Fix phasing names\u2026 "
-                + "on the exporter window renames it with them, numbering the stage's layers 1, 2, ... in start-date order.",
+                + "in front: <phase>_06_2_<name>. Its objects' tags say phase 3, so it becomes 03_06_<m>_Hoarding_17-08-26: stage 03_06 has other layers, so rename it by hand "
+                + "with a sub-stage none of them has.",
                 Assert.Single(report.Issues, OneNumberWarning).Message);
             // As the fixer does: the hoarding starts first.
             var plan = scene.Plan();
@@ -473,24 +670,92 @@ namespace Utilities.Tests
             scene.Add("Ph4_St01-1_IN_B", scene.Add("04_01-1_NoGroupTwo_17-08-26", site));
 
             var plan = scene.Plan();
-            Assert.False(plan.HasChanges);
+            Assert.False(plan.HasChanges());
             foreach (var report in new[] { PlannerNamingValidator.Validate(NodesOf(scene), Today), PlannerNamingValidator.Validate(NodesOf(Applied(scene, plan)), Today) })
             {
                 foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
                 Assert.DoesNotContain(report.Issues, i => i.Message.Contains("on the exporter window converts") || i.Message.Contains("on the exporter window renames"));
                 Assert.EndsWith("Rename them by hand (" + unplacedReason + "): 04_01-1_NoGroupTwo_17-08-26.",
                     Assert.Single(report.Issues, i => i.Message.Contains("group name(s) write the sub-stage the old way")).Message);
-                Assert.EndsWith("Rename them by hand: Ph4_St06-2_IN_Hoard-1 (Fix phasing names\u2026 leaves their layer '06-2_NoGroup_17-08-26' as it is: " + unplacedReason
-                    + "; once the layer is corrected, it converts them); Ph4_St01-1_IN_B (Fix phasing names\u2026 leaves their layer '04_01-1_NoGroupTwo_17-08-26' as it is: "
-                    + unplacedReason + "; once the layer is corrected, it converts them).",
+                Assert.EndsWith("Rename them by hand: Ph4_St06-2_IN_Hoard-1 (their layer '06-2_NoGroup_17-08-26' needs renaming by hand too: " + unplacedReason
+                    + "); Ph4_St01-1_IN_B (their layer '04_01-1_NoGroupTwo_17-08-26' needs renaming by hand too: " + unplacedReason + ").",
                     Assert.Single(report.Issues, i => i.Message.Contains("object name(s) write the sub-stage the old way")).Message);
-                Assert.EndsWith("Rename them by hand: Ph2_St01_IN_Kerb-1 (Fix phasing names\u2026 leaves a name as it is when the one it would take with underscores is already "
-                    + "another node's); Ph4_St06-2_IN_Hoard-1 (Fix phasing names\u2026 leaves their layer '06-2_NoGroup_17-08-26' as it is: " + unplacedReason
-                    + "; once the layer is corrected, it converts them).",
+                Assert.EndsWith("Rename them by hand: Ph2_St01_IN_Kerb-1 (the name it would take with underscores is already another node's); "
+                    + "Ph4_St06-2_IN_Hoard-1 (their layer '06-2_NoGroup_17-08-26' needs renaming by hand too: " + unplacedReason + ").",
                     Assert.Single(report.Issues, i => i.Message.Contains("contain a hyphen")).Message);
                 Assert.EndsWith("Its objects' tags say phase 4, so it becomes 04_06_2_NoGroup_17-08-26: rename it by hand (" + unplacedReason + ").",
                     Assert.Single(report.Issues, OneNumberWarning).Message);
             }
+        }
+
+        /// <summary>
+        /// An object taken away and put back in one stage that sits in another stage's layer is left as it is by Fix phasing
+        /// names, for the modeller to correct (the Planner lists it as a naming error): the warnings about what its name
+        /// writes the old way say to rename it by hand, with why, and the export's pointer to the fixer does not count it;
+        /// the other objects of its layer are converted as usual (2026-10-16 review).
+        /// </summary>
+        [Fact]
+        public void AnObjectTakenAwayAndPutBackInAnotherStagesLayerIsNotSentToTheFixer()
+        {
+            const string kerbs = "02_01_Kerbs_01-09-26_05-09-26";
+            const string misfiled = "ph2_st03-1_RM_Old-Bench_Ph2_St03-1_in";
+            const string why = "taken away and put back in one stage, it sits in another stage's layer";
+            var scene = new FixerScene();
+            var zone = scene.Add("_02_Zone", scene.Add("Work_Phasing"));
+            var layer = scene.Add(kerbs, zone);
+            scene.Add("Ph2_St01_IN_Kerb-A", layer);
+            scene.Add(misfiled, layer);
+            scene.Add("Ph2_St03_1_IN_Path", scene.Add("02_03_1_Path_10-09-26", zone));
+
+            var report = PlannerNamingValidator.Validate(NodesOf(scene), Today);
+            foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
+            Assert.EndsWith("'" + misfiled + "' in '" + kerbs + "' (move it to the Ph2_St03_1 layer, or retag it as Ph2_St01_RM_Old-Bench_Ph2_St01_IN).",
+                Assert.Single(report.Issues, i => i.Message.Contains("object(s) are taken away and put back in one stage")).Message);
+            Assert.EndsWith("Rename them by hand (" + why + "): " + misfiled + ".",
+                Assert.Single(report.Issues, i => i.Message.Contains("object name(s) write the sub-stage the old way")).Message);
+            Assert.EndsWith("Rename them by hand: Ph2_St01_IN_Kerb-A; " + misfiled + " (" + why + ").",
+                Assert.Single(report.Issues, i => i.Message.Contains("contain a hyphen")).Message);
+
+            // As the fixer does: the kerb converted, the bench left with a Check line and not counted; given the fixer's own
+            // plan, as the export gives it, the check says the same.
+            var plan = scene.Plan();
+            Assert.Equal("Ph2_St01_IN_Kerb_A", plan.NodeRenames.Single().NewName);
+            Assert.Contains(plan.Rows, r => r.CurrentName == misfiled && r.Status == PhasingFixStatus.Check && r.WhatChanged.Contains("correct it by hand"));
+            Assert.Equal(1, PhasingFixPlanText.CorrectableCount(plan));
+            Assert.Equal(new[] { misfiled }, plan.LeftMisfiled.ToArray());
+            var fromExport = PlannerNamingValidator.Validate(NodesOf(scene), Today, plan.TopName, plan.LeftMisfiled);
+            Assert.Equal(report.Issues.Select(i => i.ToString()).ToArray(), fromExport.Issues.Select(i => i.ToString()).ToArray());
+        }
+
+        /// <summary>
+        /// From the export the naming check takes the objects Fix phasing names leaves for the modeller from the fixer's own
+        /// plan. Where the fixer numbers a stage's layers again (two layers with one ID, numbered in start-date order), an
+        /// object taken away and put back in the stage its layer then has is that layer's own work, which the fixer corrects
+        /// as usual: so it is not said to be left, though the layer's ID as it is now would have it so (2026-10-16 review).
+        /// </summary>
+        [Fact]
+        public void TheFixersOwnPlanSaysWhichObjectsItLeavesForTheModeller()
+        {
+            const string bench = "Ph1_St03_2_RM_Old-Bench_Ph1_St03_2_IN";
+            var scene = new FixerScene();
+            var zone = scene.Add("_01_Zone", scene.Add("Work_Phasing"));
+            scene.Add("Ph1_St03_1_IN_Path", scene.Add("01_03_1_Path_01-09-26", zone));
+            scene.Add(bench, scene.Add("01_03_1_Path_10-09-26", zone));
+
+            var plan = scene.Plan();
+            // The later layer becomes 01_03_2, so the bench is its own work: its hyphen is replaced, nothing is left.
+            Assert.Equal("01_03_2_Path_10-09-26", plan.NodeRenames.Single(r => r.OldName == "01_03_1_Path_10-09-26").NewName);
+            Assert.Equal("Ph1_St03_2_RM_Old_Bench_Ph1_St03_2_IN", plan.NodeRenames.Single(r => r.OldName == bench).NewName);
+            Assert.Empty(plan.LeftMisfiled);
+
+            var fromExport = PlannerNamingValidator.Validate(NodesOf(scene), Today, plan.TopName, plan.LeftMisfiled);
+            foreach (var issue in fromExport.Issues) output.WriteLine(issue.ToString());
+            Assert.EndsWith("Rename them by hand: " + bench + ".",
+                Assert.Single(fromExport.Issues, i => i.Message.Contains("contain a hyphen")).Message);
+            // Without the plan, by the layer's ID as it is now (01_03_1), the old rules would leave it, and say why.
+            var byLayerId = PlannerNamingValidator.Validate(NodesOf(scene), Today, plan.TopName);
+            Assert.EndsWith("Rename them by hand (taken away and put back in one stage, it sits in another stage's layer): " + bench + ".",
+                Assert.Single(byLayerId.Issues, i => i.Message.Contains("contain a hyphen")).Message);
         }
 
         /// <summary>
@@ -518,27 +783,27 @@ namespace Utilities.Tests
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             Assert.DoesNotContain(report.Issues, i => i.Message.Contains("on the exporter window converts") || i.Message.Contains("on the exporter window renames"));
             var oneNumber = report.Issues.Where(OneNumberWarning).ToDictionary(i => i.Subject, i => i.Message);
-            Assert.EndsWith("Its objects' tags say phase 3, so it becomes 03_06_2_Hoarding_17-08-26: rename it by hand (Fix phasing names\u2026 reads only the objects directly in "
-                + "the layer, and none of them has a tag of stage 06_2).", oneNumber["06-2_Hoarding_17-08-26"]);
+            Assert.EndsWith("Its objects' tags say phase 3, so it becomes 03_06_2_Hoarding_17-08-26: rename it by hand (none of the objects directly in "
+                + "the layer has a tag of stage 06_2 to give its phase).", oneNumber["06-2_Hoarding_17-08-26"]);
             Assert.EndsWith("Its objects' tags of that stage carry phases 3 and 4, so rename it by hand with the phase it belongs to.", oneNumber["08-1_Mixed_17-08-26"]);
             Assert.EndsWith("None of its objects has a tag of stage 09_1 to give the phase, so rename it by hand with the phase it belongs to.", oneNumber["09-1_None_18-08-26"]);
             Assert.Equal("Group '06-123_Post_20-08-26' is one number with a sub-stage written the old way (06-123), and the convention writes each number of a layer ID with one or "
-                + "two digits, so Fix phasing names\u2026 leaves it: rename it by hand, with its phase in front and a sub-stage of one or two digits (<phase>_06_<m>_<name>).",
+                + "two digits: rename it by hand, with its phase in front and a sub-stage of one or two digits (<phase>_06_<m>_<name>).",
                 oneNumber["06-123_Post_20-08-26"]);
             Assert.EndsWith("Rename them by hand (the convention writes each number of a layer ID with one or two digits): 03_02-123_Wall_19-08-26.",
                 Assert.Single(report.Issues, i => i.Message.Contains("group name(s) write the sub-stage the old way")).Message);
             var objects = Assert.Single(report.Issues, i => i.Message.Contains("object name(s) write the sub-stage the old way")).Message;
-            Assert.Contains("Ph3_St06-2_IN_Panel_A, Ph3_St06-2_IN_Panel_B (Fix phasing names\u2026 converts only the phasing layers under 'Site_Phasing' and the objects directly in them)", objects);
-            Assert.Contains("Ph3_St08-1_IN_A, Ph4_St08-1_IN_B (Fix phasing names\u2026 leaves their layer '08-1_Mixed_17-08-26' as it is: Fix phasing names\u2026 reads only the "
-                + "objects directly in the layer, and their tags of stage 08_1 carry phases 3 and 4; once the layer is corrected, it converts them)", objects);
-            Assert.Contains("Ph3_St04-1_IN_C (Fix phasing names\u2026 leaves their layer '09-1_None_18-08-26' as it is: Fix phasing names\u2026 reads only the objects directly in "
-                + "the layer, and none of them has a tag of stage 09_1; once the layer is corrected, it converts them)", objects);
-            Assert.Contains("Ph3_St02-123_IN_Wall (Fix phasing names\u2026 leaves their layer '03_02-123_Wall_19-08-26' as it is: the convention writes each number of a layer "
-                + "ID with one or two digits; once the layer is corrected, it converts them)", objects);
+            Assert.Contains("Rename them by hand: Ph3_St06-2_IN_Panel_A, Ph3_St06-2_IN_Panel_B; ", objects);
+            Assert.Contains("Ph3_St08-1_IN_A, Ph4_St08-1_IN_B (their layer '08-1_Mixed_17-08-26' needs renaming by hand too: the tags of stage 08_1 of the objects "
+                + "directly in the layer carry phases 3 and 4)", objects);
+            Assert.Contains("Ph3_St04-1_IN_C (their layer '09-1_None_18-08-26' needs renaming by hand too: none of the objects directly in the layer has a tag of stage "
+                + "09_1 to give its phase)", objects);
+            Assert.Contains("Ph3_St02-123_IN_Wall (their layer '03_02-123_Wall_19-08-26' needs renaming by hand too: the convention writes each number of a layer "
+                + "ID with one or two digits)", objects);
 
             // The fixer leaves them all, and lists the objects directly in them that wait for their layers.
             var plan = scene.Plan();
-            Assert.False(plan.HasChanges);
+            Assert.False(plan.HasChanges());
             Assert.Equal(new[] { "Ph3_St02-123_IN_Wall", "Ph3_St04-1_IN_C", "Ph3_St06-123_IN_Post", "Ph3_St08-1_IN_A", "Ph4_St08-1_IN_B" },
                 plan.Rows.Where(r => r.Item == PhasingFixItem.Object).Select(r => r.CurrentName).OrderBy(n => n, StringComparer.Ordinal).ToArray());
         }
@@ -575,7 +840,7 @@ namespace Utilities.Tests
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             var groups = Assert.Single(report.Issues, i => i.Message.Contains("group name(s) write the sub-stage the old way, with a full stop"));
             Assert.StartsWith("2 group name(s)", groups.Message);
-            Assert.EndsWith("Rename them by hand (Fix phasing names\u2026 converts only the phasing layers under 'Road_Phasing_v.02' and the objects directly in them): 01_04.2_Kerbs_B_17-08-26, 01__04.2_Kerbs_17-08-26.", groups.Message);
+            Assert.EndsWith("Rename them by hand: 01_04.2_Kerbs_B_17-08-26, 01__04.2_Kerbs_17-08-26.", groups.Message);
             Assert.DoesNotContain(report.Issues, i => i.Message.Contains("with a full stop") && i.Message.Contains("2.4"));
         }
 
@@ -598,13 +863,13 @@ namespace Utilities.Tests
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             var objects = Assert.Single(report.Issues, i => i.Message.Contains("object name(s) write the sub-stage the old way, with a full stop"));
             Assert.Equal("Ph1_St04.2_IN_Sheet_Pile_1", objects.Subject);
-            Assert.EndsWith("Fix phasing names\u2026 on the exporter window converts 1 of them: Ph1_St04.2_IN_Sheet_Pile_3; rename the other 2 by hand (Fix phasing names\u2026 converts only the phasing layers under 'Road_Phasing_v.02' and the objects directly in them): Ph1_St04.2_IN_Sheet_Pile_1, Ph1_St04.2_IN_Sheet_Pile_2.", objects.Message);
-            Assert.Contains("It is linked under 'Piles_Group' inside the layer, and Fix phasing names\u2026 leaves such objects as they are", report.Issues.Single(i => i.Subject == "Ph1_St05_IN_Sheet_Pile_4").Message);
-            Assert.Contains("Fix phasing names\u2026 gives the object its layer's tag", report.Issues.Single(i => i.Subject == "Ph1_St05_IN_Sheet_Pile_5").Message);
+            Assert.EndsWith("Rename them by hand: Ph1_St04.2_IN_Sheet_Pile_1, Ph1_St04.2_IN_Sheet_Pile_2, Ph1_St04.2_IN_Sheet_Pile_3.", objects.Message);
+            Assert.EndsWith("Correct the Ph and St numbers by hand, or move the object to the layer for its stage.", report.Issues.Single(i => i.Subject == "Ph1_St05_IN_Sheet_Pile_4").Message);
+            Assert.EndsWith("Correct the Ph and St numbers by hand, or move the object to the layer for its stage.", report.Issues.Single(i => i.Subject == "Ph1_St05_IN_Sheet_Pile_5").Message);
 
-            // All of them directly in phasing layers: the fixer converts them all.
+            // Directly in a phasing layer too: renamed by hand.
             var direct = PlannerNamingValidator.Validate(new[] { InLayer("Ph1_St04.2_IN_Sheet_Pile_3", layer, group) }, Today);
-            Assert.EndsWith("Fix phasing names\u2026 on the exporter window converts them: Ph1_St04.2_IN_Sheet_Pile_3.", Assert.Single(direct.Issues).Message);
+            Assert.EndsWith("Rename them by hand: Ph1_St04.2_IN_Sheet_Pile_3.", Assert.Single(direct.Issues).Message);
         }
 
         [Fact]
@@ -622,32 +887,20 @@ namespace Utilities.Tests
                 InLayer("Ph1_St06_IN_Sheet_Pile_3", copy, "_01_Zone5_Copy", second),   // the wrong stage, under the second top node
                 InLayer("Ph1_St06_IN_Sheet_Pile_4", layer, "_01_Zone5", first)         // the wrong stage, under the first
             };
-            foreach (var top in new[] { null, first })
+            // Whichever top node the old rules read (the first, the export's own choice, or none), no button corrects them now:
+            // every one is renamed by hand.
+            foreach (var top in new[] { null, first, second, string.Empty })
             {
                 var report = PlannerNamingValidator.Validate(scene, Today, top);
                 foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
-                Assert.EndsWith("Fix phasing names\u2026 on the exporter window converts 1 of them: " + layer
-                    + "; rename the other 1 by hand (Fix phasing names\u2026 converts only the phasing layers under '" + first + "' and the objects directly in them): " + copy + ".",
+                Assert.EndsWith("Rename them by hand: " + layer + ", " + copy + ".",
                     Assert.Single(report.Issues, i => i.Message.Contains("group name(s) write the sub-stage the old way, with a full stop")).Message);
-                Assert.EndsWith("converts 1 of them: Ph1_St04.2_IN_Sheet_Pile_1; rename the other 1 by hand (Fix phasing names\u2026 converts only the phasing layers under '" + first
-                    + "' and the objects directly in them): Ph1_St05.2_IN_Sheet_Pile_2.",
+                Assert.EndsWith("Rename them by hand: Ph1_St04.2_IN_Sheet_Pile_1, Ph1_St05.2_IN_Sheet_Pile_2.",
                     Assert.Single(report.Issues, i => i.Message.Contains("object name(s) write the sub-stage the old way, with a full stop")).Message);
-                var byHand = report.Issues.Single(i => i.Subject == "Ph1_St06_IN_Sheet_Pile_3").Message;
-                Assert.Contains("The layer is under '" + second + "', and Fix phasing names\u2026 corrects only '" + first + "': correct the Ph and St numbers by hand", byHand);
-                Assert.DoesNotContain("gives the object its layer's tag", byHand);
-                Assert.Contains("Fix phasing names\u2026 gives the object its layer's tag", report.Issues.Single(i => i.Subject == "Ph1_St06_IN_Sheet_Pile_4").Message);
+                Assert.EndsWith("Correct the Ph and St numbers by hand, or move the object to the layer for its stage.", report.Issues.Single(i => i.Subject == "Ph1_St06_IN_Sheet_Pile_3").Message);
+                Assert.EndsWith("Correct the Ph and St numbers by hand, or move the object to the layer for its stage.", report.Issues.Single(i => i.Subject == "Ph1_St06_IN_Sheet_Pile_4").Message);
+                Assert.DoesNotContain(report.Issues, i => i.Message.Contains("Fix phasing names"));
             }
-
-            // The fixer's own choice wins (here the second), and with no top node to correct, everything is by hand.
-            var chosen = PlannerNamingValidator.Validate(scene, Today, second);
-            Assert.Contains("converts 1 of them: " + copy + "; rename the other 1 by hand (Fix phasing names\u2026 converts only the phasing layers under '" + second + "'",
-                chosen.Issues.Single(i => i.Message.Contains("group name(s) write the sub-stage the old way, with a full stop")).Message);
-            var none = PlannerNamingValidator.Validate(scene, Today, string.Empty);
-            Assert.Contains("Rename them by hand (Fix phasing names\u2026 converts only the phasing layers and the objects directly in them)",
-                none.Issues.Single(i => i.Message.Contains("group name(s) write the sub-stage the old way, with a full stop")).Message);
-            Assert.DoesNotContain(none.Issues, i => i.Message.Contains("gives the object its layer's tag"));
-            Assert.Contains("The layer is under '" + first + "', which Fix phasing names\u2026 does not correct: correct the Ph and St numbers by hand",
-                none.Issues.Single(i => i.Subject == "Ph1_St06_IN_Sheet_Pile_4").Message);
         }
 
         [Fact]
@@ -1043,9 +1296,9 @@ namespace Utilities.Tests
         }
 
         /// <summary>
-        /// An object in a phasing layer whose ID only Fix phasing names reads (a full stop after the phase) is unfiled for
-        /// the Planner; the hint is about the layer's ID, which the fixer corrects (or, under a second top node, is renamed
-        /// by hand), not the generic "needs an order number and dates".
+        /// An object in a phasing layer whose ID only the old phasing rules read (a full stop after the phase) is unfiled for
+        /// the Planner; the hint is about the layer's ID, to rename by hand (under any top node), not the generic "needs an
+        /// order number and dates".
         /// </summary>
         [Fact]
         public void AnObjectInALayerOnlyTheFixerReadsIsToldAboutTheLayersId()
@@ -1061,10 +1314,10 @@ namespace Utilities.Tests
             foreach (var issue in report.Issues) output.WriteLine(issue.ToString());
             Assert.Equal(2, report.UnfiledObjects);
             Assert.Equal("'Ph6_St01.2_IN_Kerbs' is not inside a dated group, so the Planner lists it as unfiled and cannot schedule it. Its layer '" + layer
-                + "' has a phase and stage ID the Planner cannot read (a full stop after the phase number): Fix phasing names\u2026 on the exporter window corrects it.",
+                + "' has a phase and stage ID the Planner cannot read (a full stop after the phase number): rename it by hand to 06_01_2_<name>_DD-MM-YY[_DD-MM-YY].",
                 report.Issues.Single(i => i.Subject == "Ph6_St01.2_IN_Kerbs" && i.Message.Contains("unfiled")).Message);
-            Assert.EndsWith("Its layer '" + copy + "' has a phase and stage ID the Planner cannot read (a full stop after the phase number): rename it by hand to 06_02_1_<name>_DD-MM-YY[_DD-MM-YY] "
-                + "(Fix phasing names\u2026 corrects only the layers under 'Road_Phasing_v.02').", report.Issues.Single(i => i.Subject == "Ph6_St02.1_IN_Infill" && i.Message.Contains("unfiled")).Message);
+            Assert.EndsWith("Its layer '" + copy + "' has a phase and stage ID the Planner cannot read (a full stop after the phase number): rename it by hand to "
+                + "06_02_1_<name>_DD-MM-YY[_DD-MM-YY].", report.Issues.Single(i => i.Subject == "Ph6_St02.1_IN_Infill" && i.Message.Contains("unfiled")).Message);
             Assert.DoesNotContain(report.Issues, i => i.Message.Contains("needs an order number and dates"));
         }
 
@@ -1130,6 +1383,7 @@ namespace Utilities.Tests
                 Assert.StartsWith(ReferenceRemovalsWithoutLayer, noLayer.Message);
                 Assert.DoesNotContain(warnings, w => w.Message.Contains("neither tag matches"));
                 Assert.DoesNotContain(warnings, w => w.Message.Contains("an install tag"));
+                Assert.DoesNotContain(report.Issues, w => w.Message.Contains("object(s) are taken away and put back in one stage"));
                 if (underscored)
                 {
                     Assert.Single(warnings);

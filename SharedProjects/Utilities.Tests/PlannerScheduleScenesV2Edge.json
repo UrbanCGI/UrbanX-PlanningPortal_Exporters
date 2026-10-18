@@ -1,0 +1,228 @@
+[
+ {
+  "id": "unicode-own-name-order",
+  "about": "Own names that differ only in what the Planner sort ignores or folds: a decomposed accent (e and U+0301), a zero-width space (U+200B), a Mongolian vowel separator (U+180E), Greek capitals and small letters, fullwidth letters, a Roman numeral. The D5 order, so the slots.",
+  "rules": [
+   "3.3 group 1 natural order",
+   "3.4 even split"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-05",
+  "layerDates": {
+   "03_01": {
+    "start": "2026-10-06",
+    "finish": "2026-10-06",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "03_01_Kerbs",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerc",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Ke\u0301rb",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb\u200b_2",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb_10",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_\u0394T_2",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_\u03b4T_1",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_\uff2berb_3",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb\u180e_4",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Wall_\u2162",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Wall_II",
+    "parent": 0,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "duplicate-names-order",
+  "about": "Two pairs of objects whose activity names compare equal (Kerb01 and Kerb1; Gate and gate), met A B B A: the duplicate names list, in the order of first copy.",
+  "rules": [
+   "3.7 report"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-05",
+  "layerDates": {
+   "03_01": {
+    "start": "2026-10-06",
+    "finish": "2026-10-07",
+    "tbc": false
+   }
+  },
+  "nodes": [
+   {
+    "name": "03_01_Kerbs",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerb01",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb1",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb1",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Kerb01",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Gate",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_gate",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_gate",
+    "parent": 0,
+    "mesh": true
+   },
+   {
+    "name": "IN_Gate",
+    "parent": 0,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "same-name-folders",
+  "about": "Two list folders of one name, one at the top (TBC) and one in a group, sharing layer ID 88_01: the removal is filed in the first in outline order, the group's, not TBC. Folders compared by their paths.",
+  "rules": [
+   "3.1 two folders sharing an ID",
+   "3.6 list-only layer"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-05",
+  "layerDates": {
+   "03_01": {
+    "start": "2026-10-06",
+    "finish": "2026-10-08",
+    "tbc": false
+   },
+   "top": {
+    "start": "2026-10-20",
+    "finish": "2026-10-22",
+    "tbc": true
+   },
+   "grp": {
+    "start": "2026-10-10",
+    "finish": "2026-10-11",
+    "tbc": false
+   }
+  },
+  "listOnly": [
+   {
+    "id": "top",
+    "name": "88_01_X"
+   },
+   {
+    "id": "grp",
+    "name": "88_01_X",
+    "parent": "Planner_Group"
+   }
+  ],
+  "nodes": [
+   {
+    "name": "03_01_Kerbs",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerb_RM_88_01",
+    "parent": 0,
+    "mesh": true
+   }
+  ]
+ },
+ {
+  "id": "shared-id-stored-order",
+  "about": "Two Planner folders share layer ID 03_09, stored 03_09_Kerbs first: Generate dates the layer's work by the first in its stored outline order. The parity route gives the folders in stored order; a layer list writes siblings by name, so it would give 03_09_Alt first (a Planner change: see the fix report).",
+  "rules": [
+   "3.1 two folders sharing an ID"
+  ],
+  "kind": "generate",
+  "projectStart": "2026-10-05",
+  "layerDates": {
+   "03_09": {
+    "start": "2026-10-07",
+    "finish": "2026-10-19",
+    "tbc": false
+   },
+   "alt": {
+    "start": "2026-10-13",
+    "finish": "2026-10-19",
+    "tbc": false
+   }
+  },
+  "listOnly": [
+   {
+    "id": "alt",
+    "name": "03_09_Alt"
+   }
+  ],
+  "nodes": [
+   {
+    "name": "03_09_Kerbs",
+    "parent": -1,
+    "mesh": false
+   },
+   {
+    "name": "IN_Kerb_A",
+    "parent": 0,
+    "mesh": true
+   }
+  ]
+ }
+]

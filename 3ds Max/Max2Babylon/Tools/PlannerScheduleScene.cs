@@ -10,10 +10,12 @@ namespace Max2Babylon
     /// UrbanCGI fork: the 3ds Max side of the Schedule tab. Reads the scene into the layer builder's model (every node with
     /// its handle, parent, layer, helper and shape flags, planner_id, hidden and Do not export; every Max layer with its
     /// parent; the scene's Export hidden objects), keeps the last imported layer list, the layers added in Max and the
-    /// Planner workspace's project start with the scene, selects nodes, and runs a build, link, IN / RM rename or Add layer plan as one MAXScript batch. Every
-    /// decision is made by <see cref="PlannerLayerPlanner"/>, <see cref="PlannerLinkPlanner"/>, <see cref="PlannerSchedule"/>,
-    /// <see cref="PlannerTagEdit"/> and <see cref="PlannerAddLayer"/> and every script by <see cref="PlannerLayerScript"/>,
-    /// <see cref="PlannerLinkScript"/> and <see cref="PlannerTagEdit"/> (shared, tested); this file only reads and runs.
+    /// Planner workspace's project start with the scene, selects nodes, runs a link, IN / RM rename, Add layer or Clean up
+    /// scene graph plan (with the Planner's list, the layers and helpers too) as one MAXScript batch, and saves a copy of the scene before a clean-up. Every decision is made by
+    /// <see cref="PlannerLayerPlanner"/>, <see cref="PlannerLinkPlanner"/>, <see cref="PlannerSchedule"/>, <see cref="PlannerTagEdit"/>,
+    /// <see cref="PlannerAddLayer"/> and <see cref="PlannerCleanUp"/> and every script by <see cref="PlannerLayerScript"/>,
+    /// <see cref="PlannerLinkScript"/>, <see cref="PlannerTagEdit"/> and <see cref="PlannerCleanUpScript"/> (shared, tested);
+    /// this file only reads and runs.
     /// </summary>
     internal static class PlannerScheduleScene
     {
@@ -254,7 +256,7 @@ namespace Max2Babylon
             }
         }
 
-        /// <summary>Keeps the Planner workspace's project start with the scene (null: none given, the earliest dated layer is assumed).</summary>
+        /// <summary>Keeps the Planner workspace's project start with the scene (null: none given; the Schedule tab's preview starts today).</summary>
         public static void SaveProjectStart(DateTime? start)
         {
             EnsureLoaded();
@@ -344,21 +346,22 @@ namespace Max2Babylon
             }
         }
 
-        /// <summary>Makes an added layer and its helper with Build layers and helpers' batch (one undo record).</summary>
+        /// <summary>Makes an added layer and its helper with the layer builder's batch (<see cref="PlannerLayerScript"/>, one undo record).</summary>
         public static PlannerLayerResult ApplyAddLayer(PlannerAddLayerPlan plan)
         {
             return ApplyBuild(plan.Build);
         }
 
         /// <summary>
-        /// Carries out a build plan in one MAXScript batch (one undo record). The caller holds the scene first if it
-        /// wants Edit > Fetch to restore it, and plans again afterwards to see what is left.
+        /// Carries out a layer builder's plan (Add layer's) in one MAXScript batch (one undo record). The caller holds the
+        /// scene first if it wants Edit > Fetch to restore it, and plans again afterwards to see what is left. The Planner's list
+        /// is built by Clean up scene graph's batch (<see cref="ApplyCleanUp"/>).
         /// </summary>
         public static PlannerLayerResult ApplyBuild(PlannerLayerPlan plan)
         {
             var batch = PlannerLayerScript.Build(plan, "__planner_build_" + Guid.NewGuid().ToString("N").Substring(0, 8) + "_");
             string error;
-            var output = Run(batch.Script, "Build layers and helpers", out error);
+            var output = Run(batch.Script, "Add layer", out error);
             var result = PlannerLayerScript.ReadResult(batch, output);
             if (error != null && result.Aborted == null)
             {
@@ -387,6 +390,60 @@ namespace Max2Babylon
                 result.Aborted = PhasingFixScript.OneLine(output, 300);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Carries out Clean up scene graph's operations (<paramref name="result"/>, which <paramref name="plan"/> resolved) in
+        /// one MAXScript batch, one undo record. The caller saves a copy and holds the scene first when the modeller asks.
+        /// </summary>
+        public static PlannerCleanUpOutcome ApplyCleanUp(PlannerCleanUpPlan plan, PlannerCleanUpResult result)
+        {
+            var batch = PlannerCleanUpScript.Build(plan, result, "__planner_cleanup_" + Guid.NewGuid().ToString("N").Substring(0, 8) + "_");
+            string error;
+            var output = Run(batch.Script, PlannerCleanUp.UndoLabel, out error);
+            var outcome = PlannerCleanUpScript.ReadResult(batch, output);
+            if (error != null && outcome.Aborted == null)
+            {
+                outcome.Aborted = error;
+            }
+            if (!outcome.Completed && !string.IsNullOrEmpty(output) && outcome.Aborted == null)
+            {
+                outcome.Aborted = PhasingFixScript.OneLine(output, 300);
+            }
+            return outcome;
+        }
+
+        /// <summary>
+        /// Saves the scene as it is now to <paramref name="path"/> (saveMaxFile with useNewFile off), so the open scene keeps its
+        /// own file name and its unsaved changes stay marked: null when saved, else why not.
+        /// </summary>
+        public static string SaveCopy(string path)
+        {
+            var literal = PhasingFixScript.Quote(path);
+            if (string.IsNullOrEmpty(path) || literal == null)
+            {
+                return "the file name holds a character that cannot be passed to MAXScript";
+            }
+            string output;
+            try
+            {
+                var script = "(saveMaxFile " + literal + " clearNeedSaveFlag:false useNewFile:false quiet:true) as string";
+#if MAX2022_OR_NEWER
+                output = ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(script, ManagedServices.MaxscriptSDK.ScriptSource.NotSpecified);
+#else
+                output = ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(script);
+#endif
+            }
+            catch (Exception e)
+            {
+                return e.Message;
+            }
+            var answer = (output ?? string.Empty).Trim().Trim('"');
+            if (!string.Equals(answer, "true", StringComparison.OrdinalIgnoreCase) || !System.IO.File.Exists(path))
+            {
+                return "3ds Max did not save it" + (string.IsNullOrEmpty(answer) ? string.Empty : " (it answered " + PhasingFixScript.OneLine(answer, 200) + ")");
+            }
+            return null;
         }
 
         private static string Run(string script, string what, out string error)

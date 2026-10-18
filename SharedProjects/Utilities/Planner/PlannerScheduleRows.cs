@@ -16,10 +16,24 @@ namespace Utilities.Planner
         Scene,
         /// <summary>A phasing layer of the scene the Planner's list does not have.</summary>
         Unlisted,
-        /// <summary>A dated group the Planner reads that no row stands for (outside the phasing tree).</summary>
-        Outside,
-        /// <summary>Work no dated layer places: installs at the project start, removals after the end.</summary>
-        ByRule
+        /// <summary>A layer the Planner reads that no row stands for (outside the phasing tree).</summary>
+        Outside
+    }
+
+    /// <summary>Why the Schedule tab's tree highlights a row TBC (D21), or None.</summary>
+    public enum PlannerRowTbc
+    {
+        /// <summary>Not highlighted.</summary>
+        None,
+        /// <summary>
+        /// The Planner's list marks it TBC: a layer the Planner has not dated yet (on its placeholder day at the start of the
+        /// schedule) or one dated but not confirmed (D13). Once filled, also a row whose layer the preview flags TBC.
+        /// </summary>
+        NotSettled,
+        /// <summary>A layer of the scene the Planner's list does not have (one added in 3ds Max, or one the list leaves out): the Planner has no dates for it yet.</summary>
+        NotInList,
+        /// <summary>A layer of the scene while no layer list is imported: the Planner's dates for it are not known here.</summary>
+        NoList
     }
 
     /// <summary>One row of the Schedule tab: a layer, its status, and the objects in its IN and RM columns.</summary>
@@ -47,6 +61,35 @@ namespace Utilities.Planner
         public PlannerScheduleLayer Layer;
         public readonly List<PlannerScheduleActivity> In = new List<PlannerScheduleActivity>();
         public readonly List<PlannerScheduleActivity> Rm = new List<PlannerScheduleActivity>();
+        /// <summary>
+        /// On the new names, the row's own dates and where they come from: the list's Start and Finish as its one date reader
+        /// reads them (the Planner), else none. No date comes from 3ds Max (D20).
+        /// </summary>
+        public DateTime? StartDate;
+        public DateTime? FinishDate;
+        public PlannerDateSource DateSource;
+
+        /// <summary>
+        /// Why the tree highlights the row TBC (D21): a row the Planner's list marks TBC (or, once filled, whose layer the
+        /// preview flags TBC) has dates the Planner has not settled yet; a layer of the scene the list does not have (a layer
+        /// added in Max, one the list leaves out, one read outside the phasing tree) has none from the Planner yet, and so has
+        /// every layer of the scene while no list is imported. Groups the list does not mark are not highlighted.
+        /// </summary>
+        public PlannerRowTbc TbcMark
+        {
+            get
+            {
+                if (Source == PlannerScheduleRowSource.List)
+                {
+                    return Tbc ? PlannerRowTbc.NotSettled : PlannerRowTbc.None;
+                }
+                if (string.Equals(Kind, "Group", StringComparison.OrdinalIgnoreCase))
+                {
+                    return PlannerRowTbc.None;
+                }
+                return Source == PlannerScheduleRowSource.Scene ? PlannerRowTbc.NoList : PlannerRowTbc.NotInList;
+            }
+        }
 
         public int InCount
         {
@@ -59,15 +102,15 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// A row whose IN and RM can be edited: a layer the Planner reads there (by its helper), or a layer of the scene
-        /// whose name reads as a layer ID. Edits target the layer as the Planner reads it (<see cref="PlannerTagTarget.For"/>).
+        /// A row whose IN and RM can be edited, on the new names: a layer of the preview (by its helper, its list row, or its
+        /// layer ID; one only the Planner's list has included), or a layer of the scene whose name reads as a layer ID. Edits
+        /// target the layer as the preview reads it (<see cref="PlannerTagTarget.For"/>).
         /// </summary>
         public bool Editable
         {
             get
             {
-                return Source != PlannerScheduleRowSource.ByRule
-                    && (Layer != null || (LayerName != null && PlannerNaming.ParseLayerName(LayerName) != null));
+                return Layer != null ? Layer.Id != null : LayerName != null && PlannerNaming.ParseLayerNameV2(LayerName) != null;
             }
         }
     }
@@ -75,8 +118,8 @@ namespace Utilities.Planner
     /// <summary>
     /// The Schedule tab's rows: the Planner's list as a tree (or, with no list, the scene's phasing tree), the layers
     /// added in Max under their parents, the scene's phasing layers the list does not have, and, once filled, each row's
-    /// IN and RM (the objects whose install or removal its dates place, as Generate from model reads them), with rows for
-    /// dated groups no row stands for and for the work no dated layer places. Pure logic, no 3ds Max.
+    /// IN and RM (the objects whose install or removal its layer's folder holds, as Generate from model files them), with
+    /// rows for the layers the Planner reads that no row stands for. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerScheduleRows
     {
@@ -84,10 +127,13 @@ namespace Utilities.Planner
 
         /// <summary>
         /// The tree: <paramref name="list"/> with <paramref name="plan"/> (its statuses in the scene) when a list is
-        /// imported, else the scene's phasing tree; the added layers under their parents. Null schedule: no IN / RM yet.
+        /// imported, else the scene's phasing tree; the added layers under their parents. Null schedule: no IN / RM yet. On
+        /// the new names (<paramref name="naming"/>), rows carry their list dates and no dates from names; an added layer has none.
         /// </summary>
-        public static List<PlannerScheduleRow> Tree(PlannerLayerList list, PlannerLayerPlan plan, PlannerSceneModel scene, IList<PlannerAddedLayer> added, PlannerSchedule schedule)
+        public static List<PlannerScheduleRow> Tree(PlannerLayerList list, PlannerLayerPlan plan, PlannerSceneModel scene, IList<PlannerAddedLayer> added, PlannerSchedule schedule,
+            PlannerNamingKind naming = PlannerNamingKind.Old)
         {
+            bool newNames = naming == PlannerNamingKind.New;
             var rows = new List<PlannerScheduleRow>();
             var addedList = (added ?? new List<PlannerAddedLayer>()).ToList();
             var addedNames = new HashSet<string>(addedList.Select(a => a.Layer), StringComparer.OrdinalIgnoreCase);
@@ -113,7 +159,10 @@ namespace Utilities.Planner
                         State = rowPlan != null ? rowPlan.State : row.HasProblem ? PlannerRowState.Problem : (PlannerRowState?)null,
                         ListRow = row,
                         RowPlan = rowPlan,
-                        Unit = unit
+                        Unit = unit,
+                        StartDate = newNames ? row.StartDate : null,
+                        FinishDate = newNames ? row.FinishDate : null,
+                        DateSource = newNames && (row.StartDate.HasValue || row.FinishDate.HasValue) ? PlannerDateSource.Planner : PlannerDateSource.None
                     });
                 }
             }
@@ -125,38 +174,44 @@ namespace Utilities.Planner
                     {
                         continue;
                     }
-                    rows.Add(SceneRow(pair.Key, pair.Value, PlannerScheduleRowSource.Scene, "In the scene"));
+                    rows.Add(SceneRow(pair.Key, pair.Value, PlannerScheduleRowSource.Scene, "In the scene", newNames));
                 }
             }
 
-            // The added layers, each after its parent's rows (its parent's subtree), else at the end.
+            // The added layers, each among its parent's rows in the order the Planner sorts names in (D24: the tool sorts the
+            // rows itself, never in the order they were added); one whose parent is the phasing root among the top rows, and
+            // one whose parent the tree does not have at the end.
             foreach (var layer in addedList)
             {
                 var unit = scene != null ? scene.UnitOfLayer(layer.Layer) : null;
+                // No dates: the Planner has none for it until its list has it (D20, D21).
                 var row = new PlannerScheduleRow
                 {
                     Source = PlannerScheduleRowSource.Added,
                     Name = layer.Layer,
                     LayerName = unit != null ? unit.Name : null,
                     Kind = layer.Kind,
-                    Start = layer.Start,
-                    Finish = layer.Finish,
-                    Tbc = layer.Tbc,
                     Status = unit != null ? AddedStatus : "Added in Max, and no longer in the scene",
                     Added = layer,
-                    Unit = unit
+                    Unit = unit,
                 };
-                int parent = string.IsNullOrEmpty(layer.ParentLayer) ? -1
+                bool atTop = string.IsNullOrEmpty(layer.ParentLayer);
+                int parent = atTop ? -1
                     : rows.FindIndex(r => r.LayerName != null && string.Equals(r.LayerName, layer.ParentLayer, StringComparison.OrdinalIgnoreCase));
-                if (parent < 0)
+                if (parent < 0 && !atTop)
                 {
                     rows.Add(row);
                     continue;
                 }
-                row.Depth = rows[parent].Depth + 1;
+                row.Depth = parent < 0 ? 0 : rows[parent].Depth + 1;
+                // Among the parent's rows (its subtree), before the first of its children that sorts after it.
                 int at = parent + 1;
-                while (at < rows.Count && rows[at].Depth > rows[parent].Depth)
+                while (at < rows.Count && (parent < 0 || rows[at].Depth > rows[parent].Depth))
                 {
+                    if (rows[at].Depth == row.Depth && PlannerNaturalOrder.Compare(rows[at].Name, row.Name) > 0)
+                    {
+                        break;
+                    }
                     at++;
                 }
                 rows.Insert(at, row);
@@ -165,8 +220,12 @@ namespace Utilities.Planner
             return rows;
         }
 
-        /// <summary>The scene's phasing layers the list does not have, the added ones left out (the tree shows them).</summary>
-        public static List<PlannerScheduleRow> Unlisted(PlannerLayerPlan plan, IList<PlannerAddedLayer> added, PlannerSchedule schedule)
+        /// <summary>
+        /// The scene's phasing layers the list does not have, the added ones left out (the tree shows them), in the order the
+        /// Planner sorts names in (D24).
+        /// </summary>
+        public static List<PlannerScheduleRow> Unlisted(PlannerLayerPlan plan, IList<PlannerAddedLayer> added, PlannerSchedule schedule,
+            PlannerNamingKind naming = PlannerNamingKind.Old)
         {
             var addedNames = new HashSet<string>((added ?? new List<PlannerAddedLayer>()).Select(a => a.Layer), StringComparer.OrdinalIgnoreCase);
             var rows = new List<PlannerScheduleRow>();
@@ -174,9 +233,9 @@ namespace Utilities.Planner
             {
                 return rows;
             }
-            foreach (var item in plan.NotInList.Where(n => !addedNames.Contains(n.Name)))
+            foreach (var item in PlannerNaturalOrder.StableSort(plan.NotInList.Where(n => !addedNames.Contains(n.Name)), (a, b) => PlannerNaturalOrder.Compare(a.Name, b.Name)))
             {
-                var row = SceneRow(item.Unit, 0, PlannerScheduleRowSource.Unlisted, item.Note);
+                var row = SceneRow(item.Unit, 0, PlannerScheduleRowSource.Unlisted, item.Note, naming == PlannerNamingKind.New);
                 row.UnlistedItem = item;
                 rows.Add(row);
             }
@@ -185,9 +244,60 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// The rows for what no row of <paramref name="shown"/> stands for: dated groups the Planner reads outside the
-        /// phasing tree, installs no dated layer places (at the project start) and removals no dated layer places (after
-        /// the end).
+        /// What the tab says above its list of the scene's phasing layers the Planner's list does not have: <paramref name="unlisted"/>
+        /// of them listed there, and <paramref name="added"/> more added in Max, which the tree shows instead (the summary above
+        /// counts both, so the two always agree).
+        /// </summary>
+        public static string UnlistedText(int unlisted, int added)
+        {
+            var apart = added > 0 ? ", apart from " + PhasingFixScript.Count(added, "layer", "layers") + " added in Max, which the tree shows" : string.Empty;
+            return unlisted == 0
+                ? "Every phasing layer in the scene is in the Planner's list" + apart + "."
+                : "In the scene but not in the Planner's list \u2014 left as they are (" + unlisted.ToString(CultureInfo.InvariantCulture) + ")" + apart + ":";
+        }
+
+        public const string UnlistedAtWorkStatus = "Not in the Planner's list \u2014 left as it is; the Planner reads its work";
+
+        /// <summary>
+        /// The rows the tree adds after its own for the scene's phasing layers the list does not have whose work the Planner
+        /// reads (filled: the schedule has a layer there), so that the Gantt beside the tree charts every layer the scrubber
+        /// finds at work. Each is a copy of its row in <paramref name="unlisted"/> (which the list of such layers below the
+        /// tree keeps), at the top level, in that order.
+        /// </summary>
+        public static List<PlannerScheduleRow> UnlistedAtWork(IEnumerable<PlannerScheduleRow> unlisted)
+        {
+            var rows = new List<PlannerScheduleRow>();
+            foreach (var row in (unlisted ?? Enumerable.Empty<PlannerScheduleRow>()).Where(r => r.Layer != null))
+            {
+                var copy = new PlannerScheduleRow
+                {
+                    Source = PlannerScheduleRowSource.Unlisted,
+                    Depth = 0,
+                    Name = row.Name,
+                    LayerName = row.LayerName,
+                    Kind = row.Kind,
+                    Start = row.Start,
+                    Finish = row.Finish,
+                    Tbc = row.Tbc,
+                    Status = UnlistedAtWorkStatus,
+                    Unit = row.Unit,
+                    UnlistedItem = row.UnlistedItem,
+                    Layer = row.Layer,
+                    StartDate = row.StartDate,
+                    FinishDate = row.FinishDate,
+                    DateSource = row.DateSource
+                };
+                copy.In.AddRange(row.In);
+                copy.Rm.AddRange(row.Rm);
+                rows.Add(copy);
+            }
+            return rows;
+        }
+
+        /// <summary>
+        /// The rows for what no row of <paramref name="shown"/> stands for: the layers of the scene the Planner reads outside
+        /// the phasing tree. On the new names every piece of work is filed in a layer's folder (the old names' installs and
+        /// removals no dated layer placed went with their engine), so no other row is needed.
         /// </summary>
         public static List<PlannerScheduleRow> Extra(IEnumerable<PlannerScheduleRow> shown, PlannerSchedule schedule)
         {
@@ -197,7 +307,8 @@ namespace Utilities.Planner
                 return rows;
             }
             var mapped = new HashSet<PlannerScheduleLayer>(shown.Where(r => r.Layer != null).Select(r => r.Layer));
-            foreach (var layer in schedule.Layers.Where(l => !mapped.Contains(l)))
+            // A folder of the list's with no work and no scene layer has its own list row already.
+            foreach (var layer in schedule.Layers.Where(l => !mapped.Contains(l) && l.InScene))
             {
                 var row = new PlannerScheduleRow
                 {
@@ -208,45 +319,114 @@ namespace Utilities.Planner
                     Start = layer.Dated ? PlannerNaming.ToIsoDate(layer.Start) : string.Empty,
                     Finish = layer.Dated ? PlannerNaming.ToIsoDate(layer.End) : string.Empty,
                     Tbc = layer.Tbc,
-                    Status = "A dated group the Planner reads, outside the phasing tree",
-                    Layer = layer
+                    Status = "A layer the Planner reads, outside the phasing tree",
+                    Layer = layer,
                 };
+                if (layer.DateSource != PlannerDateSource.None)
+                {
+                    row.StartDate = layer.Start;
+                    row.FinishDate = layer.End;
+                    row.DateSource = layer.DateSource;
+                }
                 row.In.AddRange(schedule.ColumnOf(layer, PlannerTaskType.Install));
                 row.Rm.AddRange(schedule.ColumnOf(layer, PlannerTaskType.Dismantle));
-                rows.Add(row);
-            }
-            var installs = schedule.ByRule(PlannerTaskType.Install);
-            if (installs.Count > 0)
-            {
-                var row = new PlannerScheduleRow
-                {
-                    Source = PlannerScheduleRowSource.ByRule,
-                    Name = "(no dated layer: at the project start)",
-                    Start = PlannerNaming.ToIsoDate(schedule.ProjectStart),
-                    Tbc = installs.Any(a => a.Tbc),
-                    Status = "Installs whose phase and stage no dated layer has: the Planner puts them at the project start (TBC unless phase 0)"
-                };
-                row.In.AddRange(installs);
-                rows.Add(row);
-            }
-            var removals = schedule.ByRule(PlannerTaskType.Dismantle);
-            if (removals.Count > 0)
-            {
-                var row = new PlannerScheduleRow
-                {
-                    Source = PlannerScheduleRowSource.ByRule,
-                    Name = "(no dated layer: after the end of the works)",
-                    Start = schedule.WorksEnd.HasValue ? PlannerNaming.ToIsoDate(schedule.WorksEnd.Value.AddDays(1)) : string.Empty,
-                    Tbc = true,
-                    Status = "Removals whose phase and stage no dated layer has: the Planner parks them the day after the works end, TBC"
-                };
-                row.Rm.AddRange(removals);
                 rows.Add(row);
             }
             return rows;
         }
 
-        // Each row's layer of the schedule (by its helper, else by its label) and its IN and RM.
+        /// <summary>
+        /// The tree's tooltip for a row highlighted TBC (D21): why the Planner has no settled dates for it. Null for
+        /// <see cref="PlannerRowTbc.None"/>.
+        /// </summary>
+        public static string TbcText(PlannerRowTbc mark)
+        {
+            switch (mark)
+            {
+                case PlannerRowTbc.NotSettled:
+                    return "TBC: the Planner has not settled this layer's dates yet.";
+                case PlannerRowTbc.NotInList:
+                    return "TBC: this layer is not in the Planner's list yet, so the Planner has no dates for it.";
+                case PlannerRowTbc.NoList:
+                    return "TBC: no layer list is imported, so the Planner's dates for this layer are not known here.";
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// What the tab says of a scene on the new names before Fill IN / RM: where the preview's dates will come from, by the
+        /// precedence of <see cref="PlannerFolders"/>. With no layer list imported, every layer is parked, so it says so rather
+        /// than speak of the list's dates.
+        /// </summary>
+        public static string NewNamesFillNote(PlannerLayerList list)
+        {
+            const string scene = "The scene uses the new names (layer IDs, dates held in the Planner)";
+            if (list != null && list.Usable)
+            {
+                return scene + ": Fill IN / RM previews the Planner's first Generate over the list's dates.";
+            }
+            return scene + ", and no layer list is imported: Fill IN / RM previews the Planner's first Generate with every layer"
+                + " parked one day each, TBC, in layer order from the project start. Import the Planner's layer list to preview with its dates.";
+        }
+
+        /// <summary>
+        /// The Planner's folders as the new names' preview reads them (spec 5.4, 5.6; <see cref="PlannerScheduleOptions.Folders"/>),
+        /// with each layer's preview dates by precedence:
+        ///  1. its list row (every row, in outline order, in its parent row's folder, TBC as the row says; of rows sharing a
+        ///     layer ID, the preview takes the one the list check keeps, the first in the file), found as Clean up
+        ///     finds it: a row Clean up finds on a helper of another layer ID by its Planner ID stands for that helper's layer,
+        ///     so the layer keeps the row's dates; an undated row's layer is parked, TBC;
+        ///  2. none: the preview parks the layer, one day each in layer order (D12). No date comes from 3ds Max (D20), so a
+        ///     layer added in Max, or any layer while no list is imported, is parked.
+        /// </summary>
+        public static List<PlannerPlanFolder> PlannerFolders(PlannerLayerList list, PlannerLayerPlan plan)
+        {
+            var folders = new List<PlannerPlanFolder>();
+            if (list != null && list.Usable)
+            {
+                var plans = new Dictionary<PlannerLayerRow, PlannerRowPlan>();
+                foreach (var rowPlan in plan != null ? plan.Rows : new List<PlannerRowPlan>())
+                {
+                    plans[rowPlan.Row] = rowPlan;
+                }
+                var byRow = new Dictionary<PlannerLayerRow, PlannerPlanFolder>();
+                foreach (var row in list.Outline())
+                {
+                    var folder = new PlannerPlanFolder { Name = row.Layer, Tbc = row.Tbc, Row = row, Source = PlannerDateSource.Planner };
+                    if (row.Kind != PlannerLayerKind.Group)
+                    {
+                        folder.Start = row.StartDate;
+                        folder.Finish = row.FinishDate;
+                    }
+                    PlannerRowPlan rowPlan;
+                    if (plans.TryGetValue(row, out rowPlan) && rowPlan.MatchedBy == PlannerMatchKind.PlannerId && rowPlan.Unit != null && rowPlan.Unit.Helper != null)
+                    {
+                        var helper = PlannerNaming.ParseLayerNameV2(rowPlan.Unit.Helper.Name);
+                        var own = PlannerNaming.FolderLayerId(row.Layer);
+                        if (helper != null && (own == null || PlannerNaming.LayerIdKey(own) != PlannerNaming.LayerIdKey(helper.Id)))
+                        {
+                            folder.Id = helper.Id;
+                        }
+                    }
+                    byRow[row] = folder;
+                    folders.Add(folder);
+                }
+                foreach (var row in list.Rows)
+                {
+                    PlannerPlanFolder parent;
+                    if (row.Parent != null && byRow.ContainsKey(row) && byRow.TryGetValue(row.Parent, out parent))
+                    {
+                        byRow[row].Parent = parent;
+                    }
+                }
+            }
+            return folders;
+        }
+
+        // Each row's layer of the schedule (by its helper, else by its list row's folder, else by the layer ID of its Max layer,
+        // so a row only the list has finds its folder) and its IN and RM: everything filed in the layer's folder (spec 5.6).
+        // Every schedule is the new names' (the tab fills nothing on the old names, D23).
         private static void Fill(List<PlannerScheduleRow> rows, PlannerSchedule schedule)
         {
             if (schedule == null || !schedule.Usable)
@@ -260,10 +440,14 @@ namespace Utilities.Planner
                 {
                     layer = schedule.LayerOfNode(row.Unit.Helper.Key);
                 }
-                if (layer == null && row.LayerName != null)
+                if (layer == null && row.ListRow != null)
                 {
-                    var parsed = PlannerNaming.ParseLayerName(row.LayerName);
-                    layer = parsed != null ? schedule.Layers.FirstOrDefault(l => l.Label == parsed.Label) : null;
+                    layer = schedule.Layers.FirstOrDefault(l => l.ListRow == row.ListRow);
+                }
+                var id = layer == null && row.LayerName != null ? PlannerNaming.ParseLayerNameV2(row.LayerName) : null;
+                if (id != null)
+                {
+                    layer = schedule.Layers.FirstOrDefault(l => l.InScene && PlannerNaming.LayerIdKey(l.Id) == PlannerNaming.LayerIdKey(id.Id));
                 }
                 row.Layer = layer;
                 row.In.Clear();
@@ -272,12 +456,34 @@ namespace Utilities.Planner
                 {
                     row.In.AddRange(schedule.ColumnOf(layer, PlannerTaskType.Install));
                     row.Rm.AddRange(schedule.ColumnOf(layer, PlannerTaskType.Dismantle));
+                    // The TBC column says what the preview flags (spec 5.8): the list's TBC, and a layer it parks or a new
+                    // layer's folder too.
+                    if (layer.Tbc && !string.Equals(row.Kind, "Group", StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.Tbc = true;
+                    }
                 }
             }
         }
 
-        private static PlannerScheduleRow SceneRow(PlannerSceneUnit unit, int depth, PlannerScheduleRowSource source, string status)
+        private static PlannerScheduleRow SceneRow(PlannerSceneUnit unit, int depth, PlannerScheduleRowSource source, string status, bool newNames)
         {
+            if (newNames)
+            {
+                // The new names: a layer by its ID alone, never dated by its name (dates and TBC there are not read).
+                return new PlannerScheduleRow
+                {
+                    Source = source,
+                    Depth = depth,
+                    Name = unit.Name,
+                    LayerName = unit.Layer != null ? unit.Layer.Name : unit.Name,
+                    Kind = PlannerNaming.ParseLayerNameV2(unit.Name) != null ? "Layer" : "Group",
+                    Status = status ?? string.Empty,
+                    Unit = unit,
+                };
+            }
+            // The old names: a layer by its name as the old reader reads it, but no date or TBC read from it either (D20: every
+            // date comes from the Planner's list; the tab waits for Clean up on such a scene, D23).
             var parsed = PlannerNaming.ParseLayerName(unit.Name);
             return new PlannerScheduleRow
             {
@@ -286,9 +492,6 @@ namespace Utilities.Planner
                 Name = unit.Name,
                 LayerName = unit.Layer != null ? unit.Layer.Name : unit.Name,
                 Kind = parsed != null ? "Layer" : "Group",
-                Start = parsed != null && parsed.Start.HasValue ? PlannerNaming.ToIsoDate(parsed.Start) : string.Empty,
-                Finish = parsed != null && parsed.End.HasValue ? PlannerNaming.ToIsoDate(parsed.End) : string.Empty,
-                Tbc = parsed != null && parsed.Tbc,
                 Status = status ?? string.Empty,
                 Unit = unit
             };

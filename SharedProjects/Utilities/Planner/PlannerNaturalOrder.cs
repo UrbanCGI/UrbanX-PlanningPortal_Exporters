@@ -11,9 +11,12 @@ namespace Utilities.Planner
     /// collation at its first (base) strength: capitals and accents count for nothing, punctuation and spaces sort before
     /// digits and digits before letters, in the order of the table below (generated from Node v26.1.0, ICU 78.3);
     /// a run of digits compares by its number ("St9" before "St10"; "01" is "1"); a few letters stand for two (the ligature ae for a and e);
-    /// control characters count for nothing. Two names that differ only in what counts for nothing compare equal, and a
-    /// sort keeps them in the order it was given (List.Sort is not stable: use <see cref="StableSort{T}"/>). Characters outside
-    /// the table (beyond Latin Extended-B and general punctuation) sort after it, by their code. Pure logic, no 3ds Max.
+    /// control and format characters (zero-width spaces, bidi marks), and the combining marks ICU gives no weight (an accent
+    /// typed after its letter), count for nothing, and every space separator is a space. Two names that differ only in what
+    /// counts for nothing compare equal, and a sort keeps them in the order it was given (List.Sort is not stable: use
+    /// <see cref="StableSort{T}"/>). Characters outside the table (beyond Latin Extended-B and general punctuation) sort as
+    /// their compatibility forms (a fullwidth K as K, a Roman numeral as its letters), else after the table, by the code of
+    /// their small letter. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerNaturalOrder
     {
@@ -63,13 +66,28 @@ namespace Utilities.Planner
             "\u01C0", "\u01C1", "\u01C2", "\u01C3", "\u00B5"
         };
 
-        // Characters that count for nothing.
-        private const string Ignorable =
-            "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u000E\u000F\u0010\u0011\u0012\u0013\u0014" +
-            "\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F\u007F\u0080\u0081\u0082\u0083" +
-            "\u0084\u0086\u0087\u0088\u0089\u008A\u008B\u008C\u008D\u008E\u008F\u0090\u0091\u0092\u0093\u0094" +
-            "\u0095\u0096\u0097\u0098\u0099\u009A\u009B\u009C\u009D\u009E\u009F\u00AD\u202A\u202B\u202C\u202D" +
-            "\u202E\uFEFF";
+        // Characters that count for nothing, as ranges (first, last), generated from Node v26.1.0, ICU 78.3: control and format
+        // characters (the soft hyphen, zero-width spaces and joiners, bidi marks, the byte order mark), and the combining marks
+        // ICU gives no weight at the base strength (an accent typed after its letter, as names pasted from a Mac or a PDF have it).
+        private static readonly int[] IgnorableRanges =
+        {
+            0x0000, 0x0008, 0x000E, 0x001F, 0x007F, 0x0084, 0x0086, 0x009F, 0x00AD, 0x00AD, 0x0300, 0x0362, 0x0483, 0x0489, 0x0591, 0x05BD,
+            0x05BF, 0x05BF, 0x05C1, 0x05C2, 0x05C4, 0x05C5, 0x05C7, 0x05C7, 0x0600, 0x0605, 0x0610, 0x061A, 0x061C, 0x061C, 0x0640, 0x0640,
+            0x064B, 0x065F, 0x0670, 0x0670, 0x06D6, 0x06DD, 0x06DF, 0x06E4, 0x06E7, 0x06E8, 0x06EA, 0x06ED, 0x070F, 0x070F, 0x0711, 0x0711,
+            0x0730, 0x074A, 0x07EB, 0x07F3, 0x07FA, 0x07FA, 0x07FD, 0x07FD, 0x0818, 0x0819, 0x081C, 0x082D, 0x0859, 0x085B, 0x0890, 0x0891,
+            0x0897, 0x089F, 0x08CA, 0x0903, 0x093C, 0x093C, 0x0951, 0x0954, 0x0981, 0x0983, 0x09BC, 0x09BC, 0x09FE, 0x09FE, 0x0A01, 0x0A03,
+            0x0A3C, 0x0A3C, 0x0A70, 0x0A71, 0x0A81, 0x0A83, 0x0ABC, 0x0ABC, 0x0AFA, 0x0AFF, 0x0B01, 0x0B03, 0x0B3C, 0x0B3C, 0x0B55, 0x0B55,
+            0x0B82, 0x0B82, 0x0C00, 0x0C04, 0x0C3C, 0x0C3C, 0x0C81, 0x0C83, 0x0CBC, 0x0CBC, 0x0CF3, 0x0CF3, 0x0D00, 0x0D03, 0x0D81, 0x0D83,
+            0x0E47, 0x0E4E, 0x0EC8, 0x0ECE, 0x0F18, 0x0F19, 0x0F35, 0x0F35, 0x0F37, 0x0F37, 0x0F39, 0x0F39, 0x0F3E, 0x0F3F, 0x0F7E, 0x0F7F,
+            0x0F82, 0x0F83, 0x0F86, 0x0F87, 0x0FC6, 0x0FC6, 0x1036, 0x1038, 0x135D, 0x135F, 0x17B4, 0x17B5, 0x17C6, 0x17D1, 0x17D3, 0x17D3,
+            0x17DD, 0x17DD, 0x180A, 0x180F, 0x1939, 0x193B, 0x1A74, 0x1A7C, 0x1A7F, 0x1A7F, 0x1AB0, 0x1ABE, 0x1AC1, 0x1ACB, 0x1ACF, 0x1ADD,
+            0x1AE0, 0x1AEB, 0x1B00, 0x1B04, 0x1B34, 0x1B34, 0x1B6B, 0x1B73, 0x1B80, 0x1B82, 0x1BE6, 0x1BE6, 0x1C37, 0x1C37, 0x1CD0, 0x1CE8,
+            0x1CED, 0x1CED, 0x1CF2, 0x1CF4, 0x1CF7, 0x1CF9, 0x1DC0, 0x1DC9, 0x1DCB, 0x1DD1, 0x1DF5, 0x1DFF, 0x200B, 0x200F, 0x202A, 0x202E,
+            0x2060, 0x2064, 0x2066, 0x206F, 0x20D0, 0x20F0, 0x2CEF, 0x2CF1, 0x2D7F, 0x2D7F, 0x302A, 0x302F, 0x3099, 0x309A, 0xA66F, 0xA672,
+            0xA67C, 0xA67D, 0xA6F0, 0xA6F1, 0xA80B, 0xA80B, 0xA880, 0xA881, 0xA8C5, 0xA8C5, 0xA8E0, 0xA8F1, 0xA92B, 0xA92D, 0xA980, 0xA983,
+            0xA9B3, 0xA9B3, 0xAABF, 0xAABF, 0xAAC1, 0xAAC1, 0xABEC, 0xABEC, 0xFB1E, 0xFB1E, 0xFC5E, 0xFC63, 0xFCF2, 0xFCF4, 0xFE00, 0xFE0F,
+            0xFE20, 0xFE2F, 0xFE70, 0xFE74, 0xFE76, 0xFE7F, 0xFEFF, 0xFEFF, 0xFF9E, 0xFF9F, 0xFFF9, 0xFFFB
+        };
 
         // Letters that sort as two.
         private static readonly KeyValuePair<char, string>[] Expansions =
@@ -106,9 +124,17 @@ namespace Utilities.Planner
 
         private static readonly Dictionary<char, int> Rank = BuildRanks();
         private static readonly Dictionary<char, string> Expanded = BuildExpansions();
-        private static readonly HashSet<char> Skipped = new HashSet<char>(Ignorable);
+        private static readonly bool[] Skipped = BuildSkipped();
         // Where a run of digits sorts among single characters: with the digits.
         private static readonly int DigitRank = Rank['0'];
+        // Where every space separator sorts (the no-break, ogham, en, em, thin and other spaces): with the space.
+        private static readonly int SpaceRank = Rank[' '];
+        // Letters of the table ICU sorts as their compatibility forms: the micro sign as the Greek mu, n preceded by an
+        // apostrophe as the apostrophe and n.
+        private static readonly HashSet<char> AsCompatible = new HashSet<char> { (char)0x00B5, (char)0x0149 };
+        // A group's rank is its place in the table times this, so a digit written another way (circled, in a compatibility
+        // form) can sort between the groups, as ICU sorts it: after every number, by its value.
+        private const int RankStep = 10;
         private const int Unknown = 1000000;
 
         /// <summary>The comparer for sorts.</summary>
@@ -222,22 +248,84 @@ namespace Utilities.Planner
                     continue;
                 }
                 i++;
-                if (Skipped.Contains(ch))
-                {
-                    continue;
-                }
-                string two;
-                if (Expanded.TryGetValue(ch, out two))
-                {
-                    foreach (var part in two)
-                    {
-                        units.Add(new Unit { Rank = Rank[part] });
-                    }
-                    continue;
-                }
-                units.Add(new Unit { Rank = RankOf(ch) });
+                AddUnits(units, ch, 0);
             }
             return units;
+        }
+
+        // A character's units: none when it counts for nothing; the letters it stands for (the ligature ae); its rank in the
+        // table; a space separator's, as the space; its letter without accents; else what its compatibility form gives (a
+        // fullwidth K as K, a Roman numeral as its letters, a circled digit as a digit written another way, the micro sign as
+        // mu), and past the table, by the code of its small letter (Greek and Cyrillic capitals as their small letters).
+        private static void AddUnits(List<Unit> units, char ch, int depth)
+        {
+            if (Skipped[ch])
+            {
+                return;
+            }
+            string two;
+            if (Expanded.TryGetValue(ch, out two))
+            {
+                foreach (var part in two)
+                {
+                    units.Add(new Unit { Rank = Rank[part] });
+                }
+                return;
+            }
+            int rank;
+            if (!AsCompatible.Contains(ch) && Rank.TryGetValue(ch, out rank))
+            {
+                units.Add(new Unit { Rank = rank });
+                return;
+            }
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.SpaceSeparator)
+            {
+                units.Add(new Unit { Rank = SpaceRank });
+                return;
+            }
+            var plain = ch.ToString().Normalize(NormalizationForm.FormD);
+            if (plain.Length > 0 && plain[0] != ch && Rank.TryGetValue(plain[0], out rank))
+            {
+                units.Add(new Unit { Rank = rank });
+                return;
+            }
+            var compatible = ch.ToString().Normalize(NormalizationForm.FormKD);
+            if (depth == 0 && compatible != ch.ToString())
+            {
+                foreach (var part in compatible)
+                {
+                    int digit = DigitValue(part);
+                    if (digit >= 0)
+                    {
+                        units.Add(new Unit { Rank = DigitWrittenOtherwise(digit) });
+                    }
+                    else
+                    {
+                        AddUnits(units, part, depth + 1);
+                    }
+                }
+                return;
+            }
+            units.Add(new Unit { Rank = Unknown + char.ToLowerInvariant(ch) });
+        }
+
+        // Where a digit written another way sorts (a circled 1 as the superscript one): after every number, by its value,
+        // the superscripts' places in the table for 1, 2 and 3, 0 just before them, 4 to 9 after them.
+        private static int DigitWrittenOtherwise(int digit)
+        {
+            switch (digit)
+            {
+                case 0:
+                    return Rank[(char)0x00B9] - 1;
+                case 1:
+                    return Rank[(char)0x00B9];
+                case 2:
+                    return Rank[(char)0x00B2];
+                case 3:
+                    return Rank[(char)0x00B3];
+                default:
+                    return Rank[(char)0x00BE] + digit - 3;
+            }
         }
 
         // A decimal digit's value (any script's, as ICU reads digits), or -1.
@@ -250,20 +338,17 @@ namespace Utilities.Planner
             return ch > 127 && char.IsDigit(ch) ? CharUnicodeInfo.GetDecimalDigitValue(ch) : -1;
         }
 
-        // The table's rank; else the rank of its letter without accents; else after the table, by its code.
-        private static int RankOf(char ch)
+        private static bool[] BuildSkipped()
         {
-            int rank;
-            if (Rank.TryGetValue(ch, out rank))
+            var skipped = new bool[char.MaxValue + 1];
+            for (int r = 0; r + 1 < IgnorableRanges.Length; r += 2)
             {
-                return rank;
+                for (int c = IgnorableRanges[r]; c <= IgnorableRanges[r + 1]; c++)
+                {
+                    skipped[c] = true;
+                }
             }
-            var plain = ch.ToString().Normalize(NormalizationForm.FormD);
-            if (plain.Length > 0 && plain[0] != ch && Rank.TryGetValue(plain[0], out rank))
-            {
-                return rank;
-            }
-            return Unknown + ch;
+            return skipped;
         }
 
         private static Dictionary<char, int> BuildRanks()
@@ -273,7 +358,7 @@ namespace Utilities.Planner
             {
                 foreach (var ch in Groups[g])
                 {
-                    ranks[ch] = g;
+                    ranks[ch] = g * RankStep;
                 }
             }
             return ranks;

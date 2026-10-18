@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Utilities.Planner
 {
@@ -14,55 +13,42 @@ namespace Utilities.Planner
         Remove
     }
 
-    /// <summary>The layer an IN / RM edit is about: its name in the scene and the phase, stage and sub-stage its work carries.</summary>
+    /// <summary>
+    /// The layer an IN / RM edit is about (naming v2, spec 5.2): its layer ID, which a tag naming it writes, and the preview's
+    /// folder for it, where its IN and RM columns are read. A layer only the Planner's list has is one too: the tag at the end
+    /// of an object's name can name it before the scene has a Max layer for it.
+    /// </summary>
     public sealed class PlannerTagTarget
     {
-        /// <summary>The layer's (and its helper's) name.</summary>
+        /// <summary>The layer's name as the tab shows it: its layer node's (its helper's) in the scene, else the list row's.</summary>
         public string LayerName;
-        /// <summary>The label the Planner knows the layer by (dates and TBC left out).</summary>
+        /// <summary>The name of the preview's folder for it, by which an activity's place is read (<see cref="PlannerSchedule.PlaceOf"/>).</summary>
         public string Label;
-        public int? Phase;
-        public int Stage;
-        public int? SubStage;
+        /// <summary>Its layer ID, with its phase.</summary>
+        public PlannerLayerIdKey Id;
+        /// <summary>The scene has a layer node of its ID; false for a layer only the Planner's list has (planned in the Planner).</summary>
+        public bool InScene;
 
-        /// <summary>
-        /// The target for a layer of the scene: its ID read from its name; the phase of a one-number ID is the one the
-        /// Planner reads off its objects (null when it has none, so nothing can be tagged for it). Null when the name does
-        /// not read as a layer.
-        /// </summary>
-        public static PlannerTagTarget Of(string layerName, PlannerSchedule schedule)
+        /// <summary>"06_05_2": its ID written the current way, as a tag naming it writes it.</summary>
+        public string IdText
         {
-            var parsed = PlannerNaming.ParseLayerName(layerName);
-            if (parsed == null)
-            {
-                return null;
-            }
-            var target = new PlannerTagTarget { LayerName = layerName, Label = parsed.Label, Phase = parsed.Phase, Stage = parsed.Stage, SubStage = parsed.SubStage };
-            if (!target.Phase.HasValue && schedule != null)
-            {
-                var layer = schedule.Layers.FirstOrDefault(l => l.Label == parsed.Label);
-                target.Phase = layer != null ? layer.Phase : null;
-            }
-            return target;
+            get { return PlannerNaming.LayerIdText(Id); }
         }
 
-        /// <summary>
-        /// The target for a layer as the Planner reads it: its helper's name (the name the GLB carries), its label, and the
-        /// phase, stage and sub-stage the Planner gives it. Null for null.
-        /// </summary>
+        /// <summary>The target for a layer of the new names' preview; null for null and for a folder with no layer ID.</summary>
         public static PlannerTagTarget Of(PlannerScheduleLayer layer)
         {
-            if (layer == null)
+            if (layer == null || layer.Id == null || !layer.Id.Phase.HasValue)
             {
                 return null;
             }
-            return new PlannerTagTarget { LayerName = layer.Raw, Label = layer.Label, Phase = layer.Phase, Stage = layer.Parsed.Stage, SubStage = layer.Parsed.SubStage };
+            return new PlannerTagTarget { LayerName = layer.Raw, Label = layer.Label, Id = layer.Id, InScene = layer.InScene };
         }
 
         /// <summary>
-        /// The target for a row of the Schedule tab: the layer the Planner reads there, found by the row's helper (whose name
-        /// the Planner reads, even when the Max layer's name has drifted from it), else the row's Max layer. Null when
-        /// neither reads as a layer.
+        /// The target for a row of the Schedule tab: the preview's layer it stands for (found by its helper, its list row or
+        /// its Max layer's ID, as the rows are filled), else the layer its Max layer's name reads as. Null when it stands for
+        /// no layer (a phase group).
         /// </summary>
         public static PlannerTagTarget For(PlannerScheduleRow row, PlannerSchedule schedule)
         {
@@ -74,16 +60,14 @@ namespace Utilities.Planner
             {
                 return Of(row.Layer);
             }
-            return row.LayerName != null ? Of(row.LayerName, schedule) : null;
-        }
-
-        /// <summary>"Ph2_St01_2": the tag this layer's work carries (Ph?_ when the phase is not known).</summary>
-        public string TagText
-        {
-            get
+            var parsed = row.LayerName != null ? PlannerNaming.ParseLayerNameV2(row.LayerName) : null;
+            if (parsed == null)
             {
-                return "Ph" + (Phase.HasValue ? Phase.Value.ToString(CultureInfo.InvariantCulture) : "?") + "_" + PlannerNaming.StageText(Stage, SubStage);
+                return null;
             }
+            var key = PlannerNaming.LayerIdKey(parsed.Id);
+            var layer = schedule != null ? schedule.Layers.FirstOrDefault(l => l.InScene && l.Id != null && PlannerNaming.LayerIdKey(l.Id) == key) : null;
+            return layer != null ? Of(layer) : new PlannerTagTarget { LayerName = row.LayerName, Label = parsed.Label, Id = parsed.Id, InScene = true };
         }
     }
 
@@ -115,7 +99,7 @@ namespace Utilities.Planner
         public readonly List<string> Notes = new List<string>();
         public int ProblemCount;
         public int Unchanged;
-        /// <summary>The schedule with the renames made, as the Planner would read it.</summary>
+        /// <summary>The new names' preview with the renames made, as the Planner would read the scene.</summary>
         public PlannerSchedule After;
 
         public bool HasChanges
@@ -150,28 +134,38 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// The IN and RM columns edited by renaming objects: an object's install or removal tag is what the Planner's Generate
-    /// from model reads, so the lists and the names always agree. "Add to IN" sets the object's install tag to the layer's
-    /// phase and stage, "Add to RM" its removal tag; "Remove" takes the tag out. The tag of the same type is replaced where
-    /// it sits (leading or trailing); a missing one is added as the trailing tag (as the leading one when the name has no
-    /// tag at all, as a name only reads with one); every other part of the name, the other tag included, stays exactly as
-    /// written; a tag the tool writes takes the convention's form, Ph&lt;p&gt;_St&lt;ss&gt;[_&lt;m&gt;]_IN|RM. When the
-    /// leading tag is removed and a trailing one stays, the trailing one, as written, moves to the front. Nothing is moved
-    /// or linked: an object sitting in another layer than the one installing it stays there.
+    /// The IN and RM columns edited by renaming objects, on the new names (naming v2, spec 5.2): an object's tags are what the
+    /// Planner's Generate from model reads, so the lists and the names always agree. L is the layer chosen, Lo the object's
+    /// own layer (the layer node it sits under) and T the type:
+    ///  - Add T for L: the object's T tag comes out wherever it is (one install and one removal per object, D8), then T goes
+    ///    in. For Lo at the start (IN_X) if that place is free, else at the end (X_IN: at the end of Lo), else it is refused;
+    ///    for another layer at the end, naming it (X_IN_06_05_2, a layer only the Planner's list has included), if that place
+    ///    is free, else it is refused, as an object has one leading and one trailing tag. An object whose T is in L already
+    ///    keeps its name; one whose tag at the end names its own layer gets the plain trailing tag it means (X_RM).
+    ///  - Remove T: its T tag comes out where it is. The other tag stays where it is, as a tag's place carries its meaning;
+    ///    an object left with no tag is no longer scheduled, which the review says.
+    /// The own name, and any note after a space or " (n)" after it, stay as written; a tag at the end goes before the note.
+    /// Every new name is read back as the Planner reads it (<see cref="PlannerNaming.ParseObjectNameV2"/>): one that would
+    /// not read as meant (the same type at both ends, another own name, a type word read where none was meant, a new
+    /// naming error) is refused. Refused too: a name with an old Ph/St tag (Clean up scene graph converts it), a layer's
+    /// helper, the phasing root, a layer node, a split piece chosen alone and an object under no layer's helper (link it
+    /// first). Nothing is moved or linked.
     ///
-    /// Each edit is checked by reading the scene again with the new names, exactly as the Planner would
-    /// (<see cref="PlannerSchedule"/>): an object that would not then be in the column asked for (an undated target layer,
-    /// one that holds no tagged object yet, another layer the Planner dates that stage from, an object not under a dated
-    /// layer's helper, a name another node has) is a Problem and keeps its name; other objects the renames make the
-    /// Planner read differently are listed, each with why. Objects are known by the names the GLB gives them (a second
-    /// node of a name is "X (1)", an object of its own).
+    /// Each edit is then checked by reading the scene again with the new names, as the new names' preview reads it
+    /// (<see cref="PlannerSchedule.BuildV2(PlannerSceneSnapshot, PlannerScheduleOptions)"/>): an object that would not then
+    /// be in the column asked for (the export leaves it out, the Planner files the work in another folder of that ID, a name
+    /// another node has) is a Problem and keeps its name; other objects the renames make the Planner read differently are
+    /// listed, each with why. Objects are known by the names the GLB gives them (a second node of a name is "X (1)", an
+    /// object of its own). The review notes an object left with no tag, one whose own name another object shares (the
+    /// Planner cannot follow a tag change on it, spec 4.1), naming issues the new names bring, two events the preview then
+    /// runs the other way round from the name, and a layer the preview parks.
     ///
     /// What an Add takes as the object: selecting a closed group in 3ds Max selects its head and every member, and a
     /// hierarchy may be selected whole, so a node under another node being added is part of it (the Planner shows and
     /// hides it with it) and is left out of the edit, unless it has a tag of its own: then it is its own object, kept
-    /// when it is not in a group, and a Problem inside a closed group (open the group to choose). A split piece
-    /// (Name_2 under Name, read as part of Name) is renamed with its object, so it stays part of it; chosen alone, it is a
-    /// Problem. Pure logic, no 3ds Max.
+    /// when it is not in a group, and a Problem inside a closed group (open the group to choose). So a closed group is
+    /// tagged on its head. A split piece (Name_2 under Name, read as part of Name) is renamed with its object, so it stays
+    /// part of it; chosen alone, it is a Problem. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerTagEdit
     {
@@ -179,138 +173,68 @@ namespace Utilities.Planner
         public const string EndMarker = "PLANNERTAGS-END";
         private const string Nl = "\r\n";
 
-        // The parser's leading and trailing tags (PlannerNaming), with their places in the name.
-        private static readonly Regex Lead = new Regex(@"^Ph([0-9]+)_St([0-9]+(?:[_.-][0-9]+)?)_(IN|RM)(?:_|\z)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        private static readonly Regex Trail = new Regex(@"_Ph([0-9]+)_St([0-9]+(?:[_.-][0-9]+)?)_(IN|RM)(?=\z|" + PlannerNaming.JavaScriptSpace + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        /// <summary>Why a name with an old Ph/St tag is not edited.</summary>
+        public const string OldTagProblem = "it still carries an old Ph/St tag, which the new names do not read: Clean up scene graph\u2026 converts it first";
 
-        /// <summary>"Ph2_St01_2_IN": a tag in the convention's form.</summary>
-        public static string Canonical(PlannerTaskType type, int phase, int stage, int? subStage)
+        /// <summary>Why an object under no layer's helper is not given a tag.</summary>
+        public const string NoLayerProblem = "it is not under any layer's helper, so the Planner cannot place it: link it under its layer's helper first (Link objects to their helpers\u2026)";
+
+        // Where a name read the new way puts its event of one type: while its own layer runs, at the end of it, or in the
+        // layer its trailing tag names ("in " and the layer's key).
+        private const string During = "during";
+        private const string End = "end";
+
+        private static string In(PlannerLayerIdKey layer)
         {
-            return "Ph" + phase.ToString(CultureInfo.InvariantCulture) + "_" + PlannerNaming.StageText(stage, subStage) + "_" + (type == PlannerTaskType.Install ? "IN" : "RM");
+            return "in " + PlannerNaming.LayerIdKey(layer);
         }
 
-        private sealed class Tag
+        private static string EventOf(PlannerObjectNameV2 p, PlannerTaskType type)
         {
-            public int Start;
-            public int End;
-            public PlannerMeshSegment Segment;
+            if (p.Kind != PlannerNamingKind.New)
+            {
+                return null;
+            }
+            if (p.Lead == type)
+            {
+                return During;
+            }
+            if (p.Trail == type)
+            {
+                return p.Ref == null ? End : In(p.Ref);
+            }
+            return null;
         }
 
-        // The leading and trailing tags of a name, with where each is written (the tag itself, without the underscores
-        // around it); null when the name has no leading tag (it does not read as a phasing object).
-        private static bool Tags(string name, out Tag lead, out Tag trail)
+        // The event said plainly: "installed while its own layer runs", "removed in layer 06_05_2", "not installed".
+        private static string EventText(PlannerTaskType type, PlannerObjectNameV2 p)
         {
-            lead = null;
-            trail = null;
-            var parsed = PlannerNaming.ParseMeshName(name);
-            var leadMatch = Lead.Match(name);
-            if (parsed == null || !leadMatch.Success)
+            var verb = type == PlannerTaskType.Install ? "installed" : "removed";
+            var at = EventOf(p, type);
+            if (at == null)
             {
-                return false;
+                return "not " + verb;
             }
-            lead = new Tag { Start = 0, End = leadMatch.Groups[3].Index + leadMatch.Groups[3].Length, Segment = parsed.Lead };
-            var trailMatch = Trail.Match(name);
-            if (trailMatch.Success && parsed.Trail != null)
+            if (at == During)
             {
-                trail = new Tag { Start = trailMatch.Index + 1, End = trailMatch.Index + trailMatch.Length, Segment = parsed.Trail };
+                return verb + " while its own layer runs";
             }
-            return true;
+            return at == End ? verb + " at the end of its own layer" : verb + " in layer " + PlannerNaming.LayerIdText(p.Ref);
         }
 
-        private static bool Matches(PlannerMeshSegment segment, int phase, int stage, int? subStage)
+        private static bool SameLayer(PlannerLayerIdKey a, PlannerLayerIdKey b)
         {
-            return segment.Phase == phase && segment.Stage == stage && segment.SubStage == subStage;
+            return a != null && b != null && a.Phase.HasValue && b.Phase.HasValue && PlannerNaming.LayerIdKey(a) == PlannerNaming.LayerIdKey(b);
         }
 
-        /// <summary>
-        /// The name with its tag of <paramref name="type"/> set to the phase, stage and sub-stage given; false with a
-        /// reason when it cannot be written so.
-        /// </summary>
-        public static bool TrySetTag(string name, PlannerTaskType type, int phase, int stage, int? subStage, out string result, out string problem)
+        private static string Word(PlannerTaskType type)
         {
-            result = name;
-            problem = null;
-            var text = name ?? string.Empty;
-            var tag = Canonical(type, phase, stage, subStage);
-            Tag lead, trail;
-            if (!Tags(text, out lead, out trail))
-            {
-                // No tag yet: a name reads only with a leading tag.
-                result = text.Length > 0 ? tag + "_" + text : tag;
-                return true;
-            }
-            bool leadIs = lead.Segment.Type == type;
-            bool trailIs = trail != null && trail.Segment.Type == type;
-            if (leadIs && trailIs)
-            {
-                problem = "it has two " + Kind(type) + " tags; edit its name by hand";
-                return false;
-            }
-            var chosen = leadIs ? lead : trailIs ? trail : null;
-            if (chosen != null)
-            {
-                if (Matches(chosen.Segment, phase, stage, subStage))
-                {
-                    result = text;
-                    return true;
-                }
-                result = text.Substring(0, chosen.Start) + tag + text.Substring(chosen.End);
-                return true;
-            }
-            // A missing type goes in as the trailing tag, at the very end: everything after the leading tag stays the
-            // description, as it was.
-            result = text + "_" + tag;
-            return true;
+            return type == PlannerTaskType.Install ? "IN" : "RM";
         }
 
-        /// <summary>
-        /// The name without its tag of <paramref name="type"/> (the one with the phase and stage given when it has two);
-        /// false with a reason when it cannot be written so.
-        /// </summary>
-        public static bool TryRemoveTag(string name, PlannerTaskType type, int? phase, int stage, int? subStage, out string result, out string problem)
+        private static PlannerTaskType Other(PlannerTaskType type)
         {
-            result = name;
-            problem = null;
-            var text = name ?? string.Empty;
-            Tag lead, trail;
-            if (!Tags(text, out lead, out trail))
-            {
-                problem = "it has no tag";
-                return false;
-            }
-            var candidates = new[] { lead, trail }.Where(t => t != null && t.Segment.Type == type).ToList();
-            if (candidates.Count > 1)
-            {
-                candidates = candidates.Where(t => (!phase.HasValue || t.Segment.Phase == phase.Value)
-                    && PlannerNaming.SameStage(t.Segment.Stage, t.Segment.SubStage, stage, subStage)).ToList();
-            }
-            if (candidates.Count != 1)
-            {
-                problem = candidates.Count == 0 ? "it has no " + Kind(type) + " tag" : "it has two " + Kind(type) + " tags for this layer; edit its name by hand";
-                return false;
-            }
-            var chosen = candidates[0];
-            if (chosen == trail)
-            {
-                result = text.Substring(0, chosen.Start - 1) + text.Substring(chosen.End);
-                return true;
-            }
-            // The leading tag goes. The text after it (and its underscore) stays; a trailing tag, as written, then leads.
-            int descriptionStart = lead.End < text.Length && text[lead.End] == '_' ? lead.End + 1 : lead.End;
-            if (trail == null)
-            {
-                result = text.Substring(descriptionStart);
-                if (result.Length == 0)
-                {
-                    problem = "its name is only the tag, so it would have no name left";
-                    return false;
-                }
-                return true;
-            }
-            var trailText = text.Substring(trail.Start, trail.End - trail.Start);
-            var description = trail.Start - 1 > descriptionStart ? text.Substring(descriptionStart, trail.Start - 1 - descriptionStart) : string.Empty;
-            result = trailText + (description.Length > 0 ? "_" + description : string.Empty) + text.Substring(trail.End);
-            return true;
+            return type == PlannerTaskType.Install ? PlannerTaskType.Dismantle : PlannerTaskType.Install;
         }
 
         private static string Kind(PlannerTaskType type)
@@ -320,26 +244,263 @@ namespace Utilities.Planner
 
         private static string Column(PlannerTaskType type)
         {
-            return type == PlannerTaskType.Install ? "IN" : "RM";
+            return Word(type);
         }
+
+        // A name as its tags sit in it (spec 2.2): the part the Planner reads (up to the first whitespace, once one " (n)" is
+        // off) as its leading tag, what lies between the tags and its trailing tag, and the text around that part as written.
+        private sealed class Parts
+        {
+            public string Before = string.Empty;
+            public string Lead = string.Empty;
+            public string Middle = string.Empty;
+            public string Trail = string.Empty;
+            public string After = string.Empty;
+            public PlannerTaskType? LeadType;
+            public PlannerTaskType? TrailType;
+
+            // The name with other tags, everything else as written.
+            public string With(string lead, string trail)
+            {
+                return Before + lead + Middle + trail + After;
+            }
+
+            // "RM_..._RM" (with an ellipsis): the tags as written.
+            public string Tags
+            {
+                get { return Lead + "\u2026" + Trail; }
+            }
+        }
+
+        private static Parts Split(string name)
+        {
+            var text = name ?? string.Empty;
+            var suffix = PlannerNaming.DuplicateSuffix.Match(text);
+            var body = suffix.Success ? text.Substring(0, suffix.Index) : text;
+            int start = 0;
+            while (start < body.Length && Array.IndexOf(PlannerNaming.JavaScriptSpaceChars, body[start]) >= 0)
+            {
+                start++;
+            }
+            int space = body.IndexOfAny(PlannerNaming.JavaScriptSpaceChars, start);
+            var read = space < 0 ? body.Substring(start) : body.Substring(start, space - start);
+            var parts = new Parts
+            {
+                Before = body.Substring(0, start),
+                After = (space < 0 ? string.Empty : body.Substring(space)) + (suffix.Success ? text.Substring(suffix.Index) : string.Empty)
+            };
+            var lead = PlannerNaming.TagLeadV2.Match(read);
+            var rest = read;
+            if (lead.Success)
+            {
+                parts.Lead = lead.Value;
+                parts.LeadType = lead.Groups[1].Value == "IN" ? PlannerTaskType.Install : PlannerTaskType.Dismantle;
+                rest = read.Substring(lead.Length);
+            }
+            // Pinned to the end, and never the whole rest, as the reader takes it.
+            var trail = PlannerNaming.TagTrailV2.Match(rest);
+            if (trail.Success && trail.Index > 0)
+            {
+                parts.Middle = rest.Substring(0, trail.Index);
+                parts.Trail = trail.Value;
+                parts.TrailType = trail.Groups[1].Value == "IN" ? PlannerTaskType.Install : PlannerTaskType.Dismantle;
+            }
+            else
+            {
+                parts.Middle = rest;
+            }
+            return parts;
+        }
+
+        private static string BothEnds(PlannerTaskType type, Parts parts)
+        {
+            return "its name has " + Word(type) + " at both ends (" + parts.Tags + "), which the Planner reads as the one at the start only: edit its name by hand";
+        }
+
+        // The new name read back as the Planner reads it: its event of the type edited where meant (null: none), its other
+        // event, its own name and its errors as they were. Null when it does; else why not.
+        private static string ReadBack(PlannerObjectNameV2 before, string name, PlannerLayerIdKey ownLayer, PlannerTaskType type, string meant)
+        {
+            var after = PlannerNaming.ParseObjectNameV2(name, ownLayer);
+            var other = Other(type);
+            var wrong = new List<string>();
+            if (EventOf(after, type) != meant)
+            {
+                wrong.Add(EventText(type, after));
+            }
+            if (EventOf(after, other) != EventOf(before, other))
+            {
+                wrong.Add(EventText(other, after) + " (it is " + EventText(other, before) + " now)");
+            }
+            if (wrong.Count > 0)
+            {
+                return "the new name " + name + " would read as " + string.Join(" and ", wrong.ToArray()) + ", which is not what was asked: edit its name by hand";
+            }
+            if (after.Kind == PlannerNamingKind.New && !string.Equals(after.Own, before.Own, StringComparison.Ordinal))
+            {
+                return "the new name " + name + " would read with the own name " + after.Own + " (it is " + before.Own + " now): edit its name by hand";
+            }
+            var errors = after.Issues.Where(c => PlannerNaming.NamingIssueV2[c].Severity == NamingSeverity.Error && !before.Issues.Contains(c)).Distinct().ToList();
+            if (errors.Count > 0)
+            {
+                return "the new name " + name + " would be a naming error (" + string.Join(" ", errors.Select(c => PlannerNaming.NamingIssueV2[c].Text).ToArray()).TrimEnd('.')
+                    + "): edit its name by hand";
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The name with its install (or removal) in <paramref name="layer"/> (spec 5.2), for an object whose own layer is
+        /// <paramref name="ownLayer"/> (null: under none, so any layer is another): its tag of that type comes out wherever it
+        /// is, then goes in at the start (IN_X) for its own layer, or at the end (X_IN) when the start holds the other type;
+        /// at the end naming the layer (X_IN_06_05_2) for another layer. An object with that event in that layer already keeps
+        /// its name, except that a tag at the end naming its own layer becomes the plain one it means (X_RM_02_01 in 02_01:
+        /// X_RM). False with the reason when it cannot be written so, or the new name would not read back as meant (then
+        /// <paramref name="result"/> is the name refused, or the name as it is when there is none).
+        /// </summary>
+        public static bool TrySetTag(string name, PlannerTaskType type, PlannerLayerIdKey ownLayer, PlannerLayerIdKey layer, out string result, out string problem)
+        {
+            var text = name ?? string.Empty;
+            result = text;
+            problem = null;
+            if (layer == null || !layer.Phase.HasValue)
+            {
+                problem = "the layer has no layer ID to write";
+                return false;
+            }
+            if (PlannerNaming.IsOldKindName(text))
+            {
+                problem = OldTagProblem;
+                return false;
+            }
+            var parts = Split(text);
+            if (parts.LeadType == type && parts.TrailType == type)
+            {
+                problem = BothEnds(type, parts);
+                return false;
+            }
+            var before = PlannerNaming.ParseObjectNameV2(text, ownLayer);
+            var word = Word(type);
+            bool own = SameLayer(ownLayer, layer);
+            var now = EventOf(before, type);
+            string lead, trail, meant;
+            if (own && (now == During || now == End))
+            {
+                // In its own layer already. A tag at the end naming its own layer reads as the plain one: written so.
+                if (now == During || parts.TrailType != type || !before.Issues.Contains(PlannerNamingCode.OwnLayer))
+                {
+                    return true;
+                }
+                lead = parts.Lead;
+                trail = "_" + word;
+                meant = End;
+            }
+            else if (!own && now == In(layer))
+            {
+                return true;
+            }
+            else
+            {
+                // Its tag of this type comes out, wherever it is (one install and one removal per object, D8).
+                lead = parts.LeadType == type ? string.Empty : parts.Lead;
+                trail = parts.TrailType == type ? string.Empty : parts.Trail;
+                if (own && lead.Length == 0)
+                {
+                    lead = word + "_";
+                    meant = During;
+                }
+                else if (own && trail.Length == 0)
+                {
+                    trail = "_" + word;
+                    meant = End;
+                }
+                else if (own)
+                {
+                    problem = "both ends of its name hold a tag already (" + parts.Tags + "), so there is no place for " + word
+                        + ": an object has one leading and one trailing tag; edit its name by hand";
+                    return false;
+                }
+                else if (trail.Length > 0)
+                {
+                    problem = "the end of its name holds its " + Kind(Other(type)) + " tag (" + trail.Substring(1) + "), and only a tag at the end can name another layer: "
+                        + "an object has one leading and one trailing tag, so take that one out first";
+                    return false;
+                }
+                else
+                {
+                    trail = "_" + word + "_" + PlannerNaming.LayerIdText(layer);
+                    meant = In(layer);
+                }
+            }
+            result = parts.With(lead, trail);
+            problem = ReadBack(before, result, ownLayer, type, meant);
+            return problem == null;
+        }
+
+        /// <summary>
+        /// The name without its tag of <paramref name="type"/>, taken out where it is (spec 5.2): the other tag stays where it
+        /// is. False with the reason when it has none, or the new name would not read back as meant (then
+        /// <paramref name="result"/> is the name refused).
+        /// </summary>
+        public static bool TryRemoveTag(string name, PlannerTaskType type, PlannerLayerIdKey ownLayer, out string result, out string problem)
+        {
+            var text = name ?? string.Empty;
+            result = text;
+            problem = null;
+            if (PlannerNaming.IsOldKindName(text))
+            {
+                problem = OldTagProblem;
+                return false;
+            }
+            var parts = Split(text);
+            if (parts.LeadType == type && parts.TrailType == type)
+            {
+                problem = BothEnds(type, parts);
+                return false;
+            }
+            var before = PlannerNaming.ParseObjectNameV2(text, ownLayer);
+            var lead = parts.Lead;
+            var trail = parts.Trail;
+            if (parts.LeadType == type)
+            {
+                lead = string.Empty;
+            }
+            else if (parts.TrailType == type)
+            {
+                trail = string.Empty;
+            }
+            else
+            {
+                problem = "it has no " + Word(type) + " tag";
+                return false;
+            }
+            result = parts.With(lead, trail);
+            problem = ReadBack(before, result, ownLayer, type, null);
+            return problem == null;
+        }
+
+        // A split piece the renames would part from its object.
+        private const string PieceLost = "would no longer be read as part of it";
 
         // ---------------------------------------------------------------------------------------------------------
         // Planning and checking
 
         /// <summary>
-        /// Plans the edits on the scene and checks each by reading the scene again with the new names, exactly as the
-        /// Planner would. Requests for one object are applied in turn.
+        /// Plans the edits on the scene and checks each by reading the scene again with the new names, as the new names'
+        /// preview reads it. Requests for one object are applied in turn.
         /// </summary>
         public static PlannerTagEditPlan Plan(PlannerSceneSnapshot snapshot, PlannerScheduleOptions options, IList<PlannerTagEditRequest> requests)
         {
             var plan = new PlannerTagEditPlan();
-            var before = PlannerSchedule.Build(snapshot, options);
+            var before = PlannerSchedule.BuildV2(snapshot, options);
             var scene = before.Model.Scene;
             var nodes = snapshot.Nodes.Where(n => n != null).GroupBy(n => n.Key).ToDictionary(g => g.Key, g => g.First());
             var problems = new Dictionary<long, string>();
             var proposals = new Dictionary<long, string>();
+            // The name an edit refused on reading it back would have given, for the review.
+            var refusedAs = new Dictionary<long, string>();
             var asked = new Dictionary<long, List<PlannerTagEditRequest>>();
-            var valid = (requests ?? new List<PlannerTagEditRequest>()).Where(r => r != null && r.Target != null && nodes.ContainsKey(r.Key)).ToList();
+            var valid = (requests ?? new List<PlannerTagEditRequest>()).Where(r => r != null && r.Target != null && r.Target.Id != null && nodes.ContainsKey(r.Key)).ToList();
 
             // Helpers carry their layers' names, and splines the export leaves out are never seen: never objects.
             var unitHelpers = new Dictionary<long, PlannerSceneUnit>();
@@ -371,8 +532,9 @@ namespace Utilities.Planner
             {
                 var node = nodes[key];
                 var above = AddedAbove(scene, key, adding);
-                var piece = before.PieceOf(key);
-                bool tagged = PlannerNaming.ParseMeshName(before.NameOf(key) ?? node.Name ?? string.Empty) != null;
+                // A split piece by name and ancestor, as the Planner folds it, whether or not its object is tagged.
+                var piece = before.MergedOwnerOf(key);
+                bool tagged = PlannerNaming.ParseObjectNameV2(before.NameOf(key) ?? node.Name ?? string.Empty).Kind.HasValue;
                 if (above != null && (piece != null || !tagged))
                 {
                     leftOut.Add(key);
@@ -394,11 +556,6 @@ namespace Utilities.Planner
                     var head = GroupHeadOf(scene, key);
                     notOwn[key] = "it is inside the closed group " + (head != null ? head.Name : above.Name) + ", selected with it, and has a tag of its own: to change it, "
                         + "open the group (Group > Open) and select it alone; to change the group, select its head alone";
-                }
-                else if (piece != null)
-                {
-                    notOwn[key] = "it is a split piece of " + piece.MaxName + ", which the Planner reads as one object with it: add " + piece.MaxName
-                        + " instead (its pieces are renamed with it)";
                 }
             }
 
@@ -425,6 +582,15 @@ namespace Utilities.Planner
                 {
                     notOwn.TryGetValue(request.Key, out why);
                 }
+                if (why == null)
+                {
+                    why = ObjectProblem(before, request.Key, request.Kind);
+                }
+                var places = before.PlacesOfNode(request.Key);
+                if (why == null && request.Kind == PlannerTagEditKind.Remove && !places.Contains(Column(request.Type) + " " + request.Target.Label))
+                {
+                    why = "it is not in the " + Column(request.Type) + " of " + request.Target.LayerName + ": the Planner reads it as " + Places(places);
+                }
                 if (why != null)
                 {
                     problems[request.Key] = why;
@@ -435,39 +601,33 @@ namespace Utilities.Planner
                 {
                     current = node.Name ?? string.Empty;
                 }
-                var target = request.Target;
+                var own = before.OwnLayerOfNode(request.Key);
                 string next, problem;
-                bool ok;
-                if (request.Kind == PlannerTagEditKind.Add)
-                {
-                    if (!target.Phase.HasValue)
-                    {
-                        problems[request.Key] = "the layer " + target.LayerName + " has one number in its ID and none of its objects gives it a phase, so there is no phase to write; give the layer its phase (<phase>_<stage>_...)";
-                        continue;
-                    }
-                    ok = TrySetTag(current, request.Type, target.Phase.Value, target.Stage, target.SubStage, out next, out problem);
-                }
-                else
-                {
-                    ok = TryRemoveTag(current, request.Type, target.Phase, target.Stage, target.SubStage, out next, out problem);
-                }
+                bool ok = request.Kind == PlannerTagEditKind.Add
+                    ? TrySetTag(current, request.Type, own, request.Target.Id, out next, out problem)
+                    : TryRemoveTag(current, request.Type, own, out next, out problem);
                 if (!ok)
                 {
                     problems[request.Key] = problem;
+                    if (next != current)
+                    {
+                        refusedAs[request.Key] = next;
+                    }
                     continue;
                 }
                 proposals[request.Key] = next;
             }
 
             // An object's split pieces (Name_2 under Name) are renamed with it (NewName_2), so the Planner still reads them
-            // as part of it.
+            // as part of it. The Planner folds a piece into its object by name and ancestor alone, so an untagged object's
+            // pieces (tagged now) and the pieces of an object losing its only tag go with it too.
             var pieceOwner = new Dictionary<long, long>();
             var piecesOf = new Dictionary<long, List<PlannerSceneNode>>();
             if (proposals.Count > 0)
             {
                 foreach (var node in nodes.Values)
                 {
-                    var owner = before.PieceOf(node.Key);
+                    var owner = before.MergedOwnerOf(node.Key);
                     if (owner == null || asked.ContainsKey(node.Key))
                     {
                         continue;
@@ -485,8 +645,8 @@ namespace Utilities.Planner
             {
                 List<PlannerSceneNode> pieces;
                 var oldName = nodes[pair.Key].Name ?? string.Empty;
-                var obj = before.ObjectOf(pair.Key);
-                if (pair.Value == oldName || obj == null || obj.Name != oldName || !piecesOf.TryGetValue(pair.Key, out pieces))
+                // The pieces follow the object's own name (one the export renames is read by another).
+                if (pair.Value == oldName || before.NameOf(pair.Key) != oldName || !piecesOf.TryGetValue(pair.Key, out pieces))
                 {
                     continue;
                 }
@@ -506,7 +666,8 @@ namespace Utilities.Planner
                 long owner;
                 if (pieceOwner.TryGetValue(key, out owner))
                 {
-                    problems[owner] = "its split piece " + (nodes[key].Name ?? string.Empty) + " " + why + ", so it is not renamed either (the piece would no longer be read as part of it)";
+                    problems[owner] = "its split piece " + (nodes[key].Name ?? string.Empty) + " " + why + ", so it is not renamed either"
+                        + (why.Contains(PieceLost) ? string.Empty : " (the piece would no longer be read as part of it)");
                 }
                 else
                 {
@@ -542,7 +703,7 @@ namespace Utilities.Planner
                     }
                 }
                 renamed = renamed.Where(going).ToDictionary(p => p.Key, p => p.Value);
-                after = renamed.Count > 0 ? PlannerSchedule.Build(Renamed(snapshot, renamed), options) : before;
+                after = renamed.Count > 0 ? PlannerSchedule.BuildV2(Renamed(snapshot, renamed), options) : before;
                 bool changed = false;
                 foreach (var pair in asked)
                 {
@@ -554,22 +715,17 @@ namespace Utilities.Planner
                     var got = after.PlacesOfNode(pair.Key);
                     if (!wanted.SequenceEqual(got))
                     {
-                        string newName;
-                        if (!renamed.TryGetValue(pair.Key, out newName))
-                        {
-                            newName = nodes[pair.Key].Name ?? string.Empty;
-                        }
-                        problems[pair.Key] = Explain(after, pair.Key, newName, pair.Value.Last(), got);
+                        problems[pair.Key] = Explain(after, pair.Key, pair.Value.Last(), got);
                         changed = true;
                     }
                 }
                 foreach (var pair in renamed.Where(p => pieceOwner.ContainsKey(p.Key)))
                 {
                     var owner = pieceOwner[pair.Key];
-                    var now = after.PieceOf(pair.Key);
+                    var now = after.MergedOwnerOf(pair.Key);
                     if (!problems.ContainsKey(owner) && (now == null || now.Key != owner))
                     {
-                        fail(pair.Key, "would no longer be read as part of it with the new names");
+                        fail(pair.Key, PieceLost + " with the new names");
                         changed = true;
                     }
                 }
@@ -582,6 +738,7 @@ namespace Utilities.Planner
             plan.After = after;
 
             // The review: renames (each object's split pieces after it), then problems, then other objects read anew.
+            var noTagLeft = new List<string>();
             foreach (var pair in asked)
             {
                 var oldName = nodes[pair.Key].Name ?? string.Empty;
@@ -590,7 +747,10 @@ namespace Utilities.Planner
                 if (problems.TryGetValue(pair.Key, out reason))
                 {
                     string would;
-                    proposals.TryGetValue(pair.Key, out would);
+                    if (!proposals.TryGetValue(pair.Key, out would))
+                    {
+                        refusedAs.TryGetValue(pair.Key, out would);
+                    }
                     plan.ProblemCount++;
                     plan.Review.Add(new PlannerReviewRow
                     {
@@ -610,9 +770,14 @@ namespace Utilities.Planner
                     plan.Unchanged++;
                     continue;
                 }
-                var why = last.Kind == PlannerTagEditKind.Add
-                    ? Column(last.Type) + " of " + last.Target.LayerName + ": " + Kind(last.Type) + " tag " + last.Target.TagText
-                    : "out of the " + Column(last.Type) + " of " + last.Target.LayerName + ": " + Kind(last.Type) + " tag taken out";
+                var own = before.OwnLayerOfNode(pair.Key);
+                var read = PlannerNaming.ParseObjectNameV2(newName, own);
+                var why = last.Kind == PlannerTagEditKind.Add ? AddedWhy(last, read) : "out of the " + Column(last.Type) + " of " + last.Target.LayerName + ": its " + Word(last.Type) + " tag taken out";
+                if (last.Kind == PlannerTagEditKind.Remove && read.Kind != PlannerNamingKind.New)
+                {
+                    why += "; no tag is left, so the Planner no longer schedules it (it shows for the whole programme)";
+                    noTagLeft.Add(newName);
+                }
                 plan.Renames.Add(new PlannerTagRename { Key = pair.Key, OldName = oldName, NewName = newName, Why = why });
                 plan.Review.Add(new PlannerReviewRow { Status = "Change", Item = "Object", Name = oldName, Change = "Rename", From = oldName, To = newName, Why = why });
                 foreach (var piece in verified.Where(p => pieceOwner.ContainsKey(p.Key) && pieceOwner[p.Key] == pair.Key))
@@ -625,16 +790,6 @@ namespace Utilities.Planner
             }
 
             var editedKeys = new HashSet<long>(plan.Renames.Select(r => r.Key));
-            var phaseNow = after.Layers.GroupBy(l => l.Label, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Phase, StringComparer.Ordinal);
-            var phaseChanged = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var layer in before.Layers)
-            {
-                int? now;
-                if (phaseNow.TryGetValue(layer.Label, out now) && now != layer.Phase)
-                {
-                    phaseChanged[layer.Label] = "phase " + PhaseText(now) + " (it was phase " + PhaseText(layer.Phase) + ")";
-                }
-            }
             foreach (var node in snapshot.Nodes.Where(n => n.Name != null && !editedKeys.Contains(n.Key)))
             {
                 var was = StateOf(before, node.Key);
@@ -651,7 +806,7 @@ namespace Utilities.Planner
                     Change = "Read anew",
                     From = Places(was),
                     To = Places(now),
-                    Why = WhyAnew(before, after, node.Key, phaseChanged)
+                    Why = WhyAnew(before, after, node.Key)
                 });
             }
             if (plan.Review.Any(r => r.Status == "Also"))
@@ -671,7 +826,147 @@ namespace Utilities.Planner
                 plan.Notes.Add(PhasingFixScript.Count(partsOf.Values.Sum(v => v.Count), "object", "objects") + " under " + partsOf.Count.ToString(CultureInfo.InvariantCulture)
                     + " of the selected objects (a group's members, a hierarchy, split pieces) left out: selected with them, they are part of them, and the Planner shows and hides them with them.");
             }
+            if (noTagLeft.Count > 0)
+            {
+                plan.Notes.Add(PhasingFixScript.Count(noTagLeft.Count, "object is", "objects are") + " left with no IN or RM tag, so the Planner no longer schedules "
+                    + (noTagLeft.Count == 1 ? "it" : "them") + " and " + (noTagLeft.Count == 1 ? "it shows" : "they show") + " for the whole programme: " + Shortlist(noTagLeft) + ".");
+            }
+            AddNamingNotes(plan, before, after, verified.Where(p => !pieceOwner.ContainsKey(p.Key)).Select(p => p.Key).ToList(), asked, options != null && options.Folders != null && options.Folders.Count > 0);
             return plan;
+        }
+
+        // Why an object chosen is not one to edit, read the new way: the export leaves it out; a split piece chosen alone; a
+        // node the Planner reads as no object (a layer node, a phase group, a node led by a number that is no layer ID); an
+        // object to tag under no layer's helper. Null when it is one to edit (or the check after the renames says why not).
+        private static string ObjectProblem(PlannerSchedule before, long key, PlannerTagEditKind kind)
+        {
+            var name = before.NameOf(key);
+            if (name == null)
+            {
+                string why;
+                return "the export leaves it out (" + (before.Model.LeftOut.TryGetValue(key, out why) ? why : "a node above it is left out") + "), so the Planner never sees it";
+            }
+            PlannerModelNode indexed;
+            if (!before.Index.TryGetValue(name, out indexed) || indexed.Key != key)
+            {
+                return null;
+            }
+            var piece = before.MergedOwnerOf(key);
+            if (piece != null)
+            {
+                return "it is a split piece of " + piece.MaxName + ", which the Planner reads as one object with it: " + (kind == PlannerTagEditKind.Add ? "add " : "choose ")
+                    + piece.MaxName + " instead (its pieces are renamed with it)";
+            }
+            PlannerLayerIdKey own;
+            if (!before.OwnLayers.TryGetValue(name, out own))
+            {
+                if (PlannerSchedule.ParsePhaseGroup(name) != null)
+                {
+                    return "it is named as a phase group (_<n>_<Name>), which the Planner reads as a folder, not an object";
+                }
+                if (PlannerNaming.ParseLayerNameV2(name) != null)
+                {
+                    return "it is a layer node (named <ID>_<Name>, as a layer's helper is), which the Planner reads as a layer, not an object";
+                }
+                return "its name starts with a number that is no layer ID, so the Planner passes over it as a layer node, not an object: start its name with a letter first";
+            }
+            if (own == null && kind == PlannerTagEditKind.Add)
+            {
+                var listed = before.NotScheduled.FirstOrDefault(n => n.Key == key && !n.InPart);
+                return listed != null && listed.Reason.StartsWith("it sits under ", StringComparison.Ordinal) ? listed.Reason + ": rename that node, or link the object under its layer's helper" : NoLayerProblem;
+            }
+            return null;
+        }
+
+        // Where an Add put the tag, said for the review: "RM of L: _RM_06_05_2 at the end (removed in L)".
+        private static string AddedWhy(PlannerTagEditRequest request, PlannerObjectNameV2 read)
+        {
+            var target = request.Target;
+            var word = Word(request.Type);
+            var verb = request.Type == PlannerTaskType.Install ? "installed" : "removed";
+            var at = EventOf(read, request.Type);
+            string where;
+            if (at == During)
+            {
+                where = word + "_ at the start (" + verb + " while " + target.LayerName + " runs)";
+            }
+            else if (at == End)
+            {
+                where = "_" + word + " at the end (" + verb + " at the end of " + target.LayerName + ")";
+            }
+            else
+            {
+                where = "_" + word + "_" + target.IdText + " at the end (" + verb + " in " + target.LayerName
+                    + (target.InScene ? string.Empty : ", a layer only the Planner's list has so far") + ")";
+            }
+            return Column(request.Type) + " of " + target.LayerName + ": " + where;
+        }
+
+        // The notes on what the new names bring (spec 5.2, 3.7): an own name another object shares (the Planner cannot follow
+        // a tag change on it), other naming issues the renamed objects have now and did not before, two events the preview
+        // runs the other way round from the name, and a layer given work that the preview parks.
+        private static void AddNamingNotes(PlannerTagEditPlan plan, PlannerSchedule before, PlannerSchedule after, List<long> renamed, Dictionary<long, List<PlannerTagEditRequest>> asked, bool listImported)
+        {
+            if (renamed.Count == 0 || after.V2 == null || before.V2 == null)
+            {
+                return;
+            }
+            var newOf = renamed.Where(k => after.NameOf(k) != null).ToDictionary(k => k, k => after.NameOf(k));
+            var renamedNames = new HashSet<string>(newOf.Values, StringComparer.Ordinal);
+            foreach (var issue in after.V2.NamingIssues.Where(i => i.Code == PlannerNamingCode.SharedOwnName))
+            {
+                foreach (var name in issue.Names.Where(n => renamedNames.Contains(n)))
+                {
+                    var p = PlannerNaming.ParseObjectNameV2(name);
+                    plan.Notes.Add(name + " shares its own name " + p.Own + " with " + string.Join(", ", issue.Names.Where(n => n != name).ToArray())
+                        + ": the Planner cannot follow a tag change on objects sharing an own name, so it reads this one's earlier activities as gone and its work as new.");
+                }
+            }
+            var codesBefore = new Dictionary<string, HashSet<PlannerNamingCode>>(StringComparer.Ordinal);
+            foreach (var issue in before.V2.NamingIssues)
+            {
+                foreach (var name in issue.Names)
+                {
+                    HashSet<PlannerNamingCode> codes;
+                    if (!codesBefore.TryGetValue(name, out codes))
+                    {
+                        codes = new HashSet<PlannerNamingCode>();
+                        codesBefore[name] = codes;
+                    }
+                    codes.Add(issue.Code);
+                }
+            }
+            foreach (var pair in newOf)
+            {
+                var was = before.NameOf(pair.Key);
+                HashSet<PlannerNamingCode> had;
+                if (was == null || !codesBefore.TryGetValue(was, out had))
+                {
+                    had = new HashSet<PlannerNamingCode>();
+                }
+                var brought = after.V2.NamingIssues.Where(i => i.Names.Contains(pair.Value) && i.Code != PlannerNamingCode.SharedOwnName && i.Code != PlannerNamingCode.DuplicateExport
+                    && !had.Contains(i.Code)).Select(i => i.Code).Distinct().ToList();
+                foreach (var code in brought)
+                {
+                    plan.Notes.Add("After the renames, " + pair.Value + ": " + PlannerNaming.NamingIssueV2[code].Text);
+                }
+            }
+            var wrongBefore = new HashSet<string>(before.V2.WrongOrder, StringComparer.Ordinal);
+            foreach (var pair in newOf.Where(p => after.V2.WrongOrder.Contains(p.Value) && !wrongBefore.Contains(before.NameOf(p.Key) ?? string.Empty)))
+            {
+                plan.Notes.Add("After the renames, the preview runs the two events of " + pair.Value + " the other way round from its name (the layers' dates put them in the other order): "
+                    + "check the layer it names.");
+            }
+            var parked = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var request in asked.Where(p => renamed.Contains(p.Key)).SelectMany(p => p.Value).Where(r => r.Kind == PlannerTagEditKind.Add))
+            {
+                var layer = after.Layers.FirstOrDefault(l => l.Label == request.Target.Label);
+                if (layer != null && layer.ParkedOn.HasValue && parked.Add(layer.Label))
+                {
+                    plan.Notes.Add(layer.Label + (listImported ? " has no dates in the Planner's list" : " has no dates here, as no layer list is imported") + ", so the preview parks its work on "
+                        + layer.ParkedOn.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture) + ", TBC, until the Planner dates it.");
+                }
+            }
         }
 
         // The nearest node above this one that is being added too (an object, not a helper), or null.
@@ -715,26 +1010,21 @@ namespace Utilities.Planner
         private static string Shortlist(List<string> names)
         {
             var shown = names.Take(3).ToList();
-            return string.Join(", ", shown.ToArray()) + (names.Count > 3 ? ", …" : string.Empty);
-        }
-
-        private static string PhaseText(int? phase)
-        {
-            return phase.HasValue ? phase.Value.ToString(CultureInfo.InvariantCulture) : "none";
+            return string.Join(", ", shown.ToArray()) + (names.Count > 3 ? ", \u2026" : string.Empty);
         }
 
         // Where a node's work is: its places, or "part of X" for a split piece of X.
         private static List<string> StateOf(PlannerSchedule schedule, long key)
         {
-            var piece = schedule.PieceOf(key);
+            var piece = schedule.MergedOwnerOf(key);
             return piece != null ? new List<string> { "part of " + piece.Name } : schedule.PlacesOfNode(key);
         }
 
         // Why a node not renamed is read differently once the others are.
-        private static string WhyAnew(PlannerSchedule before, PlannerSchedule after, long key, Dictionary<string, string> phaseChanged)
+        private static string WhyAnew(PlannerSchedule before, PlannerSchedule after, long key)
         {
-            var wasPiece = before.PieceOf(key);
-            var nowPiece = after.PieceOf(key);
+            var wasPiece = before.MergedOwnerOf(key);
+            var nowPiece = after.MergedOwnerOf(key);
             if (wasPiece != null && nowPiece == null)
             {
                 return "not renamed, but no longer read as a split piece of " + wasPiece.Name + " once that is renamed, so the Planner reads it as an object of its own";
@@ -743,22 +1033,11 @@ namespace Utilities.Planner
             {
                 return "not renamed, but the Planner reads it as a split piece of " + nowPiece.Name + " once that is renamed";
             }
-            foreach (var obj in new[] { before.ObjectOf(key), after.ObjectOf(key) })
-            {
-                string change;
-                if (obj != null && obj.FiledIn != null && phaseChanged.TryGetValue(obj.FiledIn.Label, out change))
-                {
-                    return "not renamed, but its layer " + obj.FiledIn.Raw + " has one number in its ID and takes its phase from its objects' tags: with the renames it is "
-                        + change + ", and the Planner dates its objects by that phase";
-                }
-            }
-            var dated = after.ObjectOf(key) ?? before.ObjectOf(key);
-            return "not renamed, but the Planner reads it differently once the others are renamed"
-                + (dated != null ? " (another layer now dates its stage, or its name now reads another way)" : string.Empty);
+            return "not renamed, but the Planner reads it differently once the others are renamed";
         }
 
         // What an object's places should be once the requests are done: an Add replaces the places of its type with the
-        // target layer, a Remove takes the target layer's place of its type out.
+        // target layer's folder, a Remove takes the target layer's place of its type out.
         private static List<string> Wanted(List<string> places, List<PlannerTagEditRequest> requests)
         {
             var result = new List<string>(places);
@@ -784,11 +1063,10 @@ namespace Utilities.Planner
             return places.Count == 0 ? "not scheduled" : string.Join("; ", places.ToArray());
         }
 
-        // Why an object would not be where the edit asks, read off the schedule with the new names.
-        private static string Explain(PlannerSchedule after, long key, string newName, PlannerTagEditRequest request, List<string> got)
+        // Why an object would not be where the edit asks, read off the preview with the new names.
+        private static string Explain(PlannerSchedule after, long key, PlannerTagEditRequest request, List<string> got)
         {
             var target = request.Target;
-            var targetLayer = after.Layers.FirstOrDefault(l => l.Label == target.Label);
             var obj = after.ObjectOf(key);
             if (obj == null)
             {
@@ -796,33 +1074,16 @@ namespace Utilities.Planner
                 return (request.Kind == PlannerTagEditKind.Add ? "the Planner would not schedule it" : "the Planner would no longer schedule it")
                     + (listed != null ? ": " + listed.Reason : string.Empty);
             }
-            if (request.Kind == PlannerTagEditKind.Remove)
+            if (request.Kind == PlannerTagEditKind.Add)
             {
-                return "the Planner would read it as " + Places(got);
+                var activity = obj.Activities.FirstOrDefault(a => a.Type == request.Type);
+                if (activity != null && activity.Home != null && activity.Home.Label != target.Label && SameLayer(activity.Home.Id, target.Id))
+                {
+                    return "the Planner files its " + Kind(request.Type) + " in " + activity.Home.Label + ", the first of its folders with the layer ID " + target.IdText
+                        + ", not in " + target.Label + ": give each layer its own ID in the Planner";
+                }
             }
-            var activity = obj.Activities.FirstOrDefault(a => a.Type == request.Type);
-            if (activity == null)
-            {
-                return "the Planner would read it as " + Places(got);
-            }
-            var stage = "Ph" + (target.Phase.HasValue ? target.Phase.Value.ToString(CultureInfo.InvariantCulture) : "?") + "_" + PlannerNaming.StageText(target.Stage, target.SubStage);
-            if (activity.DatedBy == null)
-            {
-                string cause = targetLayer == null
-                    ? target.LayerName + " holds no tagged object yet, and the Planner dates another layer's work only from a layer that holds one"
-                    : !targetLayer.Dated
-                        ? target.LayerName + " has no dates, and the Planner dates another layer's work only from a dated layer"
-                        : "no dated layer has " + stage;
-                return cause + ": it would put the " + Kind(request.Type) + " " + (request.Type == PlannerTaskType.Install ? "at the project start" : "after the end of the works")
-                    + ", marked TBC (it sits in " + obj.FiledIn.Raw + "; this tool never moves objects: link it under " + target.LayerName + "'s helper to have it there)";
-            }
-            if (activity.IsOwn && activity.Home == obj.FiledIn && activity.DatedBy == obj.FiledIn)
-            {
-                return "it sits in " + obj.FiledIn.Raw + ", and the Planner gives that layer's dates to an object whose tag it does not read as another dated layer's"
-                    + (targetLayer == null ? " (" + target.LayerName + " holds no tagged object yet)" : !targetLayer.Dated ? " (" + target.LayerName + " has no dates)" : string.Empty)
-                    + "; this tool never moves objects";
-            }
-            return "the Planner dates " + stage + " work from " + activity.DatedBy.Raw + " (the layer of that very sub-stage first, then the one that starts first)";
+            return "the Planner would read it as " + Places(got);
         }
 
         // The scene with some nodes renamed.
@@ -847,7 +1108,8 @@ namespace Utilities.Planner
                     LayerName = node.LayerName,
                     PlannerId = node.PlannerId,
                     Hidden = node.Hidden,
-                    NoExport = node.NoExport
+                    NoExport = node.NoExport,
+                    NotInThisExport = node.NotInThisExport
                 });
             }
             return copy;

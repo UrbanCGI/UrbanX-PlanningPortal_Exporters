@@ -154,7 +154,10 @@ namespace Utilities.Planner
         }
     }
 
-    /// <summary>What Build layers and helpers would do: each row's status, the layers and helpers it ends with, and the review list.</summary>
+    /// <summary>
+    /// What the layer builder would do (once Build layers and helpers; now Clean up scene graph with the Planner's list, D22, and
+    /// the Schedule tab's statuses): each row's status, the layers and helpers it ends with, and the review list.
+    /// </summary>
     public sealed class PlannerLayerPlan
     {
         public const string ReviewCsvHeader = "Status,Item,Name,Change,From,To,Why";
@@ -171,8 +174,26 @@ namespace Utilities.Planner
         /// <summary>Every row of the list, in outline order.</summary>
         public readonly List<PlannerRowPlan> Rows = new List<PlannerRowPlan>();
         public readonly List<PlannerUnlistedItem> NotInList = new List<PlannerUnlistedItem>();
-        public readonly List<PlannerReviewRow> Review = new List<PlannerReviewRow>();
         public readonly List<string> Notes = new List<string>();
+        private List<PlannerReviewRow> review;
+
+        /// <summary>
+        /// The review list, one line per change, written the first time it is asked for: the Schedule tab reads a plan on
+        /// every reading of the scene, and Clean up scene graph writes rows of its own (<see cref="PlannerCleanUp"/>), so
+        /// neither needs it. Ask for it once the plan is made.
+        /// </summary>
+        public List<PlannerReviewRow> Review
+        {
+            get
+            {
+                if (review == null)
+                {
+                    review = new List<PlannerReviewRow>();
+                    PlannerLayerPlanner.WriteReview(this, review);
+                }
+                return review;
+            }
+        }
 
         public int NewCount
         {
@@ -302,7 +323,7 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// Plans Build layers and helpers: matches each row of the Planner's layer list to a Max layer and its helper in the
+    /// Plans the layer builder (Build layers and helpers, now part of Clean up scene graph, D22): matches each row of the Planner's layer list to a Max layer and its helper in the
     /// scene, and works out what to rename, move and create so the scene has, under its phasing root, one layer and one
     /// same-named helper per row, nested as the list nests them, the helper on its layer and linked under its parent's
     /// helper. Nothing is ever deleted: phasing layers the list does not have are listed.
@@ -322,11 +343,15 @@ namespace Utilities.Planner
     /// for that row; once that row has its own unit, a leftover with the same ID (a helper cloned or merged in with its
     /// user properties) can be found by another row's layer ID or name and gets that row's Planner ID. A name the build
     /// gives (a rename, a new layer or helper) that another layer or node keeps makes the row a Problem, and so does a
-    /// row whose parent cannot be built; Problems are skipped. A name that stays as it is never makes a Problem; another
+    /// layer ID the build gives that a layer of the phasing tree no row brings in line keeps (no two layers share an ID,
+    /// D2), and a row whose parent cannot be built; Problems are skipped. A name that stays as it is never makes a Problem; another
     /// node with the same name gets a note. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerLayerPlanner
     {
+        /// <summary>How the note naming the phasing root starts.</summary>
+        public const string RootNoteStart = "Phasing root: ";
+
         public static PlannerLayerPlan Plan(PlannerLayerList list, PlannerSceneSnapshot snapshot)
         {
             return Plan(list, new PlannerSceneModel(snapshot));
@@ -385,7 +410,6 @@ namespace Utilities.Planner
             BuildEntries(plan, rowPlans, byRow, scene);
             plan.Rows.AddRange(rowPlans);
             ListUnlisted(plan, list, scene, matches);
-            WriteReview(plan);
             return plan;
         }
 
@@ -422,20 +446,20 @@ namespace Utilities.Planner
             });
             if (scene.RootNode == null && scene.RootLayer == null)
             {
-                plan.Notes.Add("The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): Build creates the layer and helper "
-                    + layerName + " at the top and builds the list under it.");
+                plan.Notes.Add("The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): the layer and helper "
+                    + layerName + " are created at the top, and everything else under them.");
             }
             else if (scene.RootNode == null)
             {
-                plan.Notes.Add("Phasing root: the layer " + layerName + ". It has no helper node of its name, so Build creates one at the top.");
+                plan.Notes.Add(RootNoteStart + "the layer " + layerName + ". It has no helper node of its name, so one is created at the top.");
             }
             else if (scene.RootLayer == null)
             {
-                plan.Notes.Add("Phasing root: the node " + helperName + ". It has no layer of its name, so Build creates one at the top.");
+                plan.Notes.Add(RootNoteStart + "the node " + helperName + ". It has no layer of its name, so one is created at the top.");
             }
             else
             {
-                plan.Notes.Add("Phasing root: " + (string.Equals(layerName, helperName, StringComparison.Ordinal)
+                plan.Notes.Add(RootNoteStart + (string.Equals(layerName, helperName, StringComparison.Ordinal)
                     ? layerName + " (layer and helper)."
                     : "the node " + helperName + " and the layer " + layerName + "."));
             }
@@ -701,6 +725,10 @@ namespace Utilities.Planner
                             }
                         }
                     }
+                    if (problem == null)
+                    {
+                        problem = IdTaken(row, rows, scene);
+                    }
                     if (problem != null)
                     {
                         row.Problem = problem + "; left as it is";
@@ -736,6 +764,28 @@ namespace Utilities.Planner
                 plan.Notes.Add(PhasingFixScript.Count(shared, "row keeps a name another node also has", "rows keep a name another node also has")
                     + " (see " + (shared == 1 ? "its" : "each row's") + " tooltip); the build renames " + (shared == 1 ? "neither." : "none of them."));
             }
+        }
+
+        // Why a row cannot take the layer ID its name carries (two or three numbers), or null: the build gives it the ID (a new
+        // layer, or one renamed onto another ID) while a layer of the phasing tree that no row brings in line keeps it (one
+        // the list does not have, or one whose row is left as it is). No two layers may share an ID (D2), so the row is left
+        // as it is, and a person gives one of them another ID; IDs that rows swap between them are no clash.
+        private static string IdTaken(PlannerRowPlan row, List<PlannerRowPlan> rows, PlannerSceneModel scene)
+        {
+            var id = PlannerLayerIdKey.FromName(row.Row.Layer);
+            if (id == null || !id.Phase.HasValue || (row.Unit != null && id.Equals(row.Unit.IdKey)))
+            {
+                return null;
+            }
+            var brought = new HashSet<PlannerSceneUnit>(rows.Where(r => r.Problem == null && r.Unit != null).Select(r => r.Unit));
+            var kept = scene.Units.FirstOrDefault(u => u.InPhasingTree && u != row.Unit && !brought.Contains(u) && id.Equals(u.IdKey));
+            if (kept == null)
+            {
+                return null;
+            }
+            var left = rows.Any(r => r.Unit == kept);
+            return "the layer " + kept.Name + (left ? ", whose row is left as it is," : ", which the list does not have,") + " keeps the layer ID " + id
+                + ", and no two layers may share an ID: give one of them another ID";
         }
 
         private static void Add<T>(Dictionary<string, List<T>> map, string name, T item)
@@ -923,9 +973,8 @@ namespace Utilities.Planner
 
         // The review list: one line per change, then the rows found by ID or name (their helpers get the Planner ID), then
         // the problems.
-        private static void WriteReview(PlannerLayerPlan plan)
+        internal static void WriteReview(PlannerLayerPlan plan, List<PlannerReviewRow> review)
         {
-            var review = plan.Review;
             if (plan.RootLayerCreated || plan.RootHelperCreated)
             {
                 review.Add(new PlannerReviewRow

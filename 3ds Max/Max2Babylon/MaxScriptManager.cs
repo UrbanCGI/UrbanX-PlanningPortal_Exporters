@@ -149,63 +149,99 @@ namespace Max2Babylon
             return exportParameters;
         }
 
-        // UrbanCGI fork: the phasing name fixer without its window, for MAXScript. Expose both overloads, as above.
+        /// <summary>UrbanCGI fork: what FixPhasingNames answers now that Clean up scene graph has replaced it (spec 5.1).</summary>
+        public const string FixPhasingNamesReplaced = "Fix phasing names is replaced by Clean up scene graph: use the Schedule tab's button, or CleanUpSceneGraph "
+            + "from MAXScript; see the changelog. Nothing was changed.";
+
+        // UrbanCGI fork: the old phasing name fixer's entry points, kept so scripts that call them get an answer. Both
+        // overloads change nothing.
         public static string FixPhasingNames()
         {
-            return FixPhasingNames(false);
+            return FixPhasingNamesReplaced;
+        }
+
+        public static string FixPhasingNames(bool apply)
+        {
+            return FixPhasingNamesReplaced;
+        }
+
+        // UrbanCGI fork: Clean up scene graph without its window, for MAXScript. Expose both overloads, as above.
+        public static string CleanUpSceneGraph()
+        {
+            return CleanUpSceneGraph(false);
         }
 
         /// <summary>
-        /// Plans the phasing name fix with the word fixes saved in the scene (or the HS2 list) and no stage changes,
-        /// and returns the summary and the phasing counts followed by the list as CSV text. With
-        /// <paramref name="apply"/> the list is also carried out, after holding the scene (Edit > Fetch restores it),
-        /// and the outcome follows the summary, with the counts of the scene as the fix left it.
+        /// Plans Clean up scene graph (naming v2) with the word fixes saved in the scene (or the HS2 list) and, when the scene
+        /// keeps an imported Planner layer list, that list (D22: the layers and helpers brought in line with it, as the Schedule
+        /// tab does), and returns its summary and notes followed by the review as CSV text. Without the window nobody answers the listed objects: only the
+        /// answer Clean up takes by itself is used (a reference to a stage no layer has, written as the tag writes it, unless
+        /// the Planner's list now gives that ID to a layer that had another), and every other listed object keeps its old
+        /// name (its CSV line says why); answer them in the Schedule tab's window.
+        /// With <paramref name="apply"/> the rest is also carried out, in one undo record after holding the scene (Edit > Fetch
+        /// restores it; no copy is saved), and the outcome follows the summary. On a scene with the old names the first line
+        /// says that the Planner reads the new names only from its next release, so a live project's scene waits for the
+        /// planning team's go-ahead (D25).
         /// </summary>
-        public static string FixPhasingNames(bool apply)
+        public static string CleanUpSceneGraph(bool apply)
         {
             if (Loader.Class_ID == null)
             {
                 Loader.AssemblyMain();
             }
             var wordFixes = PhasingScene.LoadWordFixes();
-            var plan = PhasingScene.Plan(wordFixes, null);
-            var applying = apply && plan.HasChanges;
-            var text = new StringBuilder();
-            text.Append(plan.Summary()).Append("\r\n");
-            if (!applying)
+            Utilities.Planner.PlannerLayerList list = null;
+            string listText, listFile;
+            DateTime? listImported;
+            if (PlannerScheduleScene.TryLoadList(out listText, out listFile, out listImported))
             {
-                AppendCounts(text, plan.Counts);
+                var read = Utilities.Planner.PlannerLayerList.Parse(listText);
+                list = read.Usable ? read : null;
             }
-            foreach (var note in plan.Notes)
+            var before = PlannerScheduleScene.Read();
+            var plan = Utilities.Planner.PlannerCleanUp.Plan(before, wordFixes, list);
+            if (plan.Message != null)
+            {
+                return plan.Message + "\r\n";
+            }
+            var result = plan.Resolve(null);
+            var text = new StringBuilder();
+            if (plan.OldNames)
+            {
+                text.Append(Utilities.Planner.PlannerCleanUp.OldNamesWarning).Append("\r\n");
+            }
+            text.Append(result.Summary()).Append("\r\n");
+            foreach (var note in result.Notes)
             {
                 text.Append(note).Append("\r\n");
             }
-            if (applying)
+            if (apply && result.HasChanges)
             {
                 Loader.Core.FileHold();
-                var result = PhasingScene.Apply(plan);
-                var after = PhasingScene.Plan(wordFixes, null, new[] { result });
-                text.Append(result.Describe(after, true)).Append("\r\n");
-                // The counts once the fix is done: a renamed layer or helper may pair up now.
-                AppendCounts(text, after.Counts);
+                var outcome = PlannerScheduleScene.ApplyCleanUp(plan, result);
+                // The Add layer records follow the Max layers the scene now shows renamed, each as the scene named its layer
+                // before the batch (an open Schedule tab reads the records again from the scene on its next reading, and
+                // before its own Clean up or Add layer saves them).
+                var cleaned = PlannerScheduleScene.Read();
+                var added = PlannerScheduleScene.LoadAdded();
+                if (added.Count > 0)
+                {
+                    PlannerScheduleScene.SaveAdded(result.RenameAddedLayers(Utilities.Planner.PlannerAddedLayerStore.ForScene(added, new Utilities.Planner.PlannerSceneModel(before)),
+                        new Utilities.Planner.PlannerSceneModel(cleaned)));
+                }
+                var after = Utilities.Planner.PlannerCleanUp.Plan(cleaned, wordFixes, list);
+                text.Append(outcome.Describe(result, after, true)).Append("\r\n");
             }
-            text.Append("\r\n").Append(plan.ToCsv().TrimStart((char)0xFEFF));
+            else
+            {
+                var kept = result.KeptOldNamesText();
+                if (kept != null)
+                {
+                    text.Append(kept).Append("\r\n");
+                }
+            }
+            text.Append("\r\n").Append(result.ToCsv().TrimStart((char)0xFEFF));
             return text.ToString();
-        }
-
-        // The phasing counts line and, when layers and helpers do not pair up, the note on it.
-        private static void AppendCounts(StringBuilder text, Utilities.Planner.PhasingCounts counts)
-        {
-            if (counts == null)
-            {
-                return;
-            }
-            text.Append(counts.Describe(true)).Append("\r\n");
-            var pairing = counts.PairingNote();
-            if (pairing != null)
-            {
-                text.Append(pairing).Append("\r\n");
-            }
         }
 
         public static void DisableBabylonAutoSave()

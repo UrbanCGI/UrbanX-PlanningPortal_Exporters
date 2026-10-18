@@ -31,6 +31,11 @@ namespace Utilities.Planner
         public bool Hidden;
         /// <summary>Do not export is ticked in its object properties (babylonjs_noexport).</summary>
         public bool NoExport;
+        /// <summary>
+        /// Left out by the export's own settings, as the export naming check reads the scene: Export only selected while it is
+        /// not selected, or not on a layer chosen to export. The Schedule tab never sets it.
+        /// </summary>
+        public bool NotInThisExport;
     }
 
     /// <summary>The scene the layer builder plans against: every node and every Max layer.</summary>

@@ -9,7 +9,9 @@ namespace Utilities.Planner
     /// <summary>
     /// Works out how to correct the phasing layer and object names of a scene, so that exporting it gives the
     /// names the Planner expects. Pure logic over an abstract scene (nodes keyed by their 3ds Max handle, plus the
-    /// Max layers); the 3ds Max side only reads the scene and carries out the plan.
+    /// Max layers); the 3ds Max side only reads the scene. Fix phasing names, which carried the plan out, is gone (Clean up
+    /// scene graph replaces it): the export's naming check on the old names reads the plan's top node, the objects it leaves
+    /// for the modeller and its counts, and Clean up uses the text fix (FixText) and the layer reader (ReadLayerName).
     ///
     /// A port of the clean-up first done on an exported GLB, rule for rule:
     ///   - the phasing top node is the first top-level node with "phasing" in its name;
@@ -321,7 +323,7 @@ namespace Utilities.Planner
         /// from (null: any text does); a word fix that would stop it reading is not used on it. What is worth
         /// telling the modeller goes to <paramref name="notes"/>, under the node's <paramref name="name"/>.
         /// </summary>
-        private static TextFix FixText(string text, List<PhasingWordFix> fixes, ICollection<string> reasons, Func<string, bool> reads,
+        internal static TextFix FixText(string text, List<PhasingWordFix> fixes, ICollection<string> reasons, Func<string, bool> reads,
             TextFixNotes notes, string name)
         {
             var original = text ?? string.Empty;
@@ -446,7 +448,7 @@ namespace Utilities.Planner
             return string.Join(", ", parts.Take(parts.Count - 1).ToArray()) + " and " + parts[parts.Count - 1];
         }
 
-        private static string FixNames(List<PhasingWordFix> fixes)
+        internal static string FixNames(List<PhasingWordFix> fixes)
         {
             var named = fixes.Select(f => "\"" + f.Find + "\" to \"" + (f.Replace ?? string.Empty) + "\"").ToList();
             switch (named.Count)
@@ -737,6 +739,7 @@ namespace Utilities.Planner
                     plan.NodeRenames.Add(new PhasingNodeRename { Key = work.Node.Key, Item = PhasingFixItem.Object, OldName = work.OldName, NewName = work.NewName });
                 }
             }
+            plan.LeftMisfiled.UnionWith(objects.Where(o => o.Misfiled && o.NewName == o.OldName).Select(o => o.OldName));
             foreach (var layer in layers.Where(l => l.Moved))
             {
                 plan.NodeMoves.Add(new PhasingNodeMove
@@ -761,7 +764,7 @@ namespace Utilities.Planner
             {
                 plan.Rows.Add(check());
             }
-            AddTextNotes(plan, notes, fixes);
+            AddTextNotes(plan.Notes, notes, fixes);
             return plan;
         }
 
@@ -852,11 +855,11 @@ namespace Utilities.Planner
         }
 
         // Rule 4's notes: word fixes held back from a date or TBC, and word fixes that never settle.
-        private static void AddTextNotes(PhasingFixPlan plan, TextFixNotes notes, List<PhasingWordFix> fixes)
+        internal static void AddTextNotes(ICollection<string> planNotes, TextFixNotes notes, List<PhasingWordFix> fixes)
         {
             foreach (var fix in notes.DateOrTbc)
             {
-                plan.Notes.Add("The " + FixNames(new List<PhasingWordFix> { fix }) + " is not used where it would change a date or TBC.");
+                planNotes.Add("The " + FixNames(new List<PhasingWordFix> { fix }) + " is not used where it would change a date or TBC.");
             }
             var sets = notes.Unsettled
                 .GroupBy(u => string.Join(",", u.Fixes.Select(f => fixes.IndexOf(f).ToString(CultureInfo.InvariantCulture)).ToArray()), StringComparer.Ordinal);
@@ -865,7 +868,7 @@ namespace Utilities.Planner
                 var first = set.First();
                 var count = set.Count();
                 var one = first.Fixes.Count == 1;
-                plan.Notes.Add("The " + FixNames(first.Fixes) + (one ? " changes " : " change ")
+                planNotes.Add("The " + FixNames(first.Fixes) + (one ? " changes " : " change ")
                     + (count == 1 ? first.Name : count.ToString(CultureInfo.InvariantCulture) + " names (the first is " + first.Name + ")")
                     + " again every time " + (one ? "it is" : "they are") + " used, so there " + (one ? "it is" : "they are")
                     + " used once only - check the word fixes.");
@@ -1023,7 +1026,7 @@ namespace Utilities.Planner
         }
 
         // The Check line of a name that reads as a layer ID but is left as it is (ReadLayerName).
-        private static string LeftText(LayerRead read, string name)
+        internal static string LeftText(LayerRead read, string name)
         {
             var one = read.One;
             switch (read.Left)
@@ -1191,6 +1194,18 @@ namespace Utilities.Planner
                 checks.Add(() => CheckRow(PhasingFixItem.Object, work.Layer.NewName, work.OldName, work.NewName, work.Node.Key, "no Ph/St tag at the start of the name"));
                 return work;
             }
+            // Taken away and put back in one stage while it sits in another stage's layer: a naming error that only the
+            // modeller can put right, so it is left as it is, not half corrected (its removal tag alone given the layer's
+            // stage would take it away in this layer and put it back in the other, which nothing reports), and listed.
+            var misfiled = MisfiledIn(work.OldName, layer);
+            if (misfiled != null)
+            {
+                work.Tagged = true;
+                work.Kept = true;
+                work.Misfiled = true;
+                checks.Add(() => CheckRow(PhasingFixItem.Object, work.Layer.NewName, work.OldName, work.NewName, work.Node.Key, misfiled));
+                return work;
+            }
             var kind = lead.Groups[5].Value.ToUpperInvariant();
             var body = work.OldName.Substring(lead.Length);
             var tail = string.Empty;
@@ -1270,6 +1285,60 @@ namespace Utilities.Planner
                     + gained.PhaseToken + "_St" + gained.StageToken + ", which the Planner reads as more work - check it is meant"));
             }
             return work;
+        }
+
+        /// <summary>
+        /// The Check line for an object whose name takes it away and puts it back in one stage (its removal tag first, then
+        /// its install tag, the same phase, stage and sub-stage, as the Planner reads them) while the layer it sits in owns
+        /// neither tag's work, by its ID as it is now (as the Planner and the export's naming check read it) and as corrected:
+        /// the Planner lists it as a naming error, to correct in 3ds Max (move it to that stage's layer, or retag both tags
+        /// for this layer, as the Planner words it). Null for any other object.
+        /// </summary>
+        internal static string MisfiledIn(string name, LayerRef layer)
+        {
+            var parsed = PlannerNaming.ParseMeshName(name);
+            if (parsed == null || parsed.Trail == null)
+            {
+                return null;
+            }
+            var lead = parsed.Lead;
+            var trail = parsed.Trail;
+            if (lead.Type != PlannerTaskType.Dismantle || trail.Type != PlannerTaskType.Install || lead.Phase != trail.Phase || lead.Stage != trail.Stage
+                || lead.SubStage != trail.SubStage)
+            {
+                return null;
+            }
+            if (lead.Phase == layer.Phase && (PlannerNaming.SameStage(lead.Stage, lead.SubStage, layer.OldStage, layer.OldSplit)
+                || PlannerNaming.SameStage(lead.Stage, lead.SubStage, layer.Stage, layer.Split)))
+            {
+                return null;
+            }
+            var tag = "Ph" + lead.Phase.ToString(CultureInfo.InvariantCulture) + "_" + PlannerSchedule.StageTag(lead);
+            return "taken away and put back in " + tag + " (its removal tag, then its install tag), but it sits in this layer, which is not " + tag
+                + "'s: the Planner lists it as a naming error; left as it is \u2014 correct it by hand: move it to the " + tag + " layer, or retag it for this layer as "
+                + PlannerSchedule.Retagged(name, layer.Phase, layer.Stage, layer.Split);
+        }
+
+        private static string MisfiledIn(string name, LayerWork layer)
+        {
+            return MisfiledIn(name, new LayerRef
+            {
+                Phase = layer.Phase,
+                OldStage = layer.OldStage,
+                OldSplit = layer.OldSplit != null ? SplitNumber(layer.OldSplit) : (int?)null,
+                Stage = layer.Stage,
+                Split = layer.Split != null ? SplitNumber(layer.Split) : (int?)null
+            });
+        }
+
+        /// <summary>A phasing layer's ID as it is (<see cref="OldStage"/>, <see cref="OldSplit"/>) and as corrected.</summary>
+        internal struct LayerRef
+        {
+            public int Phase;
+            public int OldStage;
+            public int? OldSplit;
+            public int Stage;
+            public int? Split;
         }
 
         // An IN object's removal tag (Rule 8): it follows the layer it points at today to that layer's new ID, or, with no
@@ -1734,6 +1803,8 @@ namespace Utilities.Planner
             public string Tail;
             /// <summary>Carries a leading Ph/St tag, so the fixer may rename it.</summary>
             public bool Tagged;
+            /// <summary>Taken away and put back in one stage while it sits in another stage's layer: left for the modeller (<see cref="MisfiledIn(string, LayerRef)"/>).</summary>
+            public bool Misfiled;
 
             public override PhasingFixItem Item
             {
@@ -1792,7 +1863,7 @@ namespace Utilities.Planner
             public PlannerLayerName Planner;
         }
 
-        private sealed class TextFix
+        internal sealed class TextFix
         {
             public string Text;
             /// <summary>Word fixes not used on this text because it would no longer read.</summary>
@@ -1800,7 +1871,7 @@ namespace Utilities.Planner
         }
 
         /// <summary>What the text fix noticed across the plan, for its notes.</summary>
-        private sealed class TextFixNotes
+        internal sealed class TextFixNotes
         {
             /// <summary>Word fixes held back somewhere because they would change a date or TBC.</summary>
             public readonly List<PhasingWordFix> DateOrTbc = new List<PhasingWordFix>();
@@ -1808,7 +1879,7 @@ namespace Utilities.Planner
         }
 
         /// <summary>A name the word fixes kept changing, and the fixes still changing it.</summary>
-        private sealed class UnsettledText
+        internal sealed class UnsettledText
         {
             public string Name;
             public List<PhasingWordFix> Fixes;
@@ -1975,11 +2046,6 @@ namespace Utilities.Planner
             {
                 List<PhasingSceneNode> list;
                 return children.TryGetValue(node.Key, out list) ? list : None;
-            }
-
-            public bool HasChildren(PhasingSceneNode node)
-            {
-                return node.HasChildren || children.ContainsKey(node.Key);
             }
 
             /// <summary>

@@ -10,8 +10,8 @@ using Utilities.Planner;
 namespace Max2Babylon
 {
     /// <summary>
-    /// UrbanCGI fork: the review list shown before the Schedule tab changes the scene (Build layers and helpers, Link
-    /// objects to their helpers): one line per change with its reason, the problems that are skipped, a "Hold the scene
+    /// UrbanCGI fork: the review list shown before the Schedule tab changes the scene (Link objects to their helpers,
+    /// Add layer, Add to IN / RM): one line per change with its reason, the problems that are skipped, a "Hold the scene
     /// first" box and Apply. Built in code; modal over the exporter window.
     /// </summary>
     internal sealed class PlannerReviewForm : Form
@@ -78,6 +78,8 @@ namespace Max2Babylon
             grid.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             grid.BackgroundColor = SystemColors.Window;
             grid.BorderStyle = BorderStyle.None;
+            // The header follows the font, which display scaling enlarges (its default height does not).
+            grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             AddColumn("Status", 7);
             AddColumn("Item", 9);
             AddColumn("Name", 28);
