@@ -101,7 +101,7 @@ namespace Utilities.Tests
             Assert.Equal(PhasingNameFixer.NothingToDo, plan.Message);
             Assert.Equal(PhasingNameFixer.NothingToDo, plan.Summary());
             Assert.Empty(plan.Rows);
-            Assert.False(plan.HasChanges);
+            Assert.False(plan.HasChanges());
         }
 
         [Fact]
@@ -122,7 +122,7 @@ namespace Utilities.Tests
             Print(plan);
             Assert.Equal(first, plan.TopKey);
             var check = RowFor(plan, "Old_Phasing", PhasingFixStatus.Check);
-            Assert.Equal("Top layer", check.TypeText);
+            Assert.Equal("Top layer", check.TypeText());
             Assert.Equal("Old_Phasing", check.CorrectedName);
             Assert.Contains("only Road_PHASING_Main is corrected", check.WhatChanged);
             Assert.DoesNotContain(plan.NodeRenames, r => r.Key == oldLayer);
@@ -149,13 +149,13 @@ namespace Utilities.Tests
             Assert.Equal(group, move.ToParentKey);
             Assert.Equal("_06_Weekend_Closure", move.ToParentName);
             var row = RowFor(plan, "06_06_Full_Closure_TBC_07-02-27");
-            Assert.Equal("Layer", row.TypeText);
+            Assert.Equal("Layer", row.TypeText());
             Assert.Equal("_06_Weekend_Closure", row.LayerItSitsIn);
             Assert.Equal("06_06_Full_Closure_TBC_07-02-27", row.CorrectedName);
             Assert.Equal("moved into _06_Weekend_Closure: it is stage 6 of Weekend_Closure", row.WhatChanged);
             Assert.Empty(plan.NodeRenames); // the move is the only change; its object already carries the layer's tag
             Assert.DoesNotContain(plan.Rows, r => r.NodeKey == objectKey);
-            Assert.True(plan.HasChanges);
+            Assert.True(plan.HasChanges());
         }
 
         [Fact]
@@ -200,11 +200,11 @@ namespace Utilities.Tests
             var plan = scene.Plan();
             Print(plan);
             var topChild = RowFor(plan, "Hoarding notes", PhasingFixStatus.Check);
-            Assert.Equal("Group", topChild.TypeText);
+            Assert.Equal("Group", topChild.TypeText());
             Assert.Equal(Top, topChild.LayerItSitsIn);
             Assert.Contains("neither a phase group", topChild.WhatChanged);
             var groupChild = RowFor(plan, "Hoarding notes 2", PhasingFixStatus.Check);
-            Assert.Equal("Layer", groupChild.TypeText);
+            Assert.Equal("Layer", groupChild.TypeText());
             Assert.Equal("_02_Phase1_TM", groupChild.LayerItSitsIn);
             Assert.Contains("does not read as a layer", groupChild.WhatChanged);
             Assert.Equal("04_02_Binder_23-01-27", Assert.Single(plan.NodeRenames).NewName);
@@ -243,12 +243,12 @@ namespace Utilities.Tests
             var plan = scene.Plan();
             Print(plan);
             var topRow = RowFor(plan, "Road Constraction Phasing");
-            Assert.Equal("Top layer", topRow.TypeText);
+            Assert.Equal("Top layer", topRow.TypeText());
             Assert.Equal("", topRow.LayerItSitsIn);
             Assert.Equal("Road_Construction_Phasing", topRow.CorrectedName);
             Assert.Equal("spelling; spaces replaced with underscores", topRow.WhatChanged);
             var groupRow = RowFor(plan, "_03_Cardington St");
-            Assert.Equal("Group", groupRow.TypeText);
+            Assert.Equal("Group", groupRow.TypeText());
             Assert.Equal("Road_Construction_Phasing", groupRow.LayerItSitsIn);
             Assert.Equal("_03_Cardington_St", groupRow.CorrectedName);
             Assert.Equal("03_07_1_South_Installation_of_SubGrade_and_SubBase_13-01-27", RowFor(plan, "03_07_1_South_Installation_of_Sub-grade_and_Sub-base_13-01-27").CorrectedName);
@@ -262,7 +262,7 @@ namespace Utilities.Tests
             Assert.Equal("Ph5_St02_IN_Binder_Course", objectRow.CorrectedName);
             Assert.Equal("spelling; spaces replaced with underscores", objectRow.WhatChanged);
             // Rows: top, group, layers, objects.
-            Assert.Equal(new[] { "Top layer", "Group", "Layer", "Layer", "Object", "Object" }, plan.Rows.Select(r => r.TypeText).ToArray());
+            Assert.Equal(new[] { "Top layer", "Group", "Layer", "Layer", "Object", "Object" }, plan.Rows.Select(r => r.TypeText()).ToArray());
         }
 
         [Fact]
@@ -306,7 +306,7 @@ namespace Utilities.Tests
             Assert.Equal("spelling; spaces replaced with underscores", layerRow.WhatChanged);
             Assert.Equal("Ph2_St05_IN_SubGrade_and_SubBase_Kerb", RowFor(plan, "Ph2_St05_IN_Sub-grade and Sub-base_Kerb").CorrectedName);
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
 
             // A find text the replacement makes again, and a chain listed the wrong way round.
             var fixes = new[] { new PhasingWordFix("__", "_"), new PhasingWordFix("KerbLine", "Kerb_Line"), new PhasingWordFix("Kerbline", "KerbLine") };
@@ -321,7 +321,7 @@ namespace Utilities.Tests
             Assert.Empty(plan.Notes);
             scene.Apply(plan);
             var again = scene.Plan(null, fixes);
-            Assert.False(again.HasChanges);
+            Assert.False(again.HasChanges());
             Assert.Empty(again.Rows);
             Assert.Equal("Foo_Bar", PhasingNameFixer.FixText("Foo___Bar", fixes, null));
         }
@@ -369,7 +369,7 @@ namespace Utilities.Tests
             }, plan.Notes);
             Assert.Equal("Foo_07-02-27_TBC", PhasingNameFixer.FixText("Foo_07-02-27_TBC", fixes, null));
             scene.Apply(plan);
-            Assert.False(scene.Plan(null, fixes).HasChanges);
+            Assert.False(scene.Plan(null, fixes).HasChanges());
         }
 
         [Fact]
@@ -391,7 +391,7 @@ namespace Utilities.Tests
             Assert.DoesNotContain(plan.Rows, r => r.Status == PhasingFixStatus.Changed && (r.CurrentName == "_06_Closure" || r.CurrentName == "Ph6_St02_IN_Gate"));
             var topCheck = RowFor(plan, "Work Phasing", PhasingFixStatus.Check);
             Assert.Equal("the word fix \"Work Phasing\" to \"Work Stages\" would leave the name unreadable, so it is not used on it", topCheck.WhatChanged);
-            Assert.Equal("Top layer", topCheck.TypeText);
+            Assert.Equal("Top layer", topCheck.TypeText());
             var groupCheck = RowFor(plan, "_06_Closure", PhasingFixStatus.Check);
             Assert.Equal("the word fix \"Closure\" to \"\" would leave the name unreadable, so it is not used on it", groupCheck.WhatChanged);
             Assert.Equal("Work_Phasing", groupCheck.LayerItSitsIn);
@@ -402,7 +402,7 @@ namespace Utilities.Tests
             scene.Apply(plan);
             var again = scene.Plan(null, fixes);
             Print(again);
-            Assert.False(again.HasChanges);
+            Assert.False(again.HasChanges());
             // The top node now reads Work_Phasing, which the fix's find text (with a space) no longer matches.
             Assert.Equal(new[] { "06_01_Closure", "Ph6_St02_IN_Gate", "_06_Closure" },
                 again.Rows.Select(r => r.CurrentName).OrderBy(n => n, System.StringComparer.Ordinal).ToArray());
@@ -493,8 +493,8 @@ namespace Utilities.Tests
                 plan.Rows.Where(r => r.Item == PhasingFixItem.Layer).Select(r => r.CorrectedName).ToArray());
 
             scene.Apply(plan);
-            Assert.False(scene.Plan(overrides).HasChanges);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan(overrides).HasChanges());
+            Assert.False(scene.Plan().HasChanges());
         }
 
         [Fact]
@@ -521,8 +521,8 @@ namespace Utilities.Tests
             Assert.Null(plan.Layers.Single(l => l.Key == beta).Split);
 
             scene.Apply(plan);
-            Assert.False(scene.Plan(overrides).HasChanges);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan(overrides).HasChanges());
+            Assert.False(scene.Plan().HasChanges());
         }
 
         // Rule 7 ---------------------------------------------------------------------------------------------
@@ -815,7 +815,7 @@ namespace Utilities.Tests
             Assert.DoesNotContain(plan.NodeRenames, r => r.Key == group || r.Key == layer || r.Key == spaced);
             Assert.Empty(plan.MaxLayerRenames);
             var groupCheck = RowFor(plan, "_02_Phase Two", PhasingFixStatus.Check);
-            Assert.Equal("Group", groupCheck.TypeText);
+            Assert.Equal("Group", groupCheck.TypeText());
             Assert.Equal("the corrected name _02_Phase_Two is already used outside the phasing layers; left as it is", groupCheck.WhatChanged);
             var layerCheck = RowFor(plan, "2_05_Foo", PhasingFixStatus.Check);
             Assert.Equal("the corrected name 02_05_Foo is already used outside the phasing layers; left as it is", layerCheck.WhatChanged);
@@ -851,7 +851,7 @@ namespace Utilities.Tests
             Assert.Equal(stray, Assert.Single(plan.NodeMoves).Key);
             Assert.DoesNotContain(plan.Rows, r => r.Status == PhasingFixStatus.Check);
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
         }
 
         [Fact]
@@ -944,16 +944,16 @@ namespace Utilities.Tests
             scene.Add("Kerb_003", layer);
 
             var plan = scene.Plan();
-            var expected = new string((char)0xFEFF, 1) + PhasingFixPlan.CsvHeader + "\r\n"
+            var expected = new string((char)0xFEFF, 1) + PhasingFixPlanText.CsvHeader + "\r\n"
                 + "Changed,Layer,_04_Shuttle,4_02_Binder_23-01-27,04_02_Binder_23-01-27,\"phase number written as two digits, like the other phases\"\r\n"
                 + "Changed,Object,04_02_Binder_23-01-27,\"Ph4_St02_IN_Sign \"\"A\"\"\",\"Ph4_St02_IN_Sign_\"\"A\"\"\",spaces replaced with underscores\r\n"
                 + "Check,Object,04_02_Binder_23-01-27,Kerb_003,Kerb_003,no Ph/St tag at the start of the name\r\n";
             Assert.Equal(expected, plan.ToCsv());
-            Assert.Equal("Status,Type,Layer it sits in (corrected name),Current name in Max,Corrected name,What changed", PhasingFixPlan.CsvHeader);
+            Assert.Equal("Status,Type,Layer it sits in (corrected name),Current name in Max,Corrected name,What changed", PhasingFixPlanText.CsvHeader);
             Assert.Equal("1 layer and 1 object to change, 1 to check.", plan.Summary());
-            Assert.Equal(1, plan.LayersToChange);
-            Assert.Equal(1, plan.ObjectsToChange);
-            Assert.Equal(1, plan.ToCheck);
+            Assert.Equal(1, plan.LayersToChange());
+            Assert.Equal(1, plan.ObjectsToChange());
+            Assert.Equal(1, plan.ToCheck());
         }
 
         [Fact]
@@ -1038,12 +1038,12 @@ namespace Utilities.Tests
             foreach (var second in new[] { scene.Plan(overrides), scene.Plan() })
             {
                 Print(second);
-                Assert.False(second.HasChanges);
+                Assert.False(second.HasChanges());
                 Assert.Empty(second.NodeRenames);
                 Assert.Empty(second.NodeMoves);
                 Assert.Empty(second.MaxLayerRenames);
                 Assert.Empty(second.MaxLayerMoves);
-                Assert.Equal(0, second.LayersToChange + second.ObjectsToChange);
+                Assert.Equal(0, second.LayersToChange() + second.ObjectsToChange());
                 // What is left needs a person: an untagged object and a removal tag with no layer.
                 Assert.Equal(new[] { "no Ph/St tag at the start of the name", "removal tag Ph6_St40 names a stage that has no layer in this file; left as it is - needs the stage it comes out at" },
                     second.Rows.Select(r => r.WhatChanged).OrderBy(w => w).ToArray());
@@ -1086,7 +1086,7 @@ namespace Utilities.Tests
             Assert.Equal(new[] { "1", "1", "2", null }, plan.Layers.Select(l => l.Split).ToArray());
 
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
         }
 
         [Fact]
@@ -1126,7 +1126,7 @@ namespace Utilities.Tests
             Assert.Equal("1", info.Split);
             Assert.Equal("17-08-26", info.Description);
             Assert.Equal("no Ph/St tag at the start of the name", RowFor(plan, "Ph2_St17-08-26_IN_Kerb", PhasingFixStatus.Check).WhatChanged);
-            Assert.False(plan.HasChanges);
+            Assert.False(plan.HasChanges());
 
             var id = PhasingNameFixer.ReadLayerId("01_04_2_Phase1_Retainment_Installation_18-09-26_23-10-26");
             Assert.Equal(new object[] { 1, 4, 2, PlannerLegacyForm.None, false }, new object[] { id.Phase, id.Stage, id.Split, id.SplitForm, id.OneNumber });
@@ -1176,12 +1176,12 @@ namespace Utilities.Tests
                 "Ph3_St04-2_IN_RC_Hoarding_B -> Ph3_St04_2_IN_RC_Hoarding_B"
             }, plan.NodeRenames.Select(r => r.OldName + " -> " + r.NewName).OrderBy(r => r, System.StringComparer.Ordinal).ToArray());
             Assert.All(plan.Rows, r => Assert.Equal(PhasingNameFixer.HyphenReason, r.WhatChanged));
-            Assert.Equal(0, plan.ToCheck);
+            Assert.Equal(0, plan.ToCheck());
             Assert.Equal(new[] { "1", "2", "1", "2", null }, plan.Layers.Select(l => l.Split).ToArray());
             Assert.Equal("4 layers and 5 objects to change, 0 to check.", plan.Summary());
 
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
         }
 
         [Fact]
@@ -1215,7 +1215,7 @@ namespace Utilities.Tests
             Assert.Equal(kerbs, RowFor(plan, "Ph2_St04_IN_Kerbs_based_on_1AB01-XYZ_PDF").NodeKey);
 
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
         }
 
         [Fact]
@@ -1303,12 +1303,12 @@ namespace Utilities.Tests
                 RowFor(plan, "Ph2_St01_IN_Barrier-Ph2_St05.1_RM", PhasingFixStatus.Check).WhatChanged);
             Assert.Equal("with its hyphens replaced, the name ends in the install tag Ph2_St05_1, which the Planner reads as more work - check it is meant",
                 RowFor(plan, "Ph2_St01_RM_Old_Kerb-Ph2_St05.1_IN", PhasingFixStatus.Check).WhatChanged);
-            Assert.Equal(4, plan.ToCheck);
+            Assert.Equal(4, plan.ToCheck());
 
             scene.Apply(plan);
             var again = scene.Plan();
             Print(again);
-            Assert.False(again.HasChanges);
+            Assert.False(again.HasChanges());
             Assert.DoesNotContain(again.Rows, r => r.Status == PhasingFixStatus.Changed);
         }
 
@@ -1351,7 +1351,7 @@ namespace Utilities.Tests
             Assert.Equal(bare, RowFor(plan, "02_05_2", PhasingFixStatus.Check).NodeKey);
 
             scene.Apply(plan);
-            Assert.False(scene.Plan().HasChanges);
+            Assert.False(scene.Plan().HasChanges());
 
             // The fix reads each as the Planner does (PlannerNaming.LayerStage).
             foreach (var name in new[] { "02_01__2_X_17-08-26", "02_01_ 2_X_17-08-26", "02_01_2 X_17-08-26", "02_01_2_X_17-08-26" })
@@ -1386,7 +1386,7 @@ namespace Utilities.Tests
                 var child = PlannerNaming.ParseMeshName(two.Nodes.Single(n => n.ParentKey == layer.Key).Name);
                 Assert.Equal(PlannerNaming.ParseLayerName(layer.Name).SubStage, child.Lead.SubStage);
             }
-            Assert.False(two.Plan().HasChanges);
+            Assert.False(two.Plan().HasChanges());
         }
 
         /// <summary>
@@ -1411,7 +1411,7 @@ namespace Utilities.Tests
             foreach (var current in new[] { scene.Plan(), scene.Plan() })
             {
                 Print(current);
-                Assert.False(current.HasChanges);
+                Assert.False(current.HasChanges());
                 Assert.Empty(current.Layers);
                 Assert.Equal("the convention writes each number of a layer ID with one or two digits (02_02-123); left as it is - rename it by hand",
                     RowFor(current, "02_02-123_Wall_17-08-26", PhasingFixStatus.Check).WhatChanged);
@@ -1425,7 +1425,7 @@ namespace Utilities.Tests
                     RowFor(current, "Ph2_St02-123_IN_Wall", PhasingFixStatus.Check).WhatChanged);
                 Assert.Equal("its name has a hyphen, but its layer is left as it is (see the layer's own row); correct the layer, then fix the names again to convert it",
                     RowFor(current, "Ph2_St123_IN_Kerb-A", PhasingFixStatus.Check).WhatChanged);
-                Assert.Equal(8, current.ToCheck);
+                Assert.Equal(8, current.ToCheck());
             }
             Assert.Null(PhasingNameFixer.ReadLayerId("02_02-123_Wall_17-08-26"));
             Assert.Null(PhasingNameFixer.ReadLayerId("02_123_Kerbs_18-08-26"));
@@ -1547,7 +1547,7 @@ namespace Utilities.Tests
             Assert.Equal("tag Ph3_St06 changed to its layer's Ph3_St06_2", RowFor(plan, "Ph3_St06_RM_Hrd_B").WhatChanged);
             Assert.Equal("one number with a sub-stage (05-1): the convention needs the phase in front, <phase>_05_1_<name>, but its objects' tags of that stage carry phases 2 and 3; "
                 + "left as it is - rename it by hand", RowFor(plan, "05-1_Mixed_01-11-26", PhasingFixStatus.Check).WhatChanged);
-            Assert.Equal("Layer", RowFor(plan, "05-1_Mixed_01-11-26", PhasingFixStatus.Check).TypeText);
+            Assert.Equal("Layer", RowFor(plan, "05-1_Mixed_01-11-26", PhasingFixStatus.Check).TypeText());
             Assert.Equal("one number with a sub-stage (04-1): the convention needs the phase in front, <phase>_04_1_<name>, but none of the objects directly in it has a tag of "
                 + "stage 04_1 to give it (objects inside a group or linked under another object are not read); left as it is - rename it by hand",
                 RowFor(plan, "04-1_Empty_01-11-26", PhasingFixStatus.Check).WhatChanged);
@@ -1568,8 +1568,8 @@ namespace Utilities.Tests
             // hand and the two objects waiting for one of them.
             scene.Apply(plan);
             var again = scene.Plan();
-            Assert.False(again.HasChanges);
-            Assert.Equal(4, again.ToCheck);
+            Assert.False(again.HasChanges());
+            Assert.Equal(4, again.ToCheck());
         }
 
         [Fact]
@@ -1594,7 +1594,7 @@ namespace Utilities.Tests
 
             scene.Apply(plan);
             var again = scene.Plan();
-            Assert.False(again.HasChanges);
+            Assert.False(again.HasChanges());
             Assert.Empty(again.Rows);
         }
 
@@ -1678,7 +1678,7 @@ namespace Utilities.Tests
             Assert.Equal(new[] { "has objects linked under it; its own name is corrected, the objects under it are left as they are", "no Ph/St tag at the start of the name" },
                 plan.Rows.Where(r => r.CurrentName == "RC_Path2").Select(r => r.WhatChanged).OrderBy(w => w, System.StringComparer.Ordinal).ToArray());
             Assert.Equal("1 layer and 2 objects to change, 2 to check.", plan.Summary());
-            Assert.Equal("3 phasing layers and objects can be corrected automatically \u2014 use Fix phasing names\u2026 on the exporter window", PhasingFixScript.ExportWarning(plan));
+            Assert.Equal(3, PhasingFixPlanText.CorrectableCount(plan));
 
             var counts = plan.Counts;
             Assert.Equal("Phasing counts: 2 layers in the Max layer Road_Phasing, 3 helper nodes and 3 tagged objects under Road_Phasing.", counts.Describe(true));
@@ -1717,7 +1717,7 @@ namespace Utilities.Tests
 
             var plan = scene.Plan();
             Print(plan);
-            Assert.False(plan.HasChanges);
+            Assert.False(plan.HasChanges());
             Assert.Equal("taken away and put back in Ph2_St02 (its removal tag, then its install tag), but it sits in this layer, which is not Ph2_St02's: the Planner lists it as a"
                 + " naming error; left as it is \u2014 correct it by hand: move it to the Ph2_St02 layer, or retag it for this layer as Ph2_St01_RM_Bench_Ph2_St01_IN",
                 RowFor(plan, "Ph2_St02_RM_Bench_Ph2_St02_IN", PhasingFixStatus.Check).WhatChanged);
@@ -1726,8 +1726,7 @@ namespace Utilities.Tests
             Assert.Contains("taken away and put back in Ph2_St03", RowFor(plan, "Ph2_St03_RM_Seat_Ph2_St03_IN", PhasingFixStatus.Check).WhatChanged);
             Assert.Equal(kerbsName, RowFor(plan, "Ph2_St02_RM_Bench_Ph2_St02_IN", PhasingFixStatus.Check).LayerItSitsIn);
             Assert.DoesNotContain(plan.Rows, r => r.CurrentName == "Ph2_St01_RM_Gate_Ph2_St01_IN" || r.CurrentName == "Ph2_St01_IN_Kerb");
-            Assert.Equal(0, PhasingFixScript.CorrectableCount(plan));
-            Assert.Null(PhasingFixScript.ExportWarning(plan));
+            Assert.Equal(0, PhasingFixPlanText.CorrectableCount(plan));
 
             // The layer given stage 3 in the review: the seat is its own work then, and keeps its name, which already names
             // that stage; the bench is still another stage's.
@@ -1765,7 +1764,7 @@ namespace Utilities.Tests
 
             scene.Apply(plan);
             var again = scene.Plan();
-            Assert.False(again.HasChanges);
+            Assert.False(again.HasChanges());
             Assert.Empty(again.Rows);
             Assert.Null(again.Counts.PairingNote());
 

@@ -55,6 +55,8 @@ namespace Max2Babylon
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             grid.BackgroundColor = SystemColors.Window;
             grid.BorderStyle = BorderStyle.None;
+            // The header follows the font, which display scaling enlarges (its default height does not).
+            grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Find", SortMode = DataGridViewColumnSortMode.NotSortable });
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Replace", SortMode = DataGridViewColumnSortMode.NotSortable });
 

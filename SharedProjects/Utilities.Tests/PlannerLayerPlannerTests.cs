@@ -317,7 +317,12 @@ namespace Utilities.Tests
             var rows = Rows().ToList();
             rows.Add(TestCsv.Row("l31", "g2", "02_03_1_C_01-02-27"));
             var plan = PlannerLayerPlanner.Plan(TestCsv.List(rows.ToArray()), scene.Snapshot);
-            Assert.Equal(PlannerRowState.New, RowOf(plan, "l31").State);
+            // Nor is a third layer with that ID made (D2): the row is left as it is until a person gives one of them another ID.
+            var row = RowOf(plan, "l31");
+            Assert.Equal(PlannerRowState.Problem, row.State);
+            Assert.Equal(PlannerMatchKind.None, row.MatchedBy);
+            Assert.Equal("Problem: the layer 02_03_1_A_01-02-27, which the list does not have, keeps the layer ID 02_03_1, and no two layers may share an ID: give one of them another ID; left as it is",
+                row.StatusText);
             Assert.Equal(new[] { "02_03_1_A_01-02-27", "02_03_1_B_01-02-27" }, plan.NotInList.Select(n => n.Name).ToArray());
             Assert.All(plan.NotInList, n => Assert.Equal(string.Empty, n.Note));
         }

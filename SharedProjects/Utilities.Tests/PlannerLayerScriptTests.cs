@@ -73,7 +73,7 @@ namespace Utilities.Tests
             Assert.Equal(3, batch.Stamps);
 
             // One undo record; everything found before it; the steps in their order.
-            Assert.Equal(1, Occurrences(script, "undo \"Build Planner layers\" on"));
+            Assert.Equal(1, Occurrences(script, "undo \"Add layer\" on"));
             Assert.True(script.IndexOf("maxOps.getNodeByHandle", StringComparison.Ordinal) < script.IndexOf("undo \"", StringComparison.Ordinal));
             Assert.True(script.IndexOf("LayerManager.getLayerFromName", StringComparison.Ordinal) < script.IndexOf("undo \"", StringComparison.Ordinal));
             var steps = new[]
@@ -167,12 +167,13 @@ namespace Utilities.Tests
             Assert.Equal("the helper " + newHelper.FinalName + " was not created: its layer is missing", result.Failures[5]);
             Assert.Contains("3ds Max reported an error: -- Runtime error: no", result.Failures[6]);
             Assert.Contains("did not get its Planner ID", result.Failures[7]);
-            Assert.StartsWith("an item of the build was not carried out (weird 99, code)", result.Failures[8]);
+            Assert.StartsWith("an item of the batch was not carried out (weird 99, code)", result.Failures[8]);
 
-            var text = result.Describe(null, true);
+            var text = result.Describe(true);
             Assert.Contains("Done: 2 layers created, 5 helpers created, 1 layer renamed, 4 helpers renamed, 3 layers moved, 6 helpers moved, 7 helpers put on their layers and 8 helpers given their Planner IDs.", text);
             Assert.Contains("9 changes were not made:", text);
-            Assert.EndsWith("Edit > Fetch puts the scene back as it was before the build.", text);
+            Assert.EndsWith("Edit > Fetch puts the scene back as it was before the layer was added.", text);
+            Assert.DoesNotContain("build", text, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
@@ -183,7 +184,7 @@ namespace Utilities.Tests
             var none = PlannerLayerScript.ReadResult(batch, null);
             Assert.False(none.Completed);
             Assert.True(none.HasProblems);
-            Assert.StartsWith("3ds Max did not report back", none.Describe(null, false));
+            Assert.Equal("3ds Max did not report back, so it is not known whether the layer was added.\r\nNothing was changed.", none.Describe(false));
 
             var printed = PlannerLayerScript.ReadResult(batch, "\"DONE\\t0\\t1\\t0\\t0\\t0\\t0\\t0\\t0\\n" + PlannerLayerScript.EndMarker + "\\n\"");
             Assert.True(printed.Completed);
@@ -192,8 +193,8 @@ namespace Utilities.Tests
             var aborted = PlannerLayerScript.ReadResult(batch, "ABORT\t-- Unknown property\r\nDONE\t0\t0\t0\t0\t0\t0\t0\t0\r\n" + PlannerLayerScript.EndMarker + "\r\n");
             Assert.True(aborted.Completed);
             Assert.Equal("-- Unknown property", aborted.Aborted);
-            Assert.Contains("The build stopped part-way", aborted.Describe(null, false));
-            Assert.Contains("Nothing was changed.", aborted.Describe(null, false));
+            Assert.Contains("Adding the layer stopped part-way", aborted.Describe(false));
+            Assert.Contains("Nothing was changed.", aborted.Describe(false));
         }
 
         [Fact]
@@ -205,8 +206,10 @@ namespace Utilities.Tests
             var list = plan.List;
             var again = PlannerLayerPlanner.Plan(list, after);
             Assert.False(again.HasChanges);
+            Assert.Equal("0 new, 0 to change, 4 up to date, 0 problems.", again.Summary());
             var result = PlannerLayerScript.ReadResult(PlannerLayerScript.Build(plan, "__t_"), "DONE\t1\t3\t1\t1\t3\t1\t2\t4\n" + PlannerLayerScript.EndMarker + "\n");
-            Assert.EndsWith("Read again from the scene: 0 new, 0 to change, 4 up to date, 0 problems.", result.Describe(again, false));
+            Assert.False(result.HasProblems);
+            Assert.StartsWith("Done: 3 layers created", result.Describe(false));
         }
 
         private static int Occurrences(string text, string part)

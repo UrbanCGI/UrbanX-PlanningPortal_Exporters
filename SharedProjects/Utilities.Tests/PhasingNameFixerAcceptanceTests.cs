@@ -289,7 +289,7 @@ namespace Utilities.Tests
             foreach (var i in placeMismatches) output.WriteLine("PLACE #" + i + ": children " + string.Join(",", fixedTree.Children[i]) + "  expected " + string.Join(",", expected.Children[i]));
             output.WriteLine(string.Format("v3_05 -> v3_06u: nodes {0}, phasing tree {1}; renames {2} (expected {3}), moves {4} (expected {5}); name mismatches {6}, place mismatches {7}, outside touched {8}; checks {9}",
                 before.Names.Count, phasing.Count, plan.NodeRenames.Count, renamesExpected, plan.NodeMoves.Count, expectedMoves.Count,
-                nameMismatches.Count, placeMismatches.Count, outsideTouched.Count, plan.ToCheck));
+                nameMismatches.Count, placeMismatches.Count, outsideTouched.Count, plan.ToCheck()));
             output.WriteLine(plan.Counts.Describe(true));
             Assert.Empty(nameMismatches);
             Assert.Empty(placeMismatches);
@@ -309,7 +309,7 @@ namespace Utilities.Tests
                 var notUnderscoreOnly = again.NodeRenames.Count(r => Underscore(r.OldName) != r.NewName);
                 var otherReasons = again.Rows.Count(r => r.Status == PhasingFixStatus.Changed && WithoutNewReasons(r.WhatChanged).Length > 0);
                 output.WriteLine(string.Format("v3_06 -> v3_06u: {0} renames (expected {1}), {2} moves, {3} to check; name mismatches {4}, renames that do more than the underscores {5}, other reasons {6}",
-                    again.NodeRenames.Count, underscored, again.NodeMoves.Count, again.ToCheck, mismatches, notUnderscoreOnly, otherReasons));
+                    again.NodeRenames.Count, underscored, again.NodeMoves.Count, again.ToCheck(), mismatches, notUnderscoreOnly, otherReasons));
                 Assert.Equal(0, mismatches);
                 Assert.Equal(0, notUnderscoreOnly);
                 Assert.Equal(0, otherReasons);
@@ -322,10 +322,10 @@ namespace Utilities.Tests
             foreach (var again in new[] { PhasingNameFixer.Plan(done, null, PhasingNameFixer.DefaultWordFixes(), KerbingOverrides(done)),
                                           PhasingNameFixer.Plan(done, null, PhasingNameFixer.DefaultWordFixes(), null) })
             {
-                output.WriteLine("v3_06u: " + again.NodeRenames.Count + " renames, " + again.NodeMoves.Count + " moves, " + again.ToCheck + " to check");
+                output.WriteLine("v3_06u: " + again.NodeRenames.Count + " renames, " + again.NodeMoves.Count + " moves, " + again.ToCheck() + " to check");
                 Assert.Empty(again.NodeRenames);
                 Assert.Empty(again.NodeMoves);
-                Assert.False(again.HasChanges);
+                Assert.False(again.HasChanges());
             }
 
             var outPath = Environment.GetEnvironmentVariable("PLANNER_FIX_OUT_CSV");
@@ -345,7 +345,7 @@ namespace Utilities.Tests
             // clean-up's names and reasons are taken with their underscores put in, the fixer's reasons without its
             // reasons for them, and its rows that only put them in (names the clean-up left alone) are counted apart.
             var reference = ReadCsv(csvPath);
-            Assert.Equal(PhasingFixPlan.CsvHeader, string.Join(",", reference[0]));
+            Assert.Equal(PhasingFixPlanText.CsvHeader, string.Join(",", reference[0]));
             var expectedChanged = reference.Skip(1).Where(r => r[0] == "Changed").ToList();
             var expectedChecks = reference.Skip(1).Where(r => r[0] == "Check").ToList();
             var underscoreOnly = plan.Rows.Where(UnderscoreOnly).ToList();
@@ -364,10 +364,10 @@ namespace Utilities.Tests
                 var mine = changed[i];
                 var theirs = expectedChanged[i];
                 var theirCurrent = DuplicateSuffix.Replace(theirs[3], string.Empty);
-                if (mine.TypeText != theirs[1] || mine.CurrentName != theirCurrent || mine.CorrectedName != Underscore(theirs[4]))
+                if (mine.TypeText() != theirs[1] || mine.CurrentName != theirCurrent || mine.CorrectedName != Underscore(theirs[4]))
                 {
                     rowMismatches++;
-                    output.WriteLine("ROW " + i + ": " + mine.TypeText + " " + mine.CurrentName + " -> " + mine.CorrectedName + "  expected " + theirs[1] + " " + theirCurrent + " -> " + Underscore(theirs[4]));
+                    output.WriteLine("ROW " + i + ": " + mine.TypeText() + " " + mine.CurrentName + " -> " + mine.CorrectedName + "  expected " + theirs[1] + " " + theirCurrent + " -> " + Underscore(theirs[4]));
                 }
                 if (mine.LayerItSitsIn != Underscore(theirs[2]))
                 {
@@ -389,7 +389,7 @@ namespace Utilities.Tests
             {
                 var mine = checks[i];
                 var theirs = expectedChecks[i];
-                if (mine.TypeText != theirs[1] || mine.LayerItSitsIn != Underscore(theirs[2]) || mine.CurrentName != DuplicateSuffix.Replace(theirs[3], string.Empty)
+                if (mine.TypeText() != theirs[1] || mine.LayerItSitsIn != Underscore(theirs[2]) || mine.CurrentName != DuplicateSuffix.Replace(theirs[3], string.Empty)
                     || mine.CorrectedName != Underscore(theirs[4]) || UnderscoreText(mine.WhatChanged) != UnderscoreText(theirs[5]))
                 {
                     checkMismatches++;
@@ -406,8 +406,7 @@ namespace Utilities.Tests
         }
 
         // The modellers' scene also has a Max layer for the top node, each group and each layer, nested like the
-        // nodes. The fix renames and re-parents those with the nodes, the batch carries every item, and afterwards
-        // the scene needs nothing more.
+        // nodes. The fix renames and re-parents those with the nodes, and afterwards the scene needs nothing more.
         [Fact]
         public void ReferenceModelWithItsMaxLayersComesOutClean()
         {
@@ -454,15 +453,6 @@ namespace Utilities.Tests
             Assert.Equal(plan.Counts.Layers, plan.Counts.Helpers);
             Assert.Null(plan.Counts.PairingNote());
 
-            // The batch takes every item, and its arrays read back as the plan.
-            var batch = PhasingFixScript.Build(plan, "__phasing_fix_test_");
-            Assert.Empty(batch.Refused);
-            MaxScriptText.AssertBalanced(batch.Script);
-            Assert.Equal(plan.NodeRenames.Select(r => r.OldName), MaxScriptText.ArrayItems(batch.Script, "fixNodeOld"));
-            Assert.Equal(plan.NodeRenames.Select(r => r.NewName), MaxScriptText.ArrayItems(batch.Script, "fixNodeNew"));
-            Assert.Equal(plan.MaxLayerRenames.Select(r => r.NewName), MaxScriptText.ArrayItems(batch.Script, "fixLayerRenameNew"));
-            output.WriteLine("Batch: " + batch.Script.Length + " characters");
-
             // Carried out, every node and Max layer has its v3_06u name and place.
             scene.Apply(plan);
             var byKey = scene.Nodes.ToDictionary(n => n.Key);
@@ -488,9 +478,9 @@ namespace Utilities.Tests
             foreach (var again in new[] { scene.Plan(overrides), scene.Plan() })
             {
                 output.WriteLine("Fixed scene: " + again.NodeRenames.Count + " renames, " + again.NodeMoves.Count + " moves, "
-                    + again.MaxLayerRenames.Count + " Max layer renames, " + again.MaxLayerMoves.Count + " Max layer moves, " + again.ToCheck + " to check");
-                Assert.False(again.HasChanges);
-                Assert.Null(PhasingFixScript.ExportWarning(again));
+                    + again.MaxLayerRenames.Count + " Max layer renames, " + again.MaxLayerMoves.Count + " Max layer moves, " + again.ToCheck() + " to check");
+                Assert.False(again.HasChanges());
+                Assert.Equal(0, PhasingFixPlanText.CorrectableCount(again));
             }
         }
     }

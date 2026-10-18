@@ -49,19 +49,19 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// The outcome in a few plain lines: what was done, what was not, and what the scene still needs when it is read
-        /// again (<paramref name="after"/>, the plan made from the scene after the batch; may be null).
+        /// The outcome of Add layer, the batch's one caller since Build layers and helpers became part of Clean up scene graph
+        /// (D22), in a few plain lines: what was done, and what was not.
         /// </summary>
-        public string Describe(PlannerLayerPlan after, bool held)
+        public string Describe(bool held)
         {
             var lines = new List<string>();
             if (!Completed)
             {
-                lines.Add("3ds Max did not report back, so it is not known how far the build got.");
+                lines.Add("3ds Max did not report back, so it is not known whether the layer was added.");
             }
             if (Aborted != null)
             {
-                lines.Add("The build stopped part-way, so some changes may be missing: " + Aborted);
+                lines.Add("Adding the layer stopped part-way, so some changes may be missing: " + Aborted);
             }
             var done = new List<string>();
             if (LayersCreated > 0) done.Add(PhasingFixScript.Count(LayersCreated, "layer created", "layers created"));
@@ -78,16 +78,10 @@ namespace Utilities.Planner
                 lines.Add(PhasingFixScript.Count(Failures.Count, "change was not made:", "changes were not made:"));
                 lines.AddRange(Failures.Select(f => "- " + f));
             }
-            if (after != null)
-            {
-                lines.Add(after.HasChanges
-                    ? "Read again from the scene: " + after.Summary() + " Build again to finish, or see the list."
-                    : "Read again from the scene: " + after.Summary());
-            }
             if (held)
             {
-                // The build is one undo record, but whether 3ds Max undoes layer changes with the nodes' is not known: Fetch is the sure way back.
-                lines.Add("Edit > Fetch puts the scene back as it was before the build.");
+                // The batch is one undo record, but whether 3ds Max undoes layer changes with the nodes' is not known: Fetch is the sure way back.
+                lines.Add("Edit > Fetch puts the scene back as it was before the layer was added.");
             }
             return string.Join("\r\n", lines.ToArray());
         }
@@ -109,7 +103,8 @@ namespace Utilities.Planner
     public static class PlannerLayerScript
     {
         public const string EndMarker = "PLANNERBUILD-END";
-        public const string UndoLabel = "Build Planner layers";
+        /// <summary>The undo record's name, which Edit > Undo shows: Add layer is the batch's one caller (D22).</summary>
+        public const string UndoLabel = "Add layer";
         /// <summary>The size of a new helper Dummy's box, in scene units.</summary>
         public const string DummyBoxSize = "[1,1,1]";
 
@@ -722,7 +717,7 @@ namespace Utilities.Planner
                     }
                     break;
             }
-            return "an item of the build was not carried out (" + kind + " " + (index + 1).ToString(CultureInfo.InvariantCulture) + ", " + code + ")"
+            return "an item of the batch was not carried out (" + kind + " " + (index + 1).ToString(CultureInfo.InvariantCulture) + ", " + code + ")"
                 + (string.IsNullOrEmpty(detail) ? string.Empty : ": " + detail);
         }
 

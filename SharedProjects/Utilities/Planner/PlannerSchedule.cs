@@ -38,6 +38,8 @@ namespace Utilities.Planner
         public string Reason;
         /// <summary>The Max layer it sits on, for the list.</summary>
         public string LayerName;
+        /// <summary>Naming v2: the Planner schedules it, but reads its name only in part (a tag it cannot read, a reference to a layer nobody has).</summary>
+        public bool InPart;
     }
 
     /// <summary>
@@ -59,6 +61,7 @@ namespace Utilities.Planner
     {
         public const string HiddenReason = "hidden, and the export leaves hidden objects out (Export hidden objects is off)";
         public const string NoExportReason = "Do not export is ticked in its object properties";
+        public const string NotInThisExportReason = "this export leaves it out (Export only selected, or a layer not chosen to export)";
 
         public readonly PlannerSceneModel Scene;
         /// <summary>The GLB's nodes, in the GLB's (the export's) order.</summary>
@@ -74,7 +77,7 @@ namespace Utilities.Planner
             var self = new Dictionary<long, bool>();
             foreach (var node in Scene.Nodes)
             {
-                self[node.Key] = !node.NoExport && !(node.Hidden && !exportHidden) && !node.IsShape;
+                self[node.Key] = !node.NoExport && !node.NotInThisExport && !(node.Hidden && !exportHidden) && !node.IsShape;
             }
 
             // The export's order: each top-level node's tree depth first, the trees holding geometry first.
@@ -154,6 +157,10 @@ namespace Utilities.Planner
                 {
                     LeftOut[node.Key] = NoExportReason;
                 }
+                else if (node.NotInThisExport)
+                {
+                    LeftOut[node.Key] = NotInThisExportReason;
+                }
                 else if (node.Hidden && !exportHidden)
                 {
                     LeftOut[node.Key] = HiddenReason;
@@ -204,8 +211,11 @@ namespace Utilities.Planner
         }
     }
 
-    /// <summary>When the Planner's Generate from model is run: the time zone it runs in and the workspace's start.</summary>
-    public sealed class PlannerScheduleOptions
+    /// <summary>
+    /// When the Planner's Generate from model is run: the time zone it runs in and the workspace's start. The new names'
+    /// inputs (the Planner's project start and folders, as the layer list gives them) are in PlannerScheduleV2.cs.
+    /// </summary>
+    public sealed partial class PlannerScheduleOptions
     {
         /// <summary>The browser's time zone: dates are local midnights, as JavaScript reads them.</summary>
         public TimeZoneInfo Zone = TimeZoneInfo.Local;
@@ -218,8 +228,11 @@ namespace Utilities.Planner
         public DateTime Today = DateTime.Today;
     }
 
-    /// <summary>A layer as Generate from model reads it: a dated group of the hierarchy, known by its label.</summary>
-    public sealed class PlannerScheduleLayer
+    /// <summary>
+    /// A layer as the new names' Generate from model reads it: a layer folder of the Planner's project, known by its layer
+    /// ID (its own fields: PlannerScheduleV2.cs).
+    /// </summary>
+    public sealed partial class PlannerScheduleLayer
     {
         public string Label;
         /// <summary>The first raw name seen for the label (issues are reported against it).</summary>
@@ -246,30 +259,22 @@ namespace Utilities.Planner
         {
             get { return Parsed.Tbc; }
         }
-
-        internal readonly List<PlannerSchedule.Member> Members = new List<PlannerSchedule.Member>();
-        internal readonly List<PlannerSchedule.Seg> OwnSegs = new List<PlannerSchedule.Seg>();
-        internal readonly List<PlannerSchedule.Seg> ForeignSegs = new List<PlannerSchedule.Seg>();
-        // (phase, the layer's stage) for each own segment, and a two-number layer's ID, in the order first owned.
-        internal readonly List<KeyValuePair<string, PlannerSchedule.StageOwner>> OwnStages = new List<KeyValuePair<string, PlannerSchedule.StageOwner>>();
     }
 
-    /// <summary>One activity Generate from model makes, with its place in time.</summary>
-    public sealed class PlannerScheduleActivity
+    /// <summary>One activity Generate from model makes, with its place in time (the new names' own fields: PlannerScheduleV2.cs).</summary>
+    public sealed partial class PlannerScheduleActivity
     {
         public string Name;
         public PlannerTaskType Type;
         /// <summary>The layer whose folder holds it.</summary>
         public PlannerScheduleLayer Home;
-        /// <summary>Its home layer's own work, spread over the layer's dates; else anchored to another stage's layer.</summary>
+        /// <summary>Work of its home layer's own ID (its event layer is its home), not a reference to another layer.</summary>
         public bool IsOwn;
-        /// <summary>The layer whose dates place it: its home for its own work, the dated layer of its stage for another's; null when placed by rule.</summary>
+        /// <summary>The layer whose dates place it: the layer whose folder holds it, which every activity has on the new names.</summary>
         public PlannerScheduleLayer DatedBy;
-        /// <summary>No dated layer has its stage: a removal is parked the day after the works end, an install sits at the project start.</summary>
+        /// <summary>Its reference names a layer nobody has: a removal is parked after the works end, an install on the project start (spec 3.6).</summary>
         public bool Unresolved;
         public bool Tbc;
-        /// <summary>The tag it reads (its first object's).</summary>
-        public PlannerMeshSegment Segment;
         /// <summary>Minutes from the project start, as the scheduler chains them.</summary>
         public long StartMinute;
         public long Duration;
@@ -278,16 +283,10 @@ namespace Utilities.Planner
         public long EndMs;
         /// <summary>The objects it binds, in the Planner's order.</summary>
         public readonly List<string> Members = new List<string>();
-
-        /// <summary>"Ph1_St04_2": the tag's phase and stage, as the activity's name writes them.</summary>
-        public string StageText
-        {
-            get { return "Ph" + Segment.Phase.ToString(CultureInfo.InvariantCulture) + "_" + PlannerSchedule.StageTag(Segment); }
-        }
     }
 
-    /// <summary>One object the Planner schedules, and the activities that bind it.</summary>
-    public sealed class PlannerScheduleObject
+    /// <summary>One object the Planner schedules, and the activities that bind it (the new names' own fields: PlannerScheduleV2.cs).</summary>
+    public sealed partial class PlannerScheduleObject
     {
         /// <summary>Its name in the GLB, as the Planner reads it.</summary>
         public string Name;
@@ -295,17 +294,8 @@ namespace Utilities.Planner
         public string MaxName;
         /// <summary>The scene node the Planner shows and hides for this name.</summary>
         public long Key;
-        public PlannerMeshName Parsed;
         /// <summary>The layer it is filed in (the dated group above it).</summary>
         public PlannerScheduleLayer FiledIn;
-        /// <summary>
-        /// Set when its name takes it away and puts it back in one stage ("Ph2_St02": the RM tag first, then the IN tag, the
-        /// same phase and stage) while it sits in another stage's layer: a naming error the Planner lists (its layer issue
-        /// says so), to correct in 3ds Max. Its scheduling is as for any object filed so. Null otherwise.
-        /// </summary>
-        public string MisfiledStage;
-        /// <summary>With <see cref="MisfiledStage"/>: its name with both tags giving the layer it sits in (<see cref="PlannerSchedule.Retagged"/>).</summary>
-        public string Retagged;
         public readonly List<PlannerScheduleActivity> Activities = new List<PlannerScheduleActivity>();
     }
 
@@ -318,17 +308,21 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// What Generate from model (layer mode) makes of the scene, and what the Planner's 4D view shows at any instant: the
-    /// layers, every activity with its dates, each object's installs and removals, and the objects it does not schedule,
-    /// with why. A line-by-line port of the Planner's buildPhasingFromModel and buildFromLayers (apps/web/src/lib/
-    /// phasingFromModel.ts), the viewport's name index and its layer, group and split indexes (features/viewport/
-    /// nodeNames.ts, meshes.ts), the store's start date (Generate moves it back to the earliest dated layer), the scheduler
-    /// (state/schedule.ts) and the 4D events (state/timeline.ts buildMeshEvents, meshVisibilityFromEvents), run on the
-    /// model the export would write. Orders follow the Planner's natural order (<see cref="PlannerNaturalOrder"/>) and
-    /// JavaScript's stable sorts; dates are local midnights in the given time zone, as the browser reads them. Pure logic,
-    /// no 3ds Max.
+    /// What the Planner's first Generate from model makes of a scene on the new names, and what its 4D view shows at any
+    /// instant: the layers, every activity with its dates, each object's installs and removals, and the objects it does not
+    /// schedule, with why. The engine is naming v2's (<see cref="BuildV2(PlannerSceneSnapshot, PlannerScheduleOptions)"/>,
+    /// in PlannerScheduleV2.cs, a port of the Planner's buildFromLayersV2), run on the model the export would write. This
+    /// part holds what the engine shares with the export naming check: the viewport's name index and its layer and split
+    /// indexes (features/viewport/nodeNames.ts, meshes.ts), the time helpers (local midnights in the given time zone, as the
+    /// browser reads them), the 4D view (state/timeline.ts meshVisibilityFromEvents), the IN and RM columns, and the old
+    /// names' tag helpers the check's advice uses. Orders follow the Planner's natural order (<see cref="PlannerNaturalOrder"/>)
+    /// and JavaScript's stable sorts. Pure logic, no 3ds Max.
+    ///
+    /// The old names' engine (Ph/St tags, dated layer names) is gone: no tool built it once the Schedule tab asked for a
+    /// scene on the old names to be cleaned up first (D23). The naming reader (<see cref="NamingOfScene"/>) still tells the
+    /// old names from the new.
     /// </summary>
-    public sealed class PlannerSchedule
+    public sealed partial class PlannerSchedule
     {
         /// <summary>Set when Generate would not run in layer mode, saying why; the layers and activities are then empty.</summary>
         public string Message;
@@ -337,7 +331,7 @@ namespace Utilities.Planner
         /// <summary>The project start Generate dates against (minute 0).</summary>
         public DateTime ProjectStart;
         public long AnchorMs;
-        /// <summary>The last day a dated layer ends; removals no dated layer has are parked the day after.</summary>
+        /// <summary>The last day of the works; removals for a layer nobody has are parked the day after (spec 3.6).</summary>
         public DateTime? WorksEnd;
         /// <summary>The layers, in the Planner's order.</summary>
         public readonly List<PlannerScheduleLayer> Layers = new List<PlannerScheduleLayer>();
@@ -362,58 +356,7 @@ namespace Utilities.Planner
         }
 
         // ---------------------------------------------------------------------------------------------------------
-        // Building
-
-        public static PlannerSchedule Build(PlannerSceneSnapshot snapshot, PlannerScheduleOptions options)
-        {
-            return Build(new PlannerScheduleModel(snapshot), options);
-        }
-
-        public static PlannerSchedule Build(PlannerScheduleModel model, PlannerScheduleOptions options)
-        {
-            options = options ?? new PlannerScheduleOptions();
-            var schedule = new PlannerSchedule { Model = model, Zone = options.Zone ?? TimeZoneInfo.Local };
-            schedule.ReadIndex();
-            var layers = schedule.LayerIndex();
-            var groups = schedule.LayerGroupIndex(layers);
-            var splits = schedule.SplitIndex();
-            var names = splits.Count > 0 ? ToObjects(schedule.Names, splits) : new List<string>(schedule.Names);
-
-            // The store's Generate: the project start moves back to the earliest dated layer anything sits under.
-            DateTime? earliest = null;
-            foreach (var raw in layers.Values.Distinct(StringComparer.Ordinal))
-            {
-                var parsed = PlannerNaming.ParseLayerName(raw);
-                if (parsed != null && parsed.Start.HasValue && (!earliest.HasValue || parsed.Start.Value < earliest.Value))
-                {
-                    earliest = parsed.Start.Value;
-                }
-            }
-            var start = options.WorkspaceStart.HasValue ? options.WorkspaceStart.Value.Date : (earliest ?? options.Today.Date);
-            if (earliest.HasValue && earliest.Value < start)
-            {
-                start = earliest.Value;
-            }
-            schedule.ProjectStart = start;
-            schedule.AnchorMs = schedule.Midnight(start);
-
-            if (layers.Count > 0)
-            {
-                schedule.BuildFromLayers(names, layers, groups);
-            }
-            if (schedule.Objects.Count == 0)
-            {
-                schedule.Message = layers.Count == 0
-                    ? "No object sits under a dated layer (a group named N_<Activity>_DD-MM-YY), so Generate from model would fall back to its older stage counter (segment mode), which the Schedule tab does not show."
-                    : "No tagged object (Ph<n>_St<nn>_IN|RM_...) sits under a dated layer, so Generate from model would fall back to its older stage counter (segment mode), which the Schedule tab does not show.";
-                schedule.Layers.Clear();
-                schedule.Activities.Clear();
-                schedule.Events.Clear();
-                schedule.WorksEnd = null;
-            }
-            schedule.ListNotScheduled();
-            return schedule;
-        }
+        // The indexes
 
         // The viewport's name index: meshes first, then the other nodes, the first node of a name winning.
         private void ReadIndex()
@@ -509,39 +452,6 @@ namespace Utilities.Planner
             return LayerOf;
         }
 
-        // nodeNames.ts layerGroupIndex: each layer's nearest phase group above it, and each group's.
-        private Dictionary<string, string> LayerGroupIndex(Dictionary<string, string> layers)
-        {
-            var result = new Dictionary<string, string>(StringComparer.Ordinal);
-            var todo = layers.Values.Distinct(StringComparer.Ordinal).ToList();
-            var seen = new HashSet<string>(todo, StringComparer.Ordinal);
-            for (int i = 0; i < todo.Count; i++)
-            {
-                PlannerModelNode node;
-                Index.TryGetValue(todo[i], out node);
-                string group = null;
-                int hops = 0;
-                for (var p = node != null ? node.Parent : null; p != null && hops < MaxDepth; p = p.Parent, hops++)
-                {
-                    if (p.Name.Length > 0 && ParsePhaseGroup(p.Name) != null)
-                    {
-                        group = p.Name;
-                        break;
-                    }
-                }
-                if (group == null)
-                {
-                    continue;
-                }
-                result[todo[i]] = group;
-                if (seen.Add(group))
-                {
-                    todo.Add(group);
-                }
-            }
-            return result;
-        }
-
         // nodeNames.ts splitIndex: the split pieces (Name_N under Name) and the object each belongs to.
         private Dictionary<string, string> SplitIndex()
         {
@@ -611,633 +521,12 @@ namespace Utilities.Planner
         }
 
         // ---------------------------------------------------------------------------------------------------------
-        // buildFromLayers
-
-        internal sealed class Member
-        {
-            public string Part;
-            public PlannerMeshName Parsed;
-        }
-
-        internal sealed class Seg
-        {
-            public Member Member;
-            public PlannerMeshSegment Segment;
-        }
-
-        internal sealed class StageOwner
-        {
-            public int Phase;
-            public int Stage;
-            public int? SubStage;
-            public PlannerScheduleLayer Layer;
-        }
-
-        private sealed class Occurrence
-        {
-            public PlannerScheduleLayer Layer;
-            public PlannerMeshSegment Segment;
-            public Member Member;
-            public bool IsOwn;
-        }
-
-        private sealed class Planned
-        {
-            public PlannerScheduleLayer Home;
-            public bool IsOwn;
-            public PlannerMeshSegment Segment;
-            public List<Member> Members;
-            public string Name;
-        }
-
-        private sealed class Resolved
-        {
-            public DateTime At;
-            public bool Tbc;
-            public bool Exact;
-            public PlannerScheduleLayer Layer;
-        }
-
-        // The Planner's issues write an em dash.
-        private static readonly string Dash = ((char)0x2014).ToString();
-
-        private void BuildFromLayers(List<string> names, Dictionary<string, string> layersByNode, Dictionary<string, string> groupsByNode)
-        {
-            var parts = ToObjects(names, null);
-            var byLabel = new Dictionary<string, PlannerScheduleLayer>(StringComparer.Ordinal);
-            var inOrder = new List<PlannerScheduleLayer>();
-            var warnedDupes = new HashSet<string>(StringComparer.Ordinal);
-            Func<string, string> groupOf = rawLayer =>
-            {
-                string raw;
-                return groupsByNode.TryGetValue(rawLayer, out raw) && ParsePhaseGroup(raw) != null ? raw : null;
-            };
-
-            // 2. Tagged parts under their layer's label.
-            foreach (var part in parts)
-            {
-                var mesh = PlannerNaming.ParseMeshName(part);
-                if (mesh == null)
-                {
-                    continue;
-                }
-                string rawLayer;
-                var layer = layersByNode.TryGetValue(part, out rawLayer) ? LayerName(rawLayer) : null;
-                if (layer == null)
-                {
-                    continue;
-                }
-                PlannerScheduleLayer g;
-                if (!byLabel.TryGetValue(layer.Label, out g))
-                {
-                    g = new PlannerScheduleLayer { Label = layer.Label, Raw = rawLayer, Parsed = layer, Group = groupOf(rawLayer) };
-                    byLabel[layer.Label] = g;
-                    inOrder.Add(g);
-                    foreach (var issue in layer.Issues)
-                    {
-                        LayerIssues.Add(rawLayer + ": " + issue);
-                    }
-                }
-                else if (g.Group == null && rawLayer != g.Raw)
-                {
-                    g.Group = groupOf(rawLayer);
-                }
-                if (rawLayer != g.Raw && (layer.Start != g.Parsed.Start || layer.End != g.Parsed.End) && warnedDupes.Add(rawLayer))
-                {
-                    LayerIssues.Add(rawLayer + ": same name as \"" + g.Raw + "\" but different dates " + Dash + " using the first");
-                }
-                PlannerModelNode layerNode;
-                if (Index.TryGetValue(rawLayer, out layerNode) && !g.NodeKeys.Contains(layerNode.Key))
-                {
-                    g.NodeKeys.Add(layerNode.Key);
-                }
-                g.Members.Add(new Member { Part = part, Parsed = mesh });
-            }
-
-            // 3. Each segment OWN (its stage is the layer's, in the layer's phase) or FOREIGN (another stage's work).
-            var strays = new List<KeyValuePair<PlannerScheduleLayer, Member>>();
-            // Objects taken away and put back in one stage, filed under another stage's layer: the stage and the name retagged.
-            var misfiled = new Dictionary<string, KeyValuePair<string, string>>(StringComparer.Ordinal);
-            foreach (var g in inOrder)
-            {
-                int stage = g.Parsed.Stage;
-                int? sub = g.Parsed.SubStage;
-                var leadPhases = g.Members.Where(m => PlannerNaming.SameStage(m.Parsed.Lead.Stage, m.Parsed.Lead.SubStage, stage, sub)).Select(m => m.Parsed.Lead.Phase).ToList();
-                var trailPhases = g.Members.Where(m => m.Parsed.Trail != null && PlannerNaming.SameStage(m.Parsed.Trail.Stage, m.Parsed.Trail.SubStage, stage, sub))
-                    .Select(m => m.Parsed.Trail.Phase).ToList();
-                g.Phase = g.Parsed.Phase ?? Majority(leadPhases) ?? Majority(trailPhases);
-                var layerPhase = g.Phase;
-                var layer = g;
-                Func<PlannerMeshSegment, bool> isOwn = s => PlannerNaming.SameStage(s.Stage, s.SubStage, stage, sub) && (!layerPhase.HasValue || s.Phase == layerPhase.Value);
-                Action<Member, PlannerMeshSegment> own = (m, s) =>
-                {
-                    layer.OwnSegs.Add(new Seg { Member = m, Segment = s });
-                    SetOwnStage(layer, s.Phase, stage, sub);
-                };
-                Action<Member, PlannerMeshSegment> foreign = (m, s) => layer.ForeignSegs.Add(new Seg { Member = m, Segment = s });
-                if (g.Parsed.Phase.HasValue)
-                {
-                    SetOwnStage(g, g.Parsed.Phase.Value, stage, sub);
-                }
-                foreach (var m in g.Members)
-                {
-                    var lead = m.Parsed.Lead;
-                    var trail = m.Parsed.Trail;
-                    bool leadOwn = isOwn(lead);
-                    bool trailOwn = trail != null && isOwn(trail);
-                    if (!leadOwn && !trailOwn)
-                    {
-                        // A stray: its leading segment is dated once every layer's own work is known.
-                        strays.Add(new KeyValuePair<PlannerScheduleLayer, Member>(g, m));
-                        if (trail != null)
-                        {
-                            foreign(m, trail);
-                        }
-                        // Taken away and put back in one stage (RM first, then IN, the same phase and stage) yet filed under
-                        // another stage's layer: a naming error, corrected in 3ds Max (the object goes in that stage's layer,
-                        // or its tags name this layer's stage). Scheduled as any stray all the same, and listed.
-                        if (trail != null && lead.Type == PlannerTaskType.Dismantle && trail.Type == PlannerTaskType.Install && SegKey(lead) == SegKey(trail))
-                        {
-                            var tag = "Ph" + lead.Phase.ToString(CultureInfo.InvariantCulture) + "_" + StageTag(lead);
-                            var retagged = Retagged(m.Part, layerPhase ?? lead.Phase, stage, sub);
-                            LayerIssues.Add(g.Raw + ": " + MisfiledIssue(m.Part, tag, retagged));
-                            misfiled[m.Part] = new KeyValuePair<string, string>(tag, retagged);
-                        }
-                        continue;
-                    }
-                    if (leadOwn)
-                    {
-                        own(m, lead);
-                    }
-                    else
-                    {
-                        foreign(m, lead);
-                    }
-                    if (trail != null)
-                    {
-                        if (trailOwn)
-                        {
-                            own(m, trail);
-                        }
-                        else
-                        {
-                            foreign(m, trail);
-                        }
-                    }
-                }
-            }
-
-            // 4. Which dated layers own each (phase, stage), and the end of the works.
-            var owned = new List<StageOwner>();
-            DateTime? worksEnd = null;
-            foreach (var g in inOrder)
-            {
-                if (!g.Parsed.Start.HasValue)
-                {
-                    continue;
-                }
-                foreach (var o in g.OwnStages)
-                {
-                    owned.Add(new StageOwner { Phase = o.Value.Phase, Stage = o.Value.Stage, SubStage = o.Value.SubStage, Layer = g });
-                }
-                var end = (g.Parsed.End ?? g.Parsed.Start).Value;
-                if (!worksEnd.HasValue || end > worksEnd.Value)
-                {
-                    worksEnd = end;
-                }
-            }
-            WorksEnd = worksEnd;
-            // The dated layer owning a segment's (phase, stage): the very sub-stage first, then the earliest start.
-            Func<PlannerMeshSegment, Resolved> resolve = s =>
-            {
-                Resolved best = null;
-                foreach (var o in owned)
-                {
-                    if (o.Phase != s.Phase || !PlannerNaming.SameStage(o.Stage, o.SubStage, s.Stage, s.SubStage))
-                    {
-                        continue;
-                    }
-                    bool exact = o.SubStage == s.SubStage;
-                    var d = o.Layer.Parsed.Start.Value;
-                    if (best == null || (exact && !best.Exact) || (exact == best.Exact && d < best.At))
-                    {
-                        best = new Resolved { At = d, Tbc = o.Layer.Parsed.Tbc, Exact = exact, Layer = o.Layer };
-                    }
-                }
-                return best;
-            };
-            foreach (var stray in strays)
-            {
-                var seg = new Seg { Member = stray.Value, Segment = stray.Value.Parsed.Lead };
-                if (resolve(stray.Value.Parsed.Lead) != null)
-                {
-                    stray.Key.ForeignSegs.Add(seg);
-                }
-                else
-                {
-                    stray.Key.OwnSegs.Add(seg);
-                }
-            }
-
-            // 5. Plan every activity with its name: one per (description, phase, stage, type) across the whole model.
-            var sortedLayers = PlannerNaturalOrder.StableSort(inOrder, (x, y) =>
-            {
-                double rx = LayerRank(x.Parsed);
-                double ry = LayerRank(y.Parsed);
-                if (rx != ry)
-                {
-                    return rx < ry ? -1 : 1;
-                }
-                return PlannerNaturalOrder.Compare(SpellingKey(x.Parsed.Label), SpellingKey(y.Parsed.Label));
-            });
-            for (int i = 0; i < sortedLayers.Count; i++)
-            {
-                sortedLayers[i].Order = i;
-            }
-            var occurrences = new Dictionary<string, List<Occurrence>>(StringComparer.Ordinal);
-            var occurrenceKeys = new List<string>();
-            foreach (var g in sortedLayers)
-            {
-                var layer = g;
-                Action<Seg, bool> add = (s, isOwn) =>
-                {
-                    var key = StemOf(layer, s.Member) + "|" + SegKey(s.Segment) + "|" + TypeToken(s.Segment.Type);
-                    List<Occurrence> list;
-                    if (!occurrences.TryGetValue(key, out list))
-                    {
-                        list = new List<Occurrence>();
-                        occurrences[key] = list;
-                        occurrenceKeys.Add(key);
-                    }
-                    list.Add(new Occurrence { Layer = layer, Segment = s.Segment, Member = s.Member, IsOwn = isOwn });
-                };
-                foreach (var s in g.OwnSegs)
-                {
-                    add(s, true);
-                }
-                foreach (var s in g.ForeignSegs)
-                {
-                    add(s, false);
-                }
-            }
-            var all = new List<Planned>();
-            foreach (var key in occurrenceKeys)
-            {
-                var occ = occurrences[key];
-                var owners = occ.Where(o => o.IsOwn).ToList();
-                var first = owners.Count > 0 ? owners[0] : occ[0];
-                var unique = new List<Member>();
-                var seenParts = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var o in occ)
-                {
-                    if (seenParts.Add(o.Member.Part))
-                    {
-                        unique.Add(o.Member);
-                    }
-                }
-                var planned = new Planned
-                {
-                    Home = first.Layer,
-                    IsOwn = owners.Count > 0,
-                    Segment = first.Segment,
-                    Members = PlannerNaturalOrder.StableSort(unique, (a, b) => PartCompare(a.Part, b.Part)),
-                    Name = NameOf(StemOf(first.Layer, first.Member), first.Segment)
-                };
-                all.Add(planned);
-                foreach (var other in owners.Skip(1).Select(o => o.Layer).Distinct())
-                {
-                    if (other != first.Layer)
-                    {
-                        LayerIssues.Add(other.Raw + ": its \"" + planned.Name + "\" is the same work (description, stage and phase) as in \"" + first.Layer.Raw + "\" " + Dash + " merged into that layer");
-                    }
-                }
-            }
-            // A two-segment object's two activities, by its name and the activity's type.
-            var plannedOf = new Dictionary<string, Planned>(StringComparer.Ordinal);
-            foreach (var p in all)
-            {
-                foreach (var m in p.Members)
-                {
-                    plannedOf[m.Part + "|" + TypeToken(p.Segment.Type)] = p;
-                }
-            }
-            // The layer whose dates place an activity: its home for its own work, the layer owning its stage for another
-            // stage's (null: placed by rule).
-            Func<Planned, PlannerScheduleLayer> datedBy = p =>
-            {
-                if (p.IsOwn)
-                {
-                    return p.Home;
-                }
-                var owner = resolve(p.Segment);
-                return owner != null ? owner.Layer : null;
-            };
-            // An object taken away, then put back (its name writes the removal first), both by one layer's dates yet
-            // neither the work of the layer it is filed in (Ph2_St02_RM_Bench_Ph2_St02_IN under 02_01_..., 02_02_... dated):
-            // its removal and install share that layer's first day, the removal first.
-            Func<Member, bool> putBackByOther = m =>
-            {
-                if (m.Parsed.Lead.Type != PlannerTaskType.Dismantle || m.Parsed.Trail == null || m.Parsed.Trail.Type != PlannerTaskType.Install)
-                {
-                    return false;
-                }
-                Planned rmPlan, inPlan;
-                if (!plannedOf.TryGetValue(m.Part + "|RM", out rmPlan) || !plannedOf.TryGetValue(m.Part + "|IN", out inPlan) || rmPlan.IsOwn || inPlan.IsOwn)
-                {
-                    return false;
-                }
-                var by = datedBy(rmPlan);
-                return by != null && by == datedBy(inPlan);
-            };
-            var placedOf = new Dictionary<Planned, PlannerScheduleActivity>();
-
-            // 6. Emit, one layer at a time in order.
-            var anchor = ProjectStart;
-            foreach (var g in sortedLayers)
-            {
-                var layer = g;
-                var own = all.Where(p => p.Home == layer && p.IsOwn).ToList();
-                var foreignPlans = all.Where(p => p.Home == layer && !p.IsOwn).ToList();
-                // Own work in order: first the removals that clear the way, of objects this layer does not put in place
-                // before taking away (removal-only objects, and objects whose name writes the removal before the install:
-                // Ph1_St03_RM_Bollard_Ph1_St03_IN, taken away, then put back), then the rest by object name, an object's
-                // install and removal in the order its name writes them (Ph1_St03_IN_Fence_Ph1_St03_RM: put up, then
-                // taken down).
-                var installedFirst = new HashSet<string>(own.Where(p => p.Segment.Type == PlannerTaskType.Install)
-                    .SelectMany(p => p.Members.Where(m => m.Parsed.Lead.Type == PlannerTaskType.Install).Select(m => m.Part)), StringComparer.Ordinal);
-                Func<Planned, int> clearing = p => p.Segment.Type == PlannerTaskType.Dismantle && !p.Members.Any(m => installedFirst.Contains(m.Part)) ? 0 : 1;
-                own = PlannerNaturalOrder.StableSort(own, (x, y) =>
-                {
-                    int r = clearing(x) - clearing(y);
-                    if (r != 0)
-                    {
-                        return r;
-                    }
-                    int c = PartCompare(x.Members[0].Part, y.Members[0].Part);
-                    if (c != 0)
-                    {
-                        return c;
-                    }
-                    if (x.Segment.Type == y.Segment.Type)
-                    {
-                        return 0;
-                    }
-                    // One object's install and removal (it leads both): the tag its name writes first goes first.
-                    return x.Segment.Type == x.Members[0].Parsed.Lead.Type ? -1 : 1;
-                });
-                foreignPlans = PlannerNaturalOrder.StableSort(foreignPlans, (x, y) =>
-                {
-                    int c = PlannerNaturalOrder.Compare(SegKey(x.Segment), SegKey(y.Segment));
-                    return c != 0 ? c : PartCompare(x.Members[0].Part, y.Members[0].Part);
-                });
-
-                var parsed = g.Parsed;
-                var startD = parsed.Start ?? anchor;
-                var endD = parsed.End ?? startD;
-                g.Start = startD;
-                g.End = endD;
-                long totalMin = MinutesBetween(startD, endD.AddDays(1));
-                long startOff = MinutesBetween(anchor, startD);
-                int n = own.Count;
-                long each = n > 0 ? Math.Max(1, totalMin / n) : 0;
-                PlannerScheduleActivity previous = null;
-                for (int i = 0; i < n; i++)
-                {
-                    // Spread evenly; the last one takes the rounding, so the folder ends on the layer's finish.
-                    long duration = i == n - 1 ? totalMin - each * (n - 1) : each;
-                    var activity = Make(own[i], layer, duration, parsed.Tbc);
-                    activity.IsOwn = true;
-                    activity.DatedBy = layer;
-                    activity.StartMinute = previous == null ? startOff : previous.StartMinute + previous.Duration;
-                    placedOf[own[i]] = activity;
-                    previous = activity;
-                }
-                foreach (var p in foreignPlans)
-                {
-                    var s = p.Segment;
-                    var owner = resolve(s);
-                    DateTime at;
-                    bool unresolved = false;
-                    if (owner != null)
-                    {
-                        at = owner.At;
-                    }
-                    else if (s.Type == PlannerTaskType.Dismantle)
-                    {
-                        // Nobody owns that stage: parked the day after the works end, flagged.
-                        at = (worksEnd ?? endD).AddDays(1);
-                        unresolved = true;
-                    }
-                    else
-                    {
-                        // An install nobody owns sits at the project start; phase 0 is there before the works began.
-                        at = anchor;
-                        unresolved = s.Phase != 0;
-                    }
-                    bool tbc = parsed.Tbc || unresolved || (owner != null && owner.Tbc);
-                    // The day it is anchored to: the first half of it for the removal of an object taken away, then put
-                    // back by that one layer, the second half for its install, so the removal ends as the install starts.
-                    long day = MinutesBetween(at, at.AddDays(1));
-                    bool split = owner != null && p.Members.Any(putBackByOther);
-                    long half = day / 2;
-                    bool install = s.Type == PlannerTaskType.Install;
-                    var activity = Make(p, layer, !split ? day : install ? day - half : half, tbc);
-                    activity.IsOwn = false;
-                    activity.DatedBy = owner != null ? owner.Layer : null;
-                    activity.Unresolved = owner == null;
-                    activity.StartMinute = MinutesBetween(anchor, at) + (split && install ? half : 0);
-                    placedOf[p] = activity;
-                }
-            }
-            // An object both of whose segments one layer dates goes in the order its name writes them, unless an activity
-            // it shares with other objects of its description needs the other order for them: one activity cannot do both,
-            // so that is listed, for the modeller to give the object a description of its own.
-            foreach (var g in sortedLayers)
-            {
-                foreach (var m in g.Members)
-                {
-                    var lead = m.Parsed.Lead;
-                    var trail = m.Parsed.Trail;
-                    if (trail == null || lead.Type == trail.Type)
-                    {
-                        continue;
-                    }
-                    Planned rmPlan, inPlan;
-                    if (!plannedOf.TryGetValue(m.Part + "|RM", out rmPlan) || !plannedOf.TryGetValue(m.Part + "|IN", out inPlan))
-                    {
-                        continue;
-                    }
-                    var by = datedBy(rmPlan);
-                    if (by == null || by != datedBy(inPlan))
-                    {
-                        continue;
-                    }
-                    var rm = placedOf[rmPlan];
-                    var put = placedOf[inPlan];
-                    long rmEnd = rm.StartMinute + rm.Duration;
-                    if (lead.Type == PlannerTaskType.Dismantle ? rmEnd > put.StartMinute : put.StartMinute >= rmEnd)
-                    {
-                        LayerIssues.Add(g.Raw + ": " + (lead.Type == PlannerTaskType.Dismantle
-                            ? "\"" + m.Part + "\" is taken away, then put back (its name writes RM first), but \"" + rm.Name + "\" and \"" + put.Name
-                                + "\" also hold other objects and put it back before it is taken away " + Dash + " give it a description of its own"
-                            : "\"" + m.Part + "\" is put up, then taken down (its name writes IN first), but \"" + put.Name + "\" and \"" + rm.Name
-                                + "\" also hold other objects and take it down before it is put up " + Dash + " give it a description of its own"));
-                    }
-                }
-            }
-            Layers.AddRange(sortedLayers);
-
-            // The scheduler's dates (state/schedule.ts: the wall-clock date and time of each elapsed-minute start), and the
-            // instants the 4D view reads from them (domain startMs: that date at that time as the wall clock reads it, so on
-            // a clock-change day a start after the change is on time).
-            foreach (var activity in Activities)
-            {
-                var local = LocalTime(AnchorMs + activity.StartMinute * 60000L);
-                activity.StartMs = LocalInstant(local.Date, local.Hour * 60 + local.Minute);
-                activity.EndMs = activity.StartMs + activity.Duration * 60000L;
-            }
-            var byName = PlannerNaturalOrder.StableSort(Activities, (a, b) => PlannerNaturalOrder.Compare(a.Name, b.Name));
-            Activities.Clear();
-            Activities.AddRange(byName);
-
-            // The objects and their 4D events (timeline.ts buildMeshEvents).
-            foreach (var g in sortedLayers)
-            {
-                foreach (var m in g.Members)
-                {
-                    if (!Objects.ContainsKey(m.Part))
-                    {
-                        PlannerModelNode node;
-                        Index.TryGetValue(m.Part, out node);
-                        KeyValuePair<string, string> wrong;
-                        bool isMisfiled = misfiled.TryGetValue(m.Part, out wrong);
-                        Objects[m.Part] = new PlannerScheduleObject
-                        {
-                            Name = m.Part,
-                            MaxName = node != null ? node.MaxName : m.Part,
-                            Key = node != null ? node.Key : 0,
-                            Parsed = m.Parsed,
-                            FiledIn = g,
-                            MisfiledStage = isMisfiled ? wrong.Key : null,
-                            Retagged = isMisfiled ? wrong.Value : null
-                        };
-                    }
-                }
-            }
-            foreach (var activity in Activities)
-            {
-                bool install = activity.Type == PlannerTaskType.Install;
-                var ev = new PlannerScheduleEvent { Instant = install ? activity.StartMs : activity.EndMs, Install = install };
-                foreach (var name in activity.Members)
-                {
-                    List<PlannerScheduleEvent> list;
-                    if (!Events.TryGetValue(name, out list))
-                    {
-                        list = new List<PlannerScheduleEvent>();
-                        Events[name] = list;
-                    }
-                    list.Add(ev);
-                    PlannerScheduleObject obj;
-                    if (Objects.TryGetValue(name, out obj))
-                    {
-                        obj.Activities.Add(activity);
-                    }
-                }
-            }
-            // Earliest first; at one instant a removal before an install. A removal ends at the instant its activity
-            // finishes, so one ending as an install starts began first: the object is taken away, then put back
-            // (Ph1_St02_RM_Kerb_Ph2_St01_IN on back-to-back layers), there before the instant and there after it.
-            foreach (var name in Events.Keys.ToList())
-            {
-                Events[name] = PlannerNaturalOrder.StableSort(Events[name], (x, y) =>
-                {
-                    if (x.Instant != y.Instant)
-                    {
-                        return x.Instant < y.Instant ? -1 : 1;
-                    }
-                    return x.Install == y.Install ? 0 : x.Install ? 1 : -1;
-                });
-            }
-        }
-
-        private PlannerScheduleActivity Make(Planned p, PlannerScheduleLayer home, long duration, bool tbc)
-        {
-            var activity = new PlannerScheduleActivity
-            {
-                Name = p.Name,
-                Type = p.Segment.Type,
-                Home = home,
-                Segment = p.Segment,
-                Duration = Math.Max(1, duration),
-                Tbc = tbc
-            };
-            activity.Members.AddRange(p.Members.Select(m => m.Part));
-            Activities.Add(activity);
-            return activity;
-        }
-
-        private static void SetOwnStage(PlannerScheduleLayer layer, int phase, int stage, int? sub)
-        {
-            var key = phase.ToString(CultureInfo.InvariantCulture) + "|" + StageLabel(stage, sub);
-            var owner = new StageOwner { Phase = phase, Stage = stage, SubStage = sub };
-            for (int i = 0; i < layer.OwnStages.Count; i++)
-            {
-                if (layer.OwnStages[i].Key == key)
-                {
-                    layer.OwnStages[i] = new KeyValuePair<string, StageOwner>(key, owner);
-                    return;
-                }
-            }
-            layer.OwnStages.Add(new KeyValuePair<string, StageOwner>(key, owner));
-        }
-
-        // The most common value, the lowest on a tie.
-        private static int? Majority(List<int> values)
-        {
-            if (values.Count == 0)
-            {
-                return null;
-            }
-            return values.GroupBy(v => v).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).First().Key;
-        }
-
-        // phaseStageRank / stageRank: phases first, then stages and sub-stages; a one-number layer by its stage alone.
-        private static double LayerRank(PlannerLayerName p)
-        {
-            double stageRank = p.Stage + (p.SubStage ?? 0) / 1000.0;
-            return p.Phase.HasValue ? p.Phase.Value * 10000 + stageRank : stageRank;
-        }
+        // Names, as the new names' engine and the export naming check read them
 
         // The layer's label without its first number: what a mesh with no description is named after.
         private static string LabelTail(PlannerLayerName p)
         {
             return p.Label == p.Order ? string.Empty : p.Label.Substring(p.Order.Length + 1);
-        }
-
-        private static readonly Regex EdgeUnderscores = new Regex(@"^_+|_+\z", RegexOptions.CultureInvariant);
-
-        private static string StemOf(PlannerScheduleLayer layer, Member m)
-        {
-            var description = EdgeUnderscores.Replace(m.Parsed.Description, string.Empty);
-            if (description.Length > 0)
-            {
-                return description;
-            }
-            var tail = LabelTail(layer.Parsed);
-            return tail.Length > 0 ? tail : layer.Parsed.Label;
-        }
-
-        /// <summary>"3", or "3_2": a stage as the Planner keys it.</summary>
-        public static string StageLabel(int stage, int? sub)
-        {
-            return sub.HasValue
-                ? stage.ToString(CultureInfo.InvariantCulture) + "_" + sub.Value.ToString(CultureInfo.InvariantCulture)
-                : stage.ToString(CultureInfo.InvariantCulture);
-        }
-
-        private static string SegKey(PlannerMeshSegment s)
-        {
-            return s.Phase.ToString(CultureInfo.InvariantCulture) + "|" + StageLabel(s.Stage, s.SubStage);
         }
 
         private static string TypeToken(PlannerTaskType type)
@@ -1271,44 +560,6 @@ namespace Utilities.Planner
                 + m.Groups[1].Value.ToUpperInvariant();
             var text = RetagTrail.Replace(name, m => "_" + tag(m), 1);
             return RetagLead.Replace(text, m => tag(m), 1);
-        }
-
-        /// <summary>
-        /// The Planner's layer issue for an object taken away and put back in one stage (<paramref name="tag"/>, "Ph2_St02")
-        /// that sits in another stage's layer, with the name retagged for that layer.
-        /// </summary>
-        public static string MisfiledIssue(string part, string tag, string retagged)
-        {
-            return "\"" + part + "\" is taken away and put back in " + tag + ", but it sits in this layer, which is not " + tag + "'s " + Dash
-                + " correct it in 3ds Max: move it to the " + tag + " layer, or retag it for this layer as " + retagged;
-        }
-
-        private static string NameOf(string stem, PlannerMeshSegment s)
-        {
-            return stem + "_Ph" + s.Phase.ToString(CultureInfo.InvariantCulture) + "_" + StageTag(s) + "_" + TypeToken(s.Type);
-        }
-
-        private static int PartCompare(string x, string y)
-        {
-            return PlannerNaturalOrder.Compare(CachedSpellingKey(x), CachedSpellingKey(y));
-        }
-
-        // Sorts ask for the same names' keys many times: kept, per thread, for a while.
-        [ThreadStatic] private static Dictionary<string, string> spellingKeys;
-
-        private static string CachedSpellingKey(string name)
-        {
-            if (spellingKeys == null || spellingKeys.Count > 200000)
-            {
-                spellingKeys = new Dictionary<string, string>(StringComparer.Ordinal);
-            }
-            string key;
-            if (!spellingKeys.TryGetValue(name, out key))
-            {
-                key = SpellingKey(name);
-                spellingKeys[name] = key;
-            }
-            return key;
         }
 
         private static readonly Regex TagSubStage = new Regex(@"(^|_)(Ph[0-9]+_St[0-9]+)[.-]([0-9]+)(?=_|" + PlannerNaming.JavaScriptSpace + @"|\z)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -1447,29 +698,22 @@ namespace Utilities.Planner
             return hidden;
         }
 
-        /// <summary>The first and last day of the schedule: the project start to the day the last activity ends.</summary>
+        /// <summary>
+        /// The first and last day of the schedule: the days of every layer's dates and work, which may start before the project
+        /// start (it never moves): <see cref="SpanV2"/>.
+        /// </summary>
         public void Span(out DateTime first, out DateTime last)
         {
-            first = ProjectStart;
-            last = WorksEnd ?? ProjectStart;
-            foreach (var activity in Activities)
-            {
-                var end = LocalTime(Math.Max(activity.StartMs, activity.EndMs - 1)).Date;
-                if (end > last)
-                {
-                    last = end;
-                }
-            }
-            if (last < first)
-            {
-                last = first;
-            }
+            SpanV2(out first, out last);
         }
 
-        /// <summary>The layers at work on the day: dated layers whose dates cover it, and undated ones on the project start.</summary>
+        /// <summary>
+        /// The layers at work on the day: those whose dates or parked day cover it; a layer with neither (no work, no dates) is
+        /// at work on none.
+        /// </summary>
         public List<PlannerScheduleLayer> ActiveOn(DateTime day)
         {
-            return Layers.Where(l => l.Dated ? l.Start <= day.Date && day.Date <= l.End : day.Date == ProjectStart).ToList();
+            return Layers.Where(l => l.Dated && l.Start <= day.Date && day.Date <= l.End).ToList();
         }
 
         /// <summary>
@@ -1495,21 +739,15 @@ namespace Utilities.Planner
         // ---------------------------------------------------------------------------------------------------------
         // The IN and RM columns
 
-        /// <summary>The activities installing (IN) or removing (RM) that the layer's dates place.</summary>
+        /// <summary>The activities installing (IN) or removing (RM) filed in the layer's folder, which its dates place.</summary>
         public List<PlannerScheduleActivity> ColumnOf(PlannerScheduleLayer layer, PlannerTaskType type)
         {
             return Activities.Where(a => a.Type == type && a.DatedBy == layer).ToList();
         }
 
-        /// <summary>The activities no dated layer places: installs at the project start, removals parked after the works end.</summary>
-        public List<PlannerScheduleActivity> ByRule(PlannerTaskType type)
-        {
-            return Activities.Where(a => a.Type == type && a.DatedBy == null).ToList();
-        }
-
         /// <summary>
-        /// Where an object's work is placed, one entry per activity binding it: "IN 02_01_2_Construction" (the label of the
-        /// layer placing it), "IN (project start)" or "RM (after the end)" for work placed by rule. Sorted.
+        /// Where an object's work is placed, one entry per activity binding it: "IN 02_01_2_Construction", the label of the
+        /// layer whose folder holds it (every activity's, on the new names). Sorted.
         /// </summary>
         public List<string> PlacesOf(string objectName)
         {
@@ -1578,15 +816,10 @@ namespace Utilities.Planner
             return merged != node.Name && Index.TryGetValue(merged, out owner) ? owner : null;
         }
 
-        /// <summary>"IN &lt;label&gt;", "IN (project start)" or "RM (after the end)".</summary>
+        /// <summary>"IN &lt;label&gt;" or "RM &lt;label&gt;": the layer whose folder holds the activity (<see cref="PlannerScheduleActivity.DatedBy"/>).</summary>
         public static string PlaceOf(PlannerScheduleActivity activity)
         {
-            var type = activity.Type == PlannerTaskType.Install ? "IN " : "RM ";
-            if (activity.DatedBy != null)
-            {
-                return type + activity.DatedBy.Label;
-            }
-            return type + (activity.Type == PlannerTaskType.Install ? "(project start)" : "(after the end)");
+            return (activity.Type == PlannerTaskType.Install ? "IN " : "RM ") + activity.DatedBy.Label;
         }
 
         /// <summary>The layer a node stands for (one of its helpers), or null.</summary>
@@ -1598,26 +831,6 @@ namespace Utilities.Planner
         // ---------------------------------------------------------------------------------------------------------
         // What the Planner does not schedule
 
-        private static readonly Regex LooksTagged = new Regex(@"^\s*ph\s*[-_ ]?\s*[0-9]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        // A tag as the parser writes one, after the start of a name: at its end (<description>_Ph<n>_St<nn>[_<m>]_IN|RM) or
-        // in its middle (Kerb_Ph1_St01_IN_001, or 3ds Max's clone number Kerb_Ph1_St01_IN001).
-        private static readonly Regex TagAfterStart = new Regex(@"[^A-Za-z0-9]Ph[0-9]+_St[0-9]+(?:[_.-][0-9]+)?_(?:IN|RM)(?![A-Za-z])",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        /// <summary>Why the Planner does not schedule a name that carries a tag, but not at its start.</summary>
-        public const string TagNotAtStartReason = "its tag is not at the start of its name, and the Planner reads an object only when its name starts with its tag "
-            + "(Ph<n>_St<nn>[_<m>]_IN|RM_<description>)";
-
-        /// <summary>
-        /// A name that does not start with a tag but carries one later on, at its end or in its middle: the Planner reads a
-        /// tag after the description only when the name starts with one, so it does not read this one at all.
-        /// </summary>
-        public static bool HasTagNotAtStart(string name)
-        {
-            return !string.IsNullOrEmpty(name) && PlannerNaming.ParseMeshName(name) == null && TagAfterStart.IsMatch(name);
-        }
-
         /// <summary>
         /// "the export calls it X (1), as a node it writes before it is called X too, so the Planner reads it as an object
         /// of its own: give it a unique name".
@@ -1626,78 +839,6 @@ namespace Utilities.Planner
         {
             return "the export calls it " + node.Name + ", as a node it writes before it is called " + node.MaxName
                 + " too, so the Planner reads it as an object of its own: give it a unique name";
-        }
-
-        // Every node under the phasing root that is geometry, and every tagged node anywhere, that the Planner does not
-        // schedule; helpers, splines the export leaves out and the pieces of an object are not objects of their own. The
-        // Planner reads the GLB's names: a node the export renames (" (1)") is read by that name, as an object of its own.
-        private void ListNotScheduled()
-        {
-            var scene = Model.Scene;
-            foreach (var node in scene.Nodes)
-            {
-                var name = node.Name ?? string.Empty;
-                PlannerModelNode model;
-                Model.ByKey.TryGetValue(node.Key, out model);
-                var read = model != null ? model.Name : name;
-                bool tagged = PlannerNaming.ParseMeshName(read) != null;
-                bool underRoot = scene.TreeNodes.Contains(node.Key) || (node.LayerName != null && scene.TreeLayers.Contains(node.LayerName));
-                bool geometry = !node.IsHelper && !node.IsShape;
-                if (scene.LeftOut(node) || scene.PhasingHelpers.Contains(node.Key) || !(tagged || HasTagNotAtStart(read) || (underRoot && geometry)))
-                {
-                    continue;
-                }
-                string reason = null;
-                PlannerModelNode indexed;
-                string why;
-                if (UnderObject(node.Key))
-                {
-                    // Part of a scheduled object (linked under it, a member of its group): shown and hidden with it.
-                    continue;
-                }
-                if (model == null)
-                {
-                    reason = Model.LeftOut.TryGetValue(node.Key, out why) ? "not exported: " + why : "not exported: a node above it is left out of the export";
-                }
-                else if (read.Length == 0)
-                {
-                    reason = "it has no name";
-                }
-                else if (!Index.TryGetValue(read, out indexed) || indexed.Key != node.Key)
-                {
-                    // Two nodes the GLB gives one name (one called "X (1)" in Max, another renamed so by the export).
-                    reason = "another node reaches the Planner as " + read + " too, and the Planner shows and hides only the first node of a name: give it a unique name";
-                }
-                else if (MergedName(read) == read && !Objects.ContainsKey(read) && Usable)
-                {
-                    string layer;
-                    if (!tagged)
-                    {
-                        reason = LooksTagged.IsMatch(read)
-                            ? "its tag does not read (Ph<n>_St<nn>[_<m>]_IN|RM_<description>)"
-                            : HasTagNotAtStart(read)
-                                ? TagNotAtStartReason + (LayerOf.ContainsKey(read) ? string.Empty : "; no dated layer is above it either")
-                                : LayerOf.TryGetValue(read, out layer) ? "it has no Ph/St tag" : "it has no Ph/St tag and no dated layer above it";
-                    }
-                    else if (!LayerOf.ContainsKey(read))
-                    {
-                        reason = "it is not linked under a dated layer's helper, so the Planner cannot date it";
-                        var unit = node.LayerName != null ? scene.UnitOfLayer(node.LayerName) : null;
-                        if (unit != null && unit.InPhasingTree && PlannerNaming.ParseLayerName(unit.Name) != null)
-                        {
-                            reason += " (it sits on the layer " + node.LayerName + ": Link objects to their helpers puts it under the layer's helper)";
-                        }
-                    }
-                    if (reason != null && model.RenamedByExport)
-                    {
-                        reason += "; " + RenamedByExportText(model);
-                    }
-                }
-                if (reason != null)
-                {
-                    NotScheduled.Add(new PlannerNotScheduled { Key = node.Key, Name = name, Reason = reason, LayerName = node.LayerName });
-                }
-            }
         }
 
         // A node linked under (at any depth) the node of a scheduled object, which the 4D view shows and hides with it.

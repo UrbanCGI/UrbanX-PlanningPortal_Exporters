@@ -102,6 +102,113 @@ namespace Utilities.Planner
         }
     }
 
+    /// <summary>How a layer list's dates were read (<see cref="PlannerListDates"/>).</summary>
+    public enum PlannerDateForm
+    {
+        /// <summary>The list gives no dates.</summary>
+        None,
+        /// <summary>As the Planner writes them: 2026-09-01.</summary>
+        Iso,
+        /// <summary>Day first, as a spreadsheet saved them again: 31/08/2026, 1.9.26.</summary>
+        DayFirst,
+        /// <summary>Neither: every row is read as undated.</summary>
+        Unreadable
+    }
+
+    /// <summary>
+    /// The layer list's one date reader (spec 5.4), for the schedule's preview dates, the Gantt and the project start: ISO
+    /// dates first, as the Planner writes them (2026-09-01). Otherwise the whole Start, Finish and Project start columns are
+    /// read day first (as a spreadsheet saves them in Australia or Britain: 31/08/2026, 1.9.26), but only if some value's first
+    /// number is above 12 and no value's second number is, so the two cannot be mixed up. Anything else leaves every row
+    /// undated, with one note.
+    /// </summary>
+    public static class PlannerListDates
+    {
+        private static readonly Regex Iso = new Regex(@"^([0-9]{4})-([0-9]{2})-([0-9]{2})\z", RegexOptions.CultureInvariant);
+        private static readonly Regex Numbers = new Regex(@"^([0-9]{1,2})[/.-]([0-9]{1,2})[/.-]([0-9]{4}|[0-9]{2})\z", RegexOptions.CultureInvariant);
+
+        /// <summary>How the values (empty ones aside) read: all ISO; else day first, when that is safe; else not at all.</summary>
+        public static PlannerDateForm FormOf(IEnumerable<string> values)
+        {
+            var written = (values ?? Enumerable.Empty<string>()).Select(v => (v ?? string.Empty).Trim()).Where(v => v.Length > 0).ToList();
+            if (written.Count == 0)
+            {
+                return PlannerDateForm.None;
+            }
+            var other = written.Where(v => !ReadIso(v).HasValue).ToList();
+            if (other.Count == 0)
+            {
+                return PlannerDateForm.Iso;
+            }
+            var numbers = other.Select(v => Numbers.Match(v)).ToList();
+            if (numbers.Any(m => !m.Success))
+            {
+                return PlannerDateForm.Unreadable;
+            }
+            bool dayFirst = numbers.Any(m => Number(m.Groups[1].Value) > 12) && !numbers.Any(m => Number(m.Groups[2].Value) > 12);
+            return dayFirst && numbers.All(m => DayFirst(m).HasValue) ? PlannerDateForm.DayFirst : PlannerDateForm.Unreadable;
+        }
+
+        /// <summary>One value as the form reads it; null when empty, or when the list's dates do not read.</summary>
+        public static DateTime? Read(string text, PlannerDateForm form)
+        {
+            var value = (text ?? string.Empty).Trim();
+            if (value.Length == 0 || form == PlannerDateForm.Unreadable || form == PlannerDateForm.None)
+            {
+                return null;
+            }
+            var iso = ReadIso(value);
+            if (iso.HasValue || form != PlannerDateForm.DayFirst)
+            {
+                return iso;
+            }
+            var m = Numbers.Match(value);
+            return m.Success ? DayFirst(m) : null;
+        }
+
+        /// <summary>What the modeller is told about the form, or null when the dates are the Planner's own.</summary>
+        public static string Note(PlannerDateForm form)
+        {
+            switch (form)
+            {
+                case PlannerDateForm.DayFirst:
+                    return "The list's dates were read day first (31/08/2026 as 31 August 2026), as a spreadsheet saved them.";
+                case PlannerDateForm.Unreadable:
+                    return "The list's Start, Finish and Project start dates do not read as the Planner writes them (2026-09-01), and their day and month cannot be told apart, "
+                        + "so every layer is read as undated. Export the list from the Planner again, or keep its dates as they were when saving it from a spreadsheet.";
+                default:
+                    return null;
+            }
+        }
+
+        private static DateTime? ReadIso(string value)
+        {
+            var m = Iso.Match(value);
+            return m.Success ? Valid(Number(m.Groups[1].Value), Number(m.Groups[2].Value), Number(m.Groups[3].Value)) : null;
+        }
+
+        // Day, month, then a year of two digits (2000 on) or four.
+        private static DateTime? DayFirst(Match m)
+        {
+            int year = Number(m.Groups[3].Value);
+            return Valid(m.Groups[3].Value.Length == 2 ? 2000 + year : year, Number(m.Groups[2].Value), Number(m.Groups[1].Value));
+        }
+
+        private static DateTime? Valid(int year, int month, int day)
+        {
+            if (year < 1 || month < 1 || month > 12 || day < 1 || day > DateTime.DaysInMonth(year, month))
+            {
+                return null;
+            }
+            return new DateTime(year, month, day);
+        }
+
+        private static int Number(string digits)
+        {
+            return int.Parse(digits, NumberStyles.None, CultureInfo.InvariantCulture);
+        }
+    }
+
     /// <summary>One row of the Planner's layer list: one Max layer and its helper node.</summary>
     public sealed class PlannerLayerRow
     {
@@ -124,8 +231,17 @@ namespace Utilities.Planner
         public string Finish;
         public string TbcText;
         public bool Tbc;
+        /// <summary>The Order cell, as the Planner wrote it; the tool sorts the rows itself (D24), so it is not used.</summary>
         public string OrderText;
         public int? Order;
+        /// <summary>The Project start cell as written (empty in a list made before the Planner wrote that column).</summary>
+        public string ProjectStartText = string.Empty;
+        /// <summary>
+        /// The Start and Finish cells as the list's one date reader reads them (<see cref="PlannerListDates"/>): the days the
+        /// new names' preview and the Gantt give the layer; null when empty or not read.
+        /// </summary>
+        public DateTime? StartDate;
+        public DateTime? FinishDate;
 
         /// <summary>The layer ID used to find a scene layer with the same ID, or null.</summary>
         public PlannerLayerIdKey IdKey;
@@ -157,7 +273,7 @@ namespace Utilities.Planner
     /// order, with the exact layer name, its parent and its Planner ID. Read from CSV (UTF-8 with or without its byte
     /// order mark, or what Excel writes when it saves; comma separated, or the semicolon or tab Excel may use; RFC 4180
     /// quotes; CRLF or LF) and checked: columns, Planner IDs (present, unique), parents (known, no circles), layer names
-    /// (present, usable by 3ds Max, not used twice) and kinds. A row that fails is a Problem, and so is every row under it;
+    /// (present, usable by 3ds Max, not used twice), the layer IDs they carry (not used twice, D2) and kinds. A row that fails is a Problem, and so is every row under it;
     /// the rest can still be built. Pure logic, no 3ds Max.
     /// </summary>
     public sealed class PlannerLayerList
@@ -175,12 +291,14 @@ namespace Utilities.Planner
         public const string FinishColumn = "Finish";
         public const string TbcColumn = "TBC";
         public const string OrderColumn = "Order";
+        /// <summary>The workspace's project start, the same on every row: the Planner writes it last, from naming v2 on (spec 5.4).</summary>
+        public const string ProjectStartColumn = "Project start";
 
-        /// <summary>The header the Planner writes, in its order.</summary>
+        /// <summary>The header the Planner writes, in its order. A list made before Project start was written has the others.</summary>
         public static readonly string[] Columns =
         {
             PlannerIdColumn, ParentIdColumn, LayerColumn, KindColumn, IdColumn, PhaseColumn, StageColumn, SubStageColumn,
-            NameColumn, StartColumn, FinishColumn, TbcColumn, OrderColumn
+            NameColumn, StartColumn, FinishColumn, TbcColumn, OrderColumn, ProjectStartColumn
         };
 
         private static readonly string[] RequiredColumns = { PlannerIdColumn, ParentIdColumn, LayerColumn, KindColumn };
@@ -191,8 +309,82 @@ namespace Utilities.Planner
         public readonly List<PlannerLayerRow> TopRows = new List<PlannerLayerRow>();
         /// <summary>Why the file cannot be used at all (no header, a required column missing); empty when it can.</summary>
         public readonly List<string> Errors = new List<string>();
-        /// <summary>Things about the file worth telling the modeller (columns ignored, separator, encoding).</summary>
+        /// <summary>Things about the file worth telling the modeller (columns ignored, separator, encoding, dates).</summary>
         public readonly List<string> Notes = new List<string>();
+        /// <summary>The Planner's project start from the Project start column (its first row that gives one), or null.</summary>
+        public DateTime? ProjectStart;
+        /// <summary>How the list's dates were read (<see cref="PlannerListDates"/>).</summary>
+        public PlannerDateForm DateForm;
+        /// <summary>
+        /// What the date reader has to say (dates read day first, or not at all; rows giving other project starts). Apart from
+        /// <see cref="Notes"/>, which say what the file is.
+        /// </summary>
+        public readonly List<string> DateNotes = new List<string>();
+
+        /// <summary>A note said before every other (the file's encoding, read before the list).</summary>
+        public void Lead(string note)
+        {
+            Notes.Insert(0, note);
+        }
+
+        /// <summary>
+        /// How many rows' Layer cells <see cref="PlannerCleanUp.WithoutDates"/> wrote without the dates and TBC they carried
+        /// (a list made before the new names); 0 in a list as read.
+        /// </summary>
+        public int DatesTakenOut { get; internal set; }
+
+        /// <summary>
+        /// The list with each row's Layer as <paramref name="layerOf"/> gives it, read again: the same rows, columns, IDs and
+        /// dates, its notes, and its rows checked again (two rows that now have one layer name are a problem, as the second one
+        /// is in a list as read).
+        /// </summary>
+        internal PlannerLayerList WithLayerNames(Func<PlannerLayerRow, string> layerOf)
+        {
+            var copy = new PlannerLayerList
+            {
+                ProjectStart = ProjectStart,
+                DateForm = DateForm
+            };
+            copy.Errors.AddRange(Errors);
+            copy.Notes.AddRange(Notes);
+            copy.DateNotes.AddRange(DateNotes);
+            if (!Usable)
+            {
+                return copy;
+            }
+            foreach (var row in Rows)
+            {
+                var clone = new PlannerLayerRow
+                {
+                    Line = row.Line,
+                    Index = row.Index,
+                    PlannerId = row.PlannerId,
+                    ParentId = row.ParentId,
+                    Layer = layerOf(row) ?? row.Layer,
+                    KindText = row.KindText,
+                    Kind = row.Kind,
+                    Id = row.Id,
+                    Phase = row.Phase,
+                    Stage = row.Stage,
+                    SubStage = row.SubStage,
+                    Name = row.Name,
+                    Start = row.Start,
+                    Finish = row.Finish,
+                    TbcText = row.TbcText,
+                    Tbc = row.Tbc,
+                    OrderText = row.OrderText,
+                    Order = row.Order,
+                    ProjectStartText = row.ProjectStartText,
+                    StartDate = row.StartDate,
+                    FinishDate = row.FinishDate,
+                    IdKey = row.IdKey
+                };
+                clone.Notes.AddRange(row.Notes);
+                copy.Rows.Add(clone);
+            }
+            copy.Check();
+            return copy;
+        }
 
         /// <summary>The file could be read: it has the required columns.</summary>
         public bool Usable
@@ -225,8 +417,10 @@ namespace Utilities.Planner
         private readonly Dictionary<string, PlannerLayerRow> byId = new Dictionary<string, PlannerLayerRow>(StringComparer.Ordinal);
 
         /// <summary>
-        /// The rows as the outline shows them: each parent before its children, siblings by their Order (then file order),
-        /// and, at the end, the rows that hang under nothing (an unknown parent, a circle) at depth 0.
+        /// The rows as the outline shows them: each parent before its children, siblings in the order the Planner sorts names
+        /// in (<see cref="PlannerNaturalOrder"/>, as its 3D Gantt sorts folders; then file order), and, at the end, the rows
+        /// that hang under nothing (an unknown parent, a circle) at depth 0. The list's Order column is not used: the list
+        /// keeps no particular folder order, as the Planner's order can be sorted again (D24).
         /// </summary>
         public List<PlannerLayerRow> Outline()
         {
@@ -419,7 +613,8 @@ namespace Utilities.Planner
                     Start = cell(StartColumn).Trim(),
                     Finish = cell(FinishColumn).Trim(),
                     TbcText = cell(TbcColumn).Trim(),
-                    OrderText = cell(OrderColumn).Trim()
+                    OrderText = cell(OrderColumn).Trim(),
+                    ProjectStartText = cell(ProjectStartColumn).Trim()
                 };
                 row.Kind = string.Equals(row.KindText, "Group", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Group
                     : string.Equals(row.KindText, "Layer", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Layer
@@ -439,7 +634,32 @@ namespace Utilities.Planner
                 list.Notes.Add("The list has its header line but no rows.");
             }
             list.Check();
+            list.ReadDates();
             return list;
+        }
+
+        // The Start, Finish and Project start cells, read by the one date reader (spec 5.4), its note with the list's.
+        private void ReadDates()
+        {
+            var values = Rows.SelectMany(r => new[] { r.Start, r.Finish, r.ProjectStartText }).ToList();
+            DateForm = PlannerListDates.FormOf(values);
+            foreach (var row in Rows)
+            {
+                row.StartDate = PlannerListDates.Read(row.Start, DateForm);
+                row.FinishDate = PlannerListDates.Read(row.Finish, DateForm);
+            }
+            var starts = Rows.Select(r => PlannerListDates.Read(r.ProjectStartText, DateForm)).Where(d => d.HasValue).Select(d => d.Value).Distinct().ToList();
+            ProjectStart = starts.Count > 0 ? starts[0] : (DateTime?)null;
+            var note = PlannerListDates.Note(DateForm);
+            if (note != null)
+            {
+                DateNotes.Add(note);
+            }
+            if (starts.Count > 1)
+            {
+                DateNotes.Add("The rows give " + starts.Count.ToString(CultureInfo.InvariantCulture) + " different project starts; the first, "
+                    + starts[0].ToString("d MMM yyyy", CultureInfo.InvariantCulture) + ", is used.");
+            }
         }
 
         // The ID the row is matched by: the ID column when the list has one (empty: none), else the one its name
@@ -512,6 +732,7 @@ namespace Utilities.Planner
 
             // Layer names: 3ds Max layer names ignore capitals and are unique; the first row keeps its name.
             var byLayer = new Dictionary<string, PlannerLayerRow>(StringComparer.OrdinalIgnoreCase);
+            var sameName = new HashSet<PlannerLayerRow>();
             foreach (var row in Rows.Where(r => r.Layer.Length > 0))
             {
                 PlannerLayerRow first;
@@ -519,10 +740,34 @@ namespace Utilities.Planner
                 {
                     row.Problems.Add("line " + first.Line.ToString(CultureInfo.InvariantCulture) + " has the same layer name"
                         + (first.Layer == row.Layer ? string.Empty : " in other capitals") + " (3ds Max layer names must differ)");
+                    sameName.Add(row);
                 }
                 else
                 {
                     byLayer[row.Layer] = row;
+                }
+            }
+
+            // Layer IDs (two or three numbers, as the name carries one): no two layers share one (D2), so the first row keeps
+            // it and a later row with the same ID is a problem, built by no one, as the Planner's export only warns of it. A
+            // row of the same name is told so already.
+            var byLayerId = new Dictionary<PlannerLayerIdKey, PlannerLayerRow>();
+            foreach (var row in Rows.Where(r => r.Layer.Length > 0 && !sameName.Contains(r)))
+            {
+                var id = PlannerLayerIdKey.FromName(row.Layer);
+                if (id == null || !id.Phase.HasValue)
+                {
+                    continue;
+                }
+                PlannerLayerRow first;
+                if (byLayerId.TryGetValue(id, out first))
+                {
+                    row.Problems.Add("line " + first.Line.ToString(CultureInfo.InvariantCulture) + " has the same layer ID, " + id
+                        + " (no two layers may share an ID: give one of the folders another ID in the Planner)");
+                }
+                else
+                {
+                    byLayerId[id] = row;
                 }
             }
 
@@ -620,7 +865,8 @@ namespace Utilities.Planner
 
         private static List<PlannerLayerRow> SortSiblings(IEnumerable<PlannerLayerRow> rows)
         {
-            return rows.OrderBy(r => r.Order ?? int.MaxValue).ThenBy(r => r.Index).ToList();
+            // By name as the Planner sorts it, then in file order (D24: never by the Order column).
+            return PlannerNaturalOrder.StableSort(rows.OrderBy(r => r.Index), (a, b) => PlannerNaturalOrder.Compare(a.Layer, b.Layer));
         }
 
         /// <summary>A row as a sentence names it: its layer name, or its line when it has none.</summary>

@@ -30,9 +30,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Texture\ImageFormatSniffer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNaming.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNamingValidator.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNamingValidatorV2.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixPlan.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingNameFixer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PhasingFixScript.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerCleanUp.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerCleanUpList.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerCleanUpPlan.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerCleanUpScript.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerList.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerScene.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerLayerPlanner.cs" />
@@ -40,6 +45,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerObjectLinks.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerNaturalOrder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerSchedule.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerScheduleV2.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerTagEdit.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerAddLayer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Planner\PlannerScheduleRows.cs" />

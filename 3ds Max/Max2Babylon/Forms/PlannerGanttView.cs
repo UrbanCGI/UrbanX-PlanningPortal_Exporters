@@ -23,7 +23,9 @@ namespace Max2Babylon
     /// zoom (Days, Weeks, Months) sits at the right of the header's top row, a scroll strip along the header's top edge
     /// shows and moves the part in view, and the chart is dragged sideways by the header or the body (a drag is not a
     /// click); the wheel scrolls the tree's rows, Shift and the wheel the days, Ctrl and the wheel zooms. Painting walks only
-    /// the rows and days in view, so it stays cheap on HS2-size schedules.
+    /// the rows and days in view, so it stays cheap on HS2-size schedules. While it waits (<see cref="Message"/>) it says why
+    /// in the chart's place. The tree beside it is its row header: a row the tree highlights TBC (D21) is hatched here where
+    /// it has dates, and its hover says why it is TBC.
     /// </summary>
     internal sealed class PlannerGanttView : Control
     {
@@ -209,6 +211,26 @@ namespace Max2Babylon
                 if (value != compact)
                 {
                     compact = value;
+                    Invalidate();
+                }
+            }
+        }
+
+        private string message;
+
+        /// <summary>
+        /// Said in the chart's place, under the header, when set: the Gantt waits (a scene on the old names needs Clean up scene
+        /// graph first, D23). Null: the chart, as its model gives it.
+        /// </summary>
+        public string Message
+        {
+            get { return message; }
+            set
+            {
+                if (!string.Equals(value, message, StringComparison.Ordinal))
+                {
+                    message = value;
+                    HideTip();
                     Invalidate();
                 }
             }
@@ -486,9 +508,9 @@ namespace Max2Babylon
             {
                 g.FillRectangle(headerBrush, 0, headerTop, ClientSize.Width, headerBottom - headerTop);
             }
-            if (model == null || model.Empty)
+            if (message != null || model == null || model.Empty)
             {
-                TextRenderer.DrawText(g, model == null ? string.Empty : "Nothing dated to chart: the layers' dates show here once the list or the scene has them.",
+                TextRenderer.DrawText(g, message ?? (model == null ? string.Empty : "Nothing dated to chart: the layers' dates show here once the Planner's layer list has them."),
                     Font, new Rectangle(4, headerBottom, ClientSize.Width - 8, Math.Max(0, ClientSize.Height - headerBottom)), SystemColors.GrayText,
                     TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter | TextFormatFlags.Top);
                 DrawHeaderLine(g, headerBottom);
@@ -840,7 +862,7 @@ namespace Max2Babylon
             row = int.MinValue;
             day = -1;
             chip = -1;
-            if (model == null || model.Empty)
+            if (message != null || model == null || model.Empty)
             {
                 return Part.None;
             }

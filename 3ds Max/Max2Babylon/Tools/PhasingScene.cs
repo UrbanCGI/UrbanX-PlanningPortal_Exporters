@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Autodesk.Max;
 using Utilities.Planner;
@@ -8,10 +7,10 @@ using Utilities.Planner;
 namespace Max2Babylon
 {
     /// <summary>
-    /// UrbanCGI fork: the 3ds Max side of the phasing name fixer. Reads the scene into the fixer's model, keeps the
-    /// project's word fixes with the scene, and runs a plan as one MAXScript batch. Every decision is made by
-    /// <see cref="PhasingNameFixer"/> and the script by <see cref="PhasingFixScript"/> (shared, tested); this file
-    /// only reads and runs.
+    /// UrbanCGI fork: reads the scene into the old phasing name fixer's model (the export check's counts on a scene with the
+    /// old names), tells helpers and shapes from geometry, and keeps the project's word fixes with the scene (Clean up scene
+    /// graph uses them). Every decision is made by <see cref="PhasingNameFixer"/> (shared, tested); this file only reads.
+    /// Fix phasing names itself is replaced by Clean up scene graph.
     /// </summary>
     internal static class PhasingScene
     {
@@ -122,31 +121,16 @@ namespace Max2Babylon
             }
         }
 
-        /// <summary>Reads the scene and plans the fix.</summary>
-        public static PhasingFixPlan Plan(IEnumerable<PhasingWordFix> wordFixes, IDictionary<long, int> stageOverrides)
-        {
-            return Plan(wordFixes, stageOverrides, null);
-        }
-
         /// <summary>
-        /// Reads the scene and plans the fix; the Max layer changes that earlier fixes with problems
-        /// (<paramref name="unfinished"/>) left undone are added as Check rows.
+        /// Reads the scene and plans the old fix, with no stage changes (the export check reads an old-name scene's top
+        /// node, the objects the old rules leave, and its counts from it).
         /// </summary>
-        public static PhasingFixPlan Plan(IEnumerable<PhasingWordFix> wordFixes, IDictionary<long, int> stageOverrides, IEnumerable<PhasingFixResult> unfinished)
+        public static PhasingFixPlan Plan(IEnumerable<PhasingWordFix> wordFixes)
         {
             var nodes = new List<PhasingSceneNode>();
             var maxLayers = new List<PhasingMaxLayer>();
             Read(nodes, maxLayers);
-            var plan = PhasingNameFixer.Plan(nodes, maxLayers, wordFixes, stageOverrides);
-            if (plan.TopKey != null && unfinished != null)
-            {
-                var notes = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var result in unfinished)
-                {
-                    plan.Rows.AddRange(PhasingFixScript.UnfinishedMaxLayerRows(result, maxLayers).Where(r => notes.Add(r.WhatChanged)));
-                }
-            }
-            return plan;
+            return PhasingNameFixer.Plan(nodes, maxLayers, wordFixes, null);
         }
 
         /// <summary>True when the scene carries its own word-fix list.</summary>
@@ -171,52 +155,6 @@ namespace Max2Babylon
             }
             root.AddAppDataChunk(Loader.Class_ID, SClass_ID.Basenode, WordFixesSubId, Encoding.UTF8.GetBytes(PhasingWordFixText.Write(fixes)));
             Loader.Global.SetSaveRequiredFlag(true, false);
-        }
-
-        /// <summary>
-        /// Carries out the plan in one MAXScript batch (one undo record). The caller holds the scene first if it
-        /// wants Edit > Fetch to restore it, and plans again afterwards to see what is left.
-        /// </summary>
-        public static PhasingFixResult Apply(PhasingFixPlan plan)
-        {
-            var batch = PhasingFixScript.Build(plan, "__phasing_fix_" + Guid.NewGuid().ToString("N").Substring(0, 8) + "_");
-            string output = null;
-            string error = null;
-            try
-            {
-#if MAX2022_OR_NEWER
-                output = ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(batch.Script, ManagedServices.MaxscriptSDK.ScriptSource.NotSpecified);
-#else
-                output = ManagedServices.MaxscriptSDK.ExecuteStringMaxscriptQuery(batch.Script);
-#endif
-            }
-            catch (Exception e)
-            {
-                error = e.Message;
-            }
-            var result = PhasingFixScript.ReadResult(batch, output);
-            if (error != null && result.Aborted == null)
-            {
-                result.Aborted = error;
-            }
-            if (!result.Completed && !string.IsNullOrEmpty(output))
-            {
-                // Something came back without the end marker, e.g. a compile error returned as text: show its start,
-                // and keep all of it in the MAXScript Listener.
-                if (result.Aborted == null)
-                {
-                    result.Aborted = PhasingFixScript.OneLine(output, 300);
-                }
-                try
-                {
-                    Loader.Global.TheListener.EditStream.Puts("Fix phasing names: 3ds Max sent back\n" + output.Replace("\r\n", "\n") + "\n");
-                }
-                catch (Exception)
-                {
-                    // The message box still shows the start of it.
-                }
-            }
-            return result;
         }
 
         private static List<PhasingWordFix> ReadSavedWordFixes()

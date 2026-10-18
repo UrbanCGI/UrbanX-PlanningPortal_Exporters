@@ -20,7 +20,7 @@ namespace Utilities.Planner
     public enum PlannerGanttSpanKind
     {
         None,
-        /// <summary>Before Fill IN / RM: a layer's own dates (its name's), in the neutral colour.</summary>
+        /// <summary>Before Fill IN / RM: a layer's own dates (from the Planner's list), in the neutral colour.</summary>
         Neutral,
         /// <summary>A group: a grey span over everything inside it, as the Planner's export draws a folder.</summary>
         Group,
@@ -73,11 +73,15 @@ namespace Utilities.Planner
         /// <summary>Rows sit under it: it can be collapsed.</summary>
         public bool HasChildren;
         public bool IsGroup;
-        /// <summary>Its own dates, from its name (else the list's Start and Finish); null when it has none.</summary>
+        /// <summary>Its own dates, from the Planner's list (the row's Start and Finish); null when it has none.</summary>
         public DateTime? OwnStart;
         public DateTime? OwnEnd;
-        /// <summary>Its own dates are to be confirmed (its name or the list says TBC, or a group above it does).</summary>
+        /// <summary>Its own dates are to be confirmed (the list says TBC, or a group above it does).</summary>
         public bool OwnTbc;
+        /// <summary>
+        /// Where its own dates come from (spec 5.8): the Planner's list, or none; never its name, and never 3ds Max (D20).
+        /// </summary>
+        public PlannerDateSource DateSource;
         public PlannerGanttSpanKind SpanKind;
         /// <summary>With <see cref="SpanKind"/>: the days it spans.</summary>
         public PlannerGanttRun Span;
@@ -103,7 +107,7 @@ namespace Utilities.Planner
         public string ShortLabel;
         /// <summary>A Saturday or Sunday (day columns only): shaded.</summary>
         public bool Weekend;
-        /// <summary>All its days are in the scrubber's TBC zone, where removals no dated layer has are parked (<see cref="PlannerGanttModel.InTbcZone"/>).</summary>
+        /// <summary>All its days are in the scrubber's TBC zone, where removals for a layer nobody has are parked (<see cref="PlannerGanttModel.InTbcZone"/>).</summary>
         public bool TbcZone;
 
         public int Last
@@ -192,6 +196,10 @@ namespace Utilities.Planner
         /// <summary>The last day of the works (a dated layer's end), when filled; after it, to the scrubber's end, is the TBC zone.</summary>
         public DateTime? WorksEnd;
         public DateTime Today;
+        /// <summary>On the new names, what the works end at, the day after which the TBC zone starts (<see cref="PlannerSchedule.WorksEndText"/>).</summary>
+        public string WorksEndText = "the last dated work";
+        /// <summary>On the new names, the list has rows on one TBC day, which the Planner may still have parked: a layer the preview parks may park elsewhere there.</summary>
+        public bool MayParkElsewhere;
         public readonly List<PlannerGanttRow> Rows = new List<PlannerGanttRow>();
 
         public bool Empty
@@ -232,8 +240,8 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// The day is in the scrubber's TBC zone: after the works end and within the scrubber's range, where the removals no
-        /// dated layer has are parked (the day after the works end). The chart may run further, over the dates of layers
+        /// The day is in the scrubber's TBC zone: after the works end and within the scrubber's range, where the removals for
+        /// a layer nobody has are parked (the day after the works end). The chart may run further, over the dates of layers
         /// that hold no work yet (a list row not in the scene, an empty layer), which is not the zone.
         /// </summary>
         public bool InTbcZone(int index)
@@ -328,6 +336,8 @@ namespace Utilities.Planner
                 model.ScrubFirst = spanFirst;
                 model.ScrubLast = spanLast;
                 model.WorksEnd = schedule.WorksEnd;
+                model.WorksEndText = schedule.WorksEndText;
+                model.MayParkElsewhere = schedule.V2 != null && schedule.V2.OneTbcDayRows.Count > 0;
                 take(spanFirst, spanLast);
                 foreach (var g in model.Rows)
                 {
@@ -429,40 +439,23 @@ namespace Utilities.Planner
             };
         }
 
-        // A row's own dates: its name's when it reads as a layer, else the list's Start and Finish (ISO, as the Planner
-        // writes them: a list Excel saved again may not read, so the name comes first).
+        // A row's own dates: the list's, as its one date reader reads them (the rows carry them), never a name's (spec 5.8) and
+        // never 3ds Max's (D20). TBC is the row's, which covers a parked layer too once filled (PlannerScheduleRows' Fill). A
+        // row on the old names has none: the tab draws no Gantt on the old names (D23) and keeps the model only for its folds.
         private static void OwnDates(PlannerGanttRow g)
         {
             var row = g.Row;
-            var parsed = PlannerNaming.ParseLayerName(row.Name) ?? (row.LayerName != null ? PlannerNaming.ParseLayerName(row.LayerName) : null);
-            if (parsed != null && parsed.Start.HasValue)
+            if (!g.IsGroup && (row.StartDate.HasValue || row.FinishDate.HasValue))
             {
-                g.OwnStart = parsed.Start.Value.Date;
-                g.OwnEnd = (parsed.End ?? parsed.Start).Value.Date;
-            }
-            else
-            {
-                var start = ReadIso(row.Start);
-                var end = ReadIso(row.Finish);
-                if (start.HasValue || end.HasValue)
+                g.OwnStart = (row.StartDate ?? row.FinishDate).Value.Date;
+                g.OwnEnd = (row.FinishDate ?? row.StartDate).Value.Date;
+                if (g.OwnEnd.Value < g.OwnStart.Value)
                 {
-                    g.OwnStart = (start ?? end).Value;
-                    g.OwnEnd = (end ?? start).Value;
+                    g.OwnEnd = g.OwnStart;
                 }
+                g.DateSource = row.DateSource;
             }
-            if (g.OwnStart.HasValue && g.OwnEnd.Value < g.OwnStart.Value)
-            {
-                g.OwnEnd = g.OwnStart;
-            }
-            g.OwnTbc = row.Tbc || (parsed != null && parsed.Tbc && !g.IsGroup);
-        }
-
-        private static DateTime? ReadIso(string text)
-        {
-            DateTime day;
-            return !string.IsNullOrEmpty(text) && DateTime.TryParseExact(text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day)
-                ? day.Date
-                : (DateTime?)null;
+            g.OwnTbc = row.Tbc;
         }
 
         // The days the work runs, as runs: a day with any dated (not TBC) work is dated, else TBC.
@@ -648,14 +641,12 @@ namespace Utilities.Planner
             culture = culture ?? CultureInfo.CurrentCulture;
             var day = DayAt(dayIndex);
             var dayLine = day.ToString("ddd d MMM yyyy", culture) + (IsWeekend(dayIndex) ? " (weekend)" : string.Empty) + (day == Today ? ", today" : string.Empty);
-            // A layer row whose own dates cover the day is not said to be in the zone there: its dates are its own (the row of
-            // the parked removals is dated on the zone itself).
+            // A layer row whose own dates cover the day is not said to be in the zone there: its dates are its own.
             var own = rowIndex >= 0 && rowIndex < Rows.Count ? Rows[rowIndex] : null;
-            bool ownDay = own != null && !own.IsGroup && own.Row.Source != PlannerScheduleRowSource.ByRule && own.OwnStart.HasValue
-                && own.OwnStart.Value <= day && day <= own.OwnEnd.Value;
+            bool ownDay = own != null && !own.IsGroup && own.OwnStart.HasValue && own.OwnStart.Value <= day && day <= own.OwnEnd.Value;
             if (InTbcZone(dayIndex) && !ownDay)
             {
-                dayLine += ": after the works end, the TBC zone where removals no dated layer has are parked";
+                dayLine += ": after " + WorksEndText + ", the TBC zone where removals for a layer nobody has are parked";
             }
             var lines = new List<string>();
             if (rowIndex < 0)
@@ -674,11 +665,15 @@ namespace Utilities.Planner
                     : "Nothing inside it is dated.");
                 return string.Join("\r\n", lines.ToArray());
             }
+            lines.Add(DatesFrom(g, culture, MayParkElsewhere));
+            // Why the tree beside highlights the row TBC (D21), in the same words as its tooltip.
+            var tbc = PlannerScheduleRows.TbcText(g.Row.TbcMark);
+            if (tbc != null)
+            {
+                lines.Add(tbc);
+            }
             if (!Filled)
             {
-                lines.Add(g.OwnStart.HasValue
-                    ? "Its dates: " + Range(g.OwnStart.Value, g.OwnEnd.Value, culture) + (g.OwnTbc ? ", TBC" : string.Empty) + "."
-                    : "Undated (TBC): the Planner puts its work at the project start.");
                 lines.Add("Fill IN / RM from names to see what it installs and removes.");
                 return string.Join("\r\n", lines.ToArray());
             }
@@ -707,6 +702,26 @@ namespace Utilities.Planner
                 lines.Add("\u2026 and " + (atWork.Count - MostWorkLines).ToString(CultureInfo.InvariantCulture) + " more.");
             }
             return string.Join("\r\n", lines.ToArray());
+        }
+
+        // On the new names, a layer row's dates and where they come from (spec 5.8): "the Planner" or "none" (no date is set
+        // in 3ds Max, D20), with the day the preview parks a layer that has none; when the list has rows on one TBC day
+        // (mayParkElsewhere), the Planner may still have some parked, and parks this layer after their days.
+        private static string DatesFrom(PlannerGanttRow g, CultureInfo culture, bool mayParkElsewhere)
+        {
+            if (g.DateSource == PlannerDateSource.Planner)
+            {
+                return "Its dates: " + Range(g.OwnStart.Value, g.OwnEnd.Value, culture) + (g.OwnTbc ? ", TBC" : string.Empty) + ". From the Planner.";
+            }
+            var layer = g.Row.Layer;
+            if (layer != null && layer.ParkedOn.HasValue)
+            {
+                var parked = "Its dates: none. The preview parks its work on " + layer.ParkedOn.Value.ToString("d MMM yyyy", culture);
+                return mayParkElsewhere
+                    ? parked + ", TBC, one day each in layer order from the project start; " + PlannerSchedule.ParkedElsewhere + "."
+                    : parked + ", TBC, as the Planner parks a layer with no dates: one day each, in layer order from the project start.";
+            }
+            return g.IsGroup ? "Its dates: none of its own." : "Its dates: none.";
         }
 
         /// <summary>"2 Sep 2026", "31 Aug to 4 Sep 2026" or "28 Dec 2026 to 3 Jan 2027".</summary>

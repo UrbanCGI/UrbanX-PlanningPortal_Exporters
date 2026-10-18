@@ -26,9 +26,6 @@ namespace Max2Babylon
 
         private ExportItem singleExportItem;
 
-        // UrbanCGI fork: opens the phasing name fixer; added at run time (see AddFixPhasingNamesButton).
-        private Button butFixPhasingNames;
-
         // UrbanCGI fork: the outer Exporter and Schedule tabs, built at run time around the designer's window (see AddOuterTabs).
         private TabControl outerTabs;
         private TabPage exporterPage;
@@ -37,7 +34,7 @@ namespace Max2Babylon
 
         /// <summary>
         /// UrbanCGI fork: true while an export runs, from this window or from MAXScript (MaxScriptManager.Export), so
-        /// the phasing name fixer and the Update button wait for it.
+        /// the Schedule tab's changes to the scene and the Update button wait for it.
         /// </summary>
         internal static bool ExportRunning
         {
@@ -212,7 +209,6 @@ namespace Max2Babylon
 
         private void ExporterForm_Load(object sender, EventArgs e)
         {
-            AddFixPhasingNamesButton();
             AddUpdatePanel();
             AddOuterTabs();
             LoadOptions();
@@ -514,10 +510,6 @@ namespace Max2Babylon
             butExportAndRun.Enabled = false;
             butMultiExport.Enabled = false;
             butCancel.Enabled = true;
-            if (butFixPhasingNames != null)
-            {
-                butFixPhasingNames.Enabled = false;
-            }
             exportBusy = true;
             RefreshUpdateButtons();
 
@@ -644,10 +636,6 @@ namespace Max2Babylon
             butExport.Enabled = true;
             butMultiExport.Enabled = true;
             butExportAndRun.Enabled = WebServer.IsSupported;
-            if (butFixPhasingNames != null)
-            {
-                butFixPhasingNames.Enabled = true;
-            }
             exportBusy = false;
             RefreshUpdateButtons();
 
@@ -813,84 +801,6 @@ namespace Max2Babylon
             else
             {
                 currentNode = CreateTreeNode(0, "Could not save the log next to the export: " + error, Color.DarkOrange);
-            }
-        }
-
-        /// <summary>
-        /// UrbanCGI fork: the "Fix phasing names..." button, added here rather than in the designer file. It goes
-        /// beside the Planner naming options, at the first place that overlaps no other control, measured once the
-        /// window is laid out; failing both, under everything else in the options panel.
-        /// </summary>
-        private void AddFixPhasingNamesButton()
-        {
-            if (butFixPhasingNames != null)
-            {
-                return;
-            }
-            try
-            {
-                var panel = exportOptionsScrollPanel;
-                var button = new Button
-                {
-                    Name = "butFixPhasingNames",
-                    Text = "Fix phasing names\u2026",
-                    FlatStyle = FlatStyle.Flat,
-                    UseVisualStyleBackColor = true,
-                    AutoSize = true,
-                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                    TabIndex = chkPlannerNamingStrict.TabIndex + 1
-                };
-                button.Click += butFixPhasingNames_Click;
-                button.KeyDown += ExporterForm_KeyDown;
-                var others = panel.Controls.Cast<Control>().Select(c => c.Bounds).ToList();
-                panel.Controls.Add(button);
-                button.MinimumSize = new System.Drawing.Size(0, butExport.Height);
-                var size = button.GetPreferredSize(System.Drawing.Size.Empty);
-                size = new System.Drawing.Size(Math.Max(size.Width, button.MinimumSize.Width), Math.Max(size.Height, button.MinimumSize.Height));
-
-                int gap = Math.Max(4, chkPlannerNaming.Height / 2);
-                int rightEdge = panel.ClientSize.Width - panel.Padding.Right;
-                Func<System.Drawing.Point, bool> fits = place =>
-                {
-                    var bounds = new System.Drawing.Rectangle(place, size);
-                    return bounds.Left >= 0 && bounds.Top >= 0 && bounds.Right <= rightEdge
-                        && !others.Any(o => System.Drawing.Rectangle.Inflate(o, gap / 2, gap / 2).IntersectsWith(bounds));
-                };
-                var candidates = new[]
-                {
-                    // Beside the two Planner check boxes, centred on them.
-                    new System.Drawing.Point(Math.Max(chkPlannerNaming.Right, chkPlannerNamingStrict.Right) + 2 * gap,
-                        (chkPlannerNaming.Top + chkPlannerNamingStrict.Bottom - size.Height) / 2),
-                    // Under them.
-                    new System.Drawing.Point(chkPlannerNamingStrict.Left, chkPlannerNamingStrict.Bottom + gap)
-                };
-                var location = new System.Drawing.Point(chkPlannerNaming.Left, (others.Count > 0 ? others.Max(o => o.Bottom) : 0) + gap);
-                foreach (var candidate in candidates)
-                {
-                    if (fits(candidate))
-                    {
-                        location = candidate;
-                        break;
-                    }
-                }
-                button.Location = location;
-                butFixPhasingNames = button;
-            }
-            catch (Exception)
-            {
-                // The exporter works without the button; the fixer is still reachable from MAXScript.
-            }
-        }
-
-        private void butFixPhasingNames_Click(object sender, EventArgs e)
-        {
-            try
-            {
-                PhasingFixForm.ShowForScene();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Fix phasing names could not open: " + ex.Message, "Fix phasing names", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 

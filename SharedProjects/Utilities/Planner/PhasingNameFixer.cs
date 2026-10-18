@@ -9,7 +9,9 @@ namespace Utilities.Planner
     /// <summary>
     /// Works out how to correct the phasing layer and object names of a scene, so that exporting it gives the
     /// names the Planner expects. Pure logic over an abstract scene (nodes keyed by their 3ds Max handle, plus the
-    /// Max layers); the 3ds Max side only reads the scene and carries out the plan.
+    /// Max layers); the 3ds Max side only reads the scene. Fix phasing names, which carried the plan out, is gone (Clean up
+    /// scene graph replaces it): the export's naming check on the old names reads the plan's top node, the objects it leaves
+    /// for the modeller and its counts, and Clean up uses the text fix (FixText) and the layer reader (ReadLayerName).
     ///
     /// A port of the clean-up first done on an exported GLB, rule for rule:
     ///   - the phasing top node is the first top-level node with "phasing" in its name;
@@ -321,7 +323,7 @@ namespace Utilities.Planner
         /// from (null: any text does); a word fix that would stop it reading is not used on it. What is worth
         /// telling the modeller goes to <paramref name="notes"/>, under the node's <paramref name="name"/>.
         /// </summary>
-        private static TextFix FixText(string text, List<PhasingWordFix> fixes, ICollection<string> reasons, Func<string, bool> reads,
+        internal static TextFix FixText(string text, List<PhasingWordFix> fixes, ICollection<string> reasons, Func<string, bool> reads,
             TextFixNotes notes, string name)
         {
             var original = text ?? string.Empty;
@@ -446,7 +448,7 @@ namespace Utilities.Planner
             return string.Join(", ", parts.Take(parts.Count - 1).ToArray()) + " and " + parts[parts.Count - 1];
         }
 
-        private static string FixNames(List<PhasingWordFix> fixes)
+        internal static string FixNames(List<PhasingWordFix> fixes)
         {
             var named = fixes.Select(f => "\"" + f.Find + "\" to \"" + (f.Replace ?? string.Empty) + "\"").ToList();
             switch (named.Count)
@@ -762,7 +764,7 @@ namespace Utilities.Planner
             {
                 plan.Rows.Add(check());
             }
-            AddTextNotes(plan, notes, fixes);
+            AddTextNotes(plan.Notes, notes, fixes);
             return plan;
         }
 
@@ -853,11 +855,11 @@ namespace Utilities.Planner
         }
 
         // Rule 4's notes: word fixes held back from a date or TBC, and word fixes that never settle.
-        private static void AddTextNotes(PhasingFixPlan plan, TextFixNotes notes, List<PhasingWordFix> fixes)
+        internal static void AddTextNotes(ICollection<string> planNotes, TextFixNotes notes, List<PhasingWordFix> fixes)
         {
             foreach (var fix in notes.DateOrTbc)
             {
-                plan.Notes.Add("The " + FixNames(new List<PhasingWordFix> { fix }) + " is not used where it would change a date or TBC.");
+                planNotes.Add("The " + FixNames(new List<PhasingWordFix> { fix }) + " is not used where it would change a date or TBC.");
             }
             var sets = notes.Unsettled
                 .GroupBy(u => string.Join(",", u.Fixes.Select(f => fixes.IndexOf(f).ToString(CultureInfo.InvariantCulture)).ToArray()), StringComparer.Ordinal);
@@ -866,7 +868,7 @@ namespace Utilities.Planner
                 var first = set.First();
                 var count = set.Count();
                 var one = first.Fixes.Count == 1;
-                plan.Notes.Add("The " + FixNames(first.Fixes) + (one ? " changes " : " change ")
+                planNotes.Add("The " + FixNames(first.Fixes) + (one ? " changes " : " change ")
                     + (count == 1 ? first.Name : count.ToString(CultureInfo.InvariantCulture) + " names (the first is " + first.Name + ")")
                     + " again every time " + (one ? "it is" : "they are") + " used, so there " + (one ? "it is" : "they are")
                     + " used once only - check the word fixes.");
@@ -1024,7 +1026,7 @@ namespace Utilities.Planner
         }
 
         // The Check line of a name that reads as a layer ID but is left as it is (ReadLayerName).
-        private static string LeftText(LayerRead read, string name)
+        internal static string LeftText(LayerRead read, string name)
         {
             var one = read.One;
             switch (read.Left)
@@ -1861,7 +1863,7 @@ namespace Utilities.Planner
             public PlannerLayerName Planner;
         }
 
-        private sealed class TextFix
+        internal sealed class TextFix
         {
             public string Text;
             /// <summary>Word fixes not used on this text because it would no longer read.</summary>
@@ -1869,7 +1871,7 @@ namespace Utilities.Planner
         }
 
         /// <summary>What the text fix noticed across the plan, for its notes.</summary>
-        private sealed class TextFixNotes
+        internal sealed class TextFixNotes
         {
             /// <summary>Word fixes held back somewhere because they would change a date or TBC.</summary>
             public readonly List<PhasingWordFix> DateOrTbc = new List<PhasingWordFix>();
@@ -1877,7 +1879,7 @@ namespace Utilities.Planner
         }
 
         /// <summary>A name the word fixes kept changing, and the fixes still changing it.</summary>
-        private sealed class UnsettledText
+        internal sealed class UnsettledText
         {
             public string Name;
             public List<PhasingWordFix> Fixes;
@@ -2044,11 +2046,6 @@ namespace Utilities.Planner
             {
                 List<PhasingSceneNode> list;
                 return children.TryGetValue(node.Key, out list) ? list : None;
-            }
-
-            public bool HasChildren(PhasingSceneNode node)
-            {
-                return node.HasChildren || children.ContainsKey(node.Key);
             }
 
             /// <summary>
