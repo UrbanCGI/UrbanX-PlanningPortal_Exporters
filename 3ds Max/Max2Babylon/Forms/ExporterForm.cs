@@ -1100,7 +1100,7 @@ namespace Max2Babylon
             }
             lblUpdateStatus.Text = text ?? string.Empty;
             lblUpdateStatus.ForeColor = color;
-            updateToolTip.SetToolTip(lblUpdateStatus, string.IsNullOrEmpty(detail) ? null : detail);
+            updateToolTip.SetToolTip(lblUpdateStatus, string.IsNullOrEmpty(detail) ? null : Utilities.Planner.PlannerTipText.Wrap(detail));
         }
 
         private void ShowUpdateProgress(string text)

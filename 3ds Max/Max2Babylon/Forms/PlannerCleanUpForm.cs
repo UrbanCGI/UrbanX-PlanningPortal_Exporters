@@ -233,15 +233,15 @@ namespace Max2Babylon
                 // The tip names no file; the Save As dialog still offers one.
             }
             copyBox.Text = "Save a copy first";
-            tips.SetToolTip(copyBox, "Apply first asks where to save the scene as it is now"
-                + (string.IsNullOrEmpty(copyName) ? string.Empty : ", as " + copyName) + ", then cleans it up.");
+            tips.SetToolTip(copyBox, PlannerTipText.Wrap("Apply first asks where to save the scene as it is now"
+                + (string.IsNullOrEmpty(copyName) ? string.Empty : ", as " + copyName) + ", then cleans it up."));
             copyBox.AutoSize = true;
             copyBox.Anchor = AnchorStyles.Right;
             copyBox.Margin = new Padding(3, 3, 12, 3);
             copyBox.Checked = plan != null && plan.OldNames;
             holdBox.Text = "Hold the scene first";
-            tips.SetToolTip(holdBox, "Edit > Fetch then puts the scene back as it was before the clean-up. Edit > Undo takes the clean-up back in one step, but whether it "
-                + "also takes back the Max layers it renamed, moved or made has not been checked in 3ds Max yet: the hold is the sure way back.");
+            tips.SetToolTip(holdBox, PlannerTipText.Wrap("Edit > Fetch then puts the scene back as it was before the clean-up. Edit > Undo takes the clean-up back in one step, but whether it "
+                + "also takes back the Max layers it renamed, moved or made has not been checked in 3ds Max yet: the hold is the sure way back."));
             holdBox.AutoSize = true;
             holdBox.Checked = true;
             holdBox.Anchor = AnchorStyles.Right;
@@ -485,7 +485,7 @@ namespace Max2Babylon
             row.CreateCells(grid, status, "Object", question.LayerName, question.CurrentName, rename != null ? rename.NewName : question.CurrentName, why, string.Empty);
             row.DefaultCellStyle.BackColor = back;
             row.Cells[StatusColumn].Style.Font = boldFont;
-            row.Cells[WhyColumn].ToolTipText = why;
+            row.Cells[WhyColumn].ToolTipText = PlannerTipText.Wrap(why);
 
             // The answers: leave, each option, and each layer for an option that needs one (not its own: that is "at the end").
             var items = new List<string>();
@@ -545,7 +545,7 @@ namespace Max2Babylon
             row.Cells[AnswerColumn] = cell;
             cell.Value = value;
             cell.ReadOnly = false;
-            cell.ToolTipText = "Choose what Clean up does with " + question.CurrentName + ".";
+            cell.ToolTipText = PlannerTipText.Wrap("Choose what Clean up does with " + question.CurrentName + ".");
             return row;
         }
 
@@ -554,7 +554,7 @@ namespace Max2Babylon
             var row = new DataGridViewRow { Tag = change };
             row.CreateCells(grid, change.StatusText, change.Item, change.LayerItSitsIn, change.CurrentName, change.NewName, change.Why, string.Empty);
             row.DefaultCellStyle.BackColor = change.Status == PlannerCleanUpStatus.Check ? ProblemBack : ChangeBack;
-            row.Cells[WhyColumn].ToolTipText = change.Why;
+            row.Cells[WhyColumn].ToolTipText = PlannerTipText.Wrap(change.Why);
             row.Cells[AnswerColumn].ReadOnly = true;
             return row;
         }

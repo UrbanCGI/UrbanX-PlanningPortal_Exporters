@@ -26,9 +26,9 @@ namespace Max2Babylon
     /// clicked there moves the scrubber. Beside it the tree leaves out its Start, Finish and TBC columns (the Gantt draws
     /// the dates), so its Layer column keeps the width it had before the Gantt was there. A row whose dates the Planner has
     /// not settled is highlighted TBC in its Layer cell (D21): one the imported list marks TBC, and a layer of the scene the
-    /// list does not have. The tab works on the new names only (D23): on a scene that reads as the old Ph/St names it says so
-    /// and offers Clean up scene graph, and Fill, the scrubber, the Gantt, Add to IN / RM and Add layer wait until the scene
-    /// reads as the new names. The last imported list, the layers added in Max and the Planner's project start are kept with
+    /// list does not have. The tab works on the new names only (D23): on a scene that reads as the old Ph/St names Fill, the
+    /// scrubber, the Gantt, Add to IN / RM and Add layer wait until Clean up scene graph makes it read as the new names (the
+    /// Gantt, the scrubber and the side list say so). The last imported list, the layers added in Max and the Planner's project start are kept with
     /// the scene and shown again when the window opens. Built in code; the window holds it in its Schedule page.
     /// </summary>
     internal sealed class PlannerScheduleTab : UserControl
@@ -42,13 +42,8 @@ namespace Max2Babylon
             + "imported, the layers and helpers are also created, renamed and nested as the list has them, never with dates; nothing is deleted. "
             + "What it cannot convert safely is listed with answers to choose. A scene on the old names needs it before the rest of this tab works. "
             + "On a live project, run it only when the planning team says to go ahead: the Planner reads the new names only from its next release.";
-        // What the tab says on a scene on the old names (D23, D25).
-        private const string OldNamesText = "This scene uses the old Ph/St names, which this tab no longer reads. Clean up scene graph converts it to the new names; "
-            + "Fill, the scrubber, the Gantt, Add to IN / RM and Add layer wait until then. On a live project, wait for the planning team's go-ahead "
-            + "before cleaning up: the Planner reads the new names only from its next release.";
+        // What the tab says on a scene on the old names (D23) when a button that waits for Clean up is used.
         private const string OldNamesWait = "This scene uses the old Ph/St names: run Clean up scene graph first.";
-        // The message on one short line, at the smallest window heights (FitOldNames); the whole of it in its tooltip.
-        private const string OldNamesShort = "Old Ph/St names: the rest of this tab waits for Clean up scene graph (hover to read more).";
         private static readonly Color NewBack = Color.FromArgb(226, 243, 226);
         private static readonly Color ChangeBack = Color.FromArgb(255, 243, 205);
         private static readonly Color ProblemBack = Color.FromArgb(248, 215, 218);
@@ -59,8 +54,9 @@ namespace Max2Babylon
         // stripe of the Planner's accent at its left edge, which shows on a chosen row too.
         private static readonly Color TbcRowBack = Color.FromArgb(255, 236, 214);
         private static readonly Color TbcStripe = Color.FromArgb(247, 146, 29);
-        // The old names' message above the list (D23).
-        private static readonly Color OldNamesBack = Color.FromArgb(255, 243, 205);
+        // Preview in the viewport while it is on.
+        private static readonly Color PreviewOnBack = Color.FromArgb(204, 228, 247);
+        private static readonly Color PreviewOnBorder = Color.FromArgb(0, 120, 215);
 
         // The scene changes the tab follows: it shows the new scene's own list.
         private static readonly Autodesk.Max.SystemNotificationCode[] SceneChanges =
@@ -86,10 +82,6 @@ namespace Max2Babylon
         private readonly Label listLabel = new Label();
         private readonly Label sceneLabel = new Label();
         private readonly Label notesLabel = new Label();
-        // Shown on a scene on the old names (D23): what waits, and Clean up scene graph offered beside it.
-        private readonly TableLayoutPanel oldNamesPanel = new TableLayoutPanel();
-        private readonly Label oldNamesLabel = new Label();
-        private readonly Button oldNamesCleanUpButton = new Button();
         // The tree and the lists below it choose no row by themselves (ListGrid): a row is chosen by the modeller's click or key.
         private readonly DataGridView grid = new ListGrid();
         private readonly DataGridView unlistedGrid = new ListGrid();
@@ -186,6 +178,8 @@ namespace Max2Babylon
         private PlannerNamingKind sceneNaming = PlannerNamingKind.New;
         private PlannerSchedule schedule;
         private bool filled;
+        // Filled, or asked to fill, while the scene read as the old names: filled as soon as it reads as the new names (Replan).
+        private bool fillWaiting;
         private List<PlannerScheduleRow> treeRows = new List<PlannerScheduleRow>();
         private List<PlannerScheduleRow> unlistedRows = new List<PlannerScheduleRow>();
         private PlannerScheduleRow currentRow;
@@ -223,7 +217,7 @@ namespace Max2Babylon
             };
             SetUpButton(importButton, "Import layer list\u2026", ImportButton_Click,
                 "Read the layer list the Planner exports (its Layer list for 3ds Max (CSV) export). It is kept with the scene.");
-            SetUpButton(refreshButton, "Read the scene again", (s, e) => Replan(), "Work out each row's status (and, once filled, its IN and RM) in the scene as it is now.");
+            SetUpButton(refreshButton, "Read the scene", (s, e) => Replan(), "Work out each row's status (and, once filled, its IN and RM) in the scene as it is now.");
             SetUpButton(cleanUpButton, "Clean up scene graph\u2026", CleanUpButton_Click, CleanUpTip);
             SetUpButton(linkButton, "Link objects to their helpers\u2026", LinkButton_Click,
                 "Link every object on a phasing layer under that layer's helper, after a review.");
@@ -267,33 +261,10 @@ namespace Max2Babylon
             projectStartPicker.DpiChangedAfterParent += (s, e) => FitPickerWidth();
             const string startTip = "The Planner workspace's project start: the first day of its Gantt. It never moves; layers with no dates in the Planner "
                 + "are parked one day each from it (unticked, from today). Importing a layer list that gives a project start sets it. Kept with the scene.";
-            toolTip.SetToolTip(projectStartLabel, startTip);
-            toolTip.SetToolTip(projectStartPicker, startTip);
+            toolTip.SetToolTip(projectStartLabel, PlannerTipText.Wrap(startTip));
+            toolTip.SetToolTip(projectStartPicker, PlannerTipText.Wrap(startTip));
             startPanel.Controls.Add(projectStartLabel);
             startPanel.Controls.Add(projectStartPicker);
-
-            // A scene on the old names (D23): what waits, and Clean up scene graph offered beside it (the same as the button above).
-            oldNamesPanel.AutoSize = true;
-            oldNamesPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            oldNamesPanel.ColumnCount = 2;
-            oldNamesPanel.RowCount = 1;
-            oldNamesPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            oldNamesPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-            oldNamesPanel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            oldNamesPanel.Margin = new Padding(0, 0, 0, 4);
-            oldNamesPanel.Padding = new Padding(6, 4, 6, 4);
-            oldNamesPanel.BackColor = OldNamesBack;
-            oldNamesPanel.Visible = false;
-            oldNamesLabel.AutoSize = true;
-            oldNamesLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            oldNamesLabel.Margin = new Padding(0, 3, 8, 3);
-            oldNamesLabel.Text = OldNamesText;
-            toolTip.SetToolTip(oldNamesLabel, OldNamesText);
-            SetUpButton(oldNamesCleanUpButton, "Clean up scene graph\u2026", CleanUpButton_Click, CleanUpTip);
-            oldNamesCleanUpButton.Anchor = AnchorStyles.Right;
-            oldNamesCleanUpButton.BackColor = SystemColors.Control;
-            oldNamesPanel.Controls.Add(oldNamesLabel, 0, 0);
-            oldNamesPanel.Controls.Add(oldNamesCleanUpButton, 1, 0);
 
             summaryPanel = new TableLayoutPanel
             {
@@ -301,7 +272,7 @@ namespace Max2Babylon
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 1,
-                RowCount = 5,
+                RowCount = 4,
                 Padding = new Padding(6, 6, 6, 4)
             };
             summaryPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
@@ -314,10 +285,9 @@ namespace Max2Babylon
             listLabel.Font = boldFont;
             notesLabel.ForeColor = SystemColors.GrayText;
             summaryPanel.Controls.Add(buttons, 0, 0);
-            summaryPanel.Controls.Add(oldNamesPanel, 0, 1);
-            summaryPanel.Controls.Add(listLabel, 0, 2);
-            summaryPanel.Controls.Add(sceneLabel, 0, 3);
-            summaryPanel.Controls.Add(notesLabel, 0, 4);
+            summaryPanel.Controls.Add(listLabel, 0, 1);
+            summaryPanel.Controls.Add(sceneLabel, 0, 2);
+            summaryPanel.Controls.Add(notesLabel, 0, 3);
 
             SetUpGrid(grid);
             AddColumn(grid, "Layer", 40);
@@ -540,8 +510,11 @@ namespace Max2Babylon
             previewBox.AutoSize = true;
             previewBox.FlatStyle = FlatStyle.Flat;
             previewBox.Anchor = AnchorStyles.Left;
+            // On, it is filled and edged in blue, so it reads as pressed; off, a plain flat button like the others.
+            previewBox.FlatAppearance.CheckedBackColor = PreviewOnBack;
+            previewBox.CheckedChanged += (s, e) => previewBox.FlatAppearance.BorderColor = previewBox.Checked ? PreviewOnBorder : Color.Empty;
             previewBox.CheckedChanged += PreviewBox_CheckedChanged;
-            toolTip.SetToolTip(previewBox, "Hide the objects the Planner's 4D view hides at the scrubber's date. Leaving gives every object its own hidden state back; it is never an undo step.");
+            toolTip.SetToolTip(previewBox, PlannerTipText.Wrap("Hide the objects the Planner's 4D view hides at the scrubber's date. Leaving gives every object its own hidden state back; it is never an undo step."));
             scrubber.Dock = DockStyle.Fill;
             scrubber.TickStyle = TickStyle.None;
             // Its own height (FitWidths), not the 45 px a trackbar takes for its ticks: it has none.
@@ -553,8 +526,8 @@ namespace Max2Babylon
             endOfDayBox.AutoSize = true;
             endOfDayBox.Anchor = AnchorStyles.Left;
             endOfDayBox.CheckedChanged += (s, e) => ScrubTo();
-            toolTip.SetToolTip(endOfDayBox, "Show the day once its work is done. Unticked, the start of the day, as the Planner's 4D view shows a day.");
-            SetUpButton(selectDayButton, "Select changing this day", SelectDayButton_Click, "Select in 3ds Max the objects installed or removed on this day.");
+            toolTip.SetToolTip(endOfDayBox, PlannerTipText.Wrap("Show the day once its work is done. Unticked, the start of the day, as the Planner's 4D view shows a day."));
+            SetUpButton(selectDayButton, SelectDayBase, SelectDayButton_Click, "Select in 3ds Max the objects installed or removed on this day.");
             selectDayButton.AutoSize = false;
             selectDayButton.Anchor = AnchorStyles.Left;
             dateLabel.AutoSize = false;
@@ -765,51 +738,11 @@ namespace Max2Babylon
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);
-            bool oldNames = FitOldNames();
-            if (FitNotes() || oldNames)
+            if (FitNotes())
             {
                 // The summary above changed height: the lists below take up the difference.
                 base.OnLayout(e);
             }
-        }
-
-        // The old names' message gives way at the smallest window heights, after the notes (FitNotes): when even with the
-        // notes down to their one line its whole text would leave the tree and the side list less than SplitMinHeight, it
-        // says one short line, the whole message in its tooltip. Worked out from its whole text and the notes' least height,
-        // not from what they show now, so it does not swing back and forth; it gets its lines back as the window grows. True
-        // when its text changed, and the summary's height with it.
-        private bool FitOldNames()
-        {
-            if (fittingNotes || summaryPanel == null || scrubPanel == null || sideButtons == null || !oldNamesPanel.Visible || oldNamesLabel.Width <= 0
-                || DisplayRectangle.Height <= 0)
-            {
-                return false;
-            }
-            string text;
-            try
-            {
-                var flags = TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl;
-                int full = TextRenderer.MeasureText(OldNamesText, oldNamesLabel.Font, new Size(oldNamesLabel.Width, 0), flags).Height + oldNamesLabel.Padding.Vertical;
-                int notesNow = notesLabel.Visible ? notesLabel.Height : 0;
-                int notesLeast = notesLabel.Visible && notesLabel.Width > 0
-                    ? TextRenderer.MeasureText(NotesText(0), notesLabel.Font, new Size(notesLabel.Width, 0), flags).Height + notesLabel.Padding.Vertical
-                    : 0;
-                int spare = DisplayRectangle.Height - summaryPanel.Height - scrubPanel.Height - SplitMinHeight() + (oldNamesLabel.Height - full) + (notesNow - notesLeast);
-                text = spare < 0 ? OldNamesShort : OldNamesText;
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-            if (string.Equals(oldNamesLabel.Text, text, StringComparison.Ordinal))
-            {
-                return false;
-            }
-            summaryPanel.SuspendLayout();
-            oldNamesLabel.Text = text;
-            summaryPanel.ResumeLayout(true);
-            notesFitted = null;
-            return true;
         }
 
         // The notes give way at the smallest window sizes, after the lists below the tree (FitSplit): as many of them are
@@ -920,9 +853,11 @@ namespace Max2Babylon
             return day.ToString("ddd d MMM yyyy", CultureInfo.CurrentCulture) + (endOfDay ? ", end of the day" : ", start of the day");
         }
 
+        private const string SelectDayBase = "Select changing this day";
+
         private static string SelectDayText(int count)
         {
-            return "Select changing this day (" + count.ToString(CultureInfo.InvariantCulture) + ")";
+            return SelectDayBase + " (" + count.ToString(CultureInfo.InvariantCulture) + ")";
         }
 
         // Sizes measured once from the longest text each control can hold, so nothing in the scrubber's row moves as it
@@ -1073,7 +1008,7 @@ namespace Max2Babylon
             button.UseVisualStyleBackColor = true;
             button.FlatStyle = FlatStyle.Flat;
             button.Click += click;
-            toolTip.SetToolTip(button, tip);
+            toolTip.SetToolTip(button, PlannerTipText.Wrap(tip));
         }
 
         private static void SetUpGrid(DataGridView view)
@@ -1144,7 +1079,7 @@ namespace Max2Babylon
             }
             catch (Exception)
             {
-                // Without the notifications the tab still reads the scene again on Read the scene again and before changes.
+                // Without the notifications the tab still reads the scene again on Read the scene and before changes.
             }
         }
 
@@ -1173,6 +1108,7 @@ namespace Max2Babylon
                     plan = null;
                     schedule = null;
                     filled = false;
+                    fillWaiting = false;
                     stale = true;
                     if (Visible)
                     {
@@ -1190,8 +1126,9 @@ namespace Max2Babylon
             }
         }
 
-        // Edit > Undo or Redo in 3ds Max: the same scene, read again once the steps are done (the list and the fill stay), so
-        // the old-names message, the buttons and the added layers follow a clean-up taken back or put back. A tab not shown
+        // Edit > Undo or Redo in 3ds Max: the same scene, read again once the steps are done (the list stays, and the fill
+        // waits while the scene reads as the old names), so the buttons, the Gantt, the scrubber and the added layers follow a
+        // clean-up taken back or put back. A tab not shown
         // reads the scene when it is shown; while an export runs it waits for the next reading.
         private void OnSceneEdited(IntPtr param, Autodesk.Max.INotifyInfo info)
         {
@@ -1405,7 +1342,7 @@ namespace Max2Babylon
             };
         }
 
-        // A scene that reads as the old names (D23): only Import, Read the scene again, Clean up and Link work on it.
+        // A scene that reads as the old names (D23): only Import, Read the scene, Clean up and Link work on it.
         private bool OldNames
         {
             get { return sceneNaming == PlannerNamingKind.Old; }
@@ -1437,12 +1374,23 @@ namespace Max2Babylon
                 PruneAdded();
                 if (OldNames)
                 {
+                    // The fill waits while the scene reads as the old names (Edit > Undo of a clean-up) and comes back
+                    // when it reads as the new names again (Edit > Redo).
+                    fillWaiting = fillWaiting || filled;
                     filled = false;
                     schedule = null;
                 }
-                else if (filled)
+                else
                 {
-                    schedule = PlannerSchedule.BuildV2(exported, Options(), naming);
+                    if (fillWaiting)
+                    {
+                        filled = true;
+                        fillWaiting = false;
+                    }
+                    if (filled)
+                    {
+                        schedule = PlannerSchedule.BuildV2(exported, Options(), naming);
+                    }
                 }
             }
             catch (Exception ex)
@@ -1544,7 +1492,7 @@ namespace Max2Babylon
                 }
                 else
                 {
-                    sceneLabel.Text = readError ?? (stale ? "Not compared with the scene yet: Read the scene again." : "In the scene: not known.");
+                    sceneLabel.Text = readError ?? (stale ? "Not compared with the scene yet: press Read the scene." : "In the scene: not known.");
                 }
             }
             if (filled && schedule != null)
@@ -1564,8 +1512,6 @@ namespace Max2Babylon
                 notes.Add(PlannerScheduleRows.NewNamesFillNote(list));
             }
             ShowNotes(notes);
-            // A scene on the old names (D23): the message and Clean up offered above the list.
-            oldNamesPanel.Visible = OldNames && readError == null;
 
             treeRows = PlannerScheduleRows.Tree(list, plan, sceneModel, added, filled ? schedule : null, sceneNaming);
             unlistedRows = PlannerScheduleRows.Unlisted(plan, added, filled ? schedule : null, sceneNaming);
@@ -1591,16 +1537,16 @@ namespace Max2Babylon
                     line.Cells[0].Style.Font = boldFont;
                 }
                 line.DefaultCellStyle.BackColor = BackOf(row);
-                line.Cells[7].ToolTipText = Details(row);
+                line.Cells[7].ToolTipText = PlannerTipText.Wrap(Details(row));
                 // The whole name, its IDs, and why it is TBC.
-                line.Cells[0].ToolTipText = row.Name + (row.ListRow != null
+                line.Cells[0].ToolTipText = PlannerTipText.Wrap(row.Name + (row.ListRow != null
                     ? "\r\nPlanner ID " + row.ListRow.PlannerId + (row.ListRow.IdKey != null ? "; layer ID " + row.ListRow.IdKey : string.Empty)
                     : row.LayerName != null && row.LayerName != row.Name ? "\r\n" + row.LayerName : string.Empty)
-                    + (tbc != null ? "\r\n" + tbc : string.Empty);
+                    + (tbc != null ? "\r\n" + tbc : string.Empty));
                 if (tbc != null)
                 {
                     line.Cells[0].Style.BackColor = TbcRowBack;
-                    line.Cells[4].ToolTipText = tbc;
+                    line.Cells[4].ToolTipText = PlannerTipText.Wrap(tbc);
                 }
                 lines.Add(line);
             }
@@ -1626,7 +1572,7 @@ namespace Max2Babylon
                     if (tbc != null)
                     {
                         line.Cells[0].Style.BackColor = TbcRowBack;
-                        line.Cells[0].ToolTipText = r.Name + "\r\n" + tbc;
+                        line.Cells[0].ToolTipText = PlannerTipText.Wrap(r.Name + "\r\n" + tbc);
                     }
                     return line;
                 }).ToArray());
@@ -1641,7 +1587,7 @@ namespace Max2Babylon
                 {
                     var line = new DataGridViewRow { Tag = n };
                     line.CreateCells(notScheduledGrid, n.Name, n.LayerName ?? string.Empty, n.Reason);
-                    line.Cells[2].ToolTipText = n.Reason;
+                    line.Cells[2].ToolTipText = PlannerTipText.Wrap(n.Reason);
                     return line;
                 }).ToArray());
                 notScheduledPage.Text = "Not scheduled (" + (schedule.NotScheduled.Count - inPart).ToString(CultureInfo.InvariantCulture) + ")"
@@ -1698,7 +1644,7 @@ namespace Max2Babylon
                 notesLabel.Text = string.Empty;
             }
             notesLabel.Visible = all.Count > 0;
-            toolTip.SetToolTip(notesLabel, string.Join("\r\n", all.ToArray()));
+            toolTip.SetToolTip(notesLabel, PlannerTipText.Wrap(string.Join("\r\n", all.ToArray())));
             if (FitNotes())
             {
                 PerformLayout();
@@ -2425,7 +2371,7 @@ namespace Max2Babylon
                                 schedule.Objects.TryGetValue(name, out obj);
                                 var line = new DataGridViewRow { Tag = new SideEntry { Key = obj != null ? obj.Key : 0, Name = name, Type = activity.Type } };
                                 line.CreateCells(sideGrid, pair.Key, name, SideNote(schedule, row, activity, obj));
-                                line.Cells[2].ToolTipText = activity.Name + ": " + Times(activity);
+                                line.Cells[2].ToolTipText = PlannerTipText.Wrap(activity.Name + ": " + Times(activity));
                                 lines.Add(line);
                             }
                         }
@@ -2836,9 +2782,11 @@ namespace Max2Babylon
                 EndPreview();
                 dateLabel.Text = "Date";
                 dateLabel.BackColor = SystemColors.Control;
+                // No day to count while the scrubber is off.
+                selectDayButton.Text = SelectDayBase;
                 activeLabel.Text = OldNames ? "The scrubber works once the scene reads as the new names. " + OldNamesWait
                     : filled && schedule != null ? schedule.Message : "Fill IN / RM from names to scrub through the schedule.";
-                toolTip.SetToolTip(activeLabel, activeLabel.Text);
+                toolTip.SetToolTip(activeLabel, PlannerTipText.Wrap(activeLabel.Text));
                 gantt.SetScrub(null, false, false);
                 return;
             }
@@ -2887,7 +2835,7 @@ namespace Max2Babylon
             int changing = schedule.ChangingOn(day).Count;
             selectDayButton.Text = SelectDayText(changing);
             activeLabel.Text = string.Join(". ", parts.ToArray()) + ".";
-            toolTip.SetToolTip(activeLabel, activeLabel.Text);
+            toolTip.SetToolTip(activeLabel, PlannerTipText.Wrap(activeLabel.Text));
             if (preview.Active && !SceneFree())
             {
                 // An export runs: it would leave the objects the preview hides out of the GLB.
@@ -3112,7 +3060,7 @@ namespace Max2Babylon
                     if (copyError != null)
                     {
                         Cursor = Cursors.Default;
-                        MessageBox.Show(this, "The copy of the scene could not be saved as " + copy + ", so nothing was changed: " + copyError, title,
+                        MessageBox.Show(this, "Nothing was changed: the copy of the scene could not be saved as:\r\n" + PathLines(copy) + "\r\n\r\n" + copyError, title,
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
@@ -3165,12 +3113,42 @@ namespace Max2Babylon
             }
             // The scene is read again: on the new names it fills from the Planner's dates on the new engine.
             Replan();
-            var report = outcome.Describe(resolved, after, held);
+            // The copy's lines come after the report is shortened, so they are always shown whole.
+            var report = Shorten(outcome.Describe(resolved, after, held));
             if (copy != null)
             {
-                report += "\r\nThe scene as it was before is saved as " + copy + ".";
+                report += "\r\nThe scene as it was before is saved as:\r\n" + PathLines(copy);
             }
-            MessageBox.Show(this, Shorten(report), title, MessageBoxButtons.OK, outcome.HasProblems ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            MessageBox.Show(this, report, title, MessageBoxButtons.OK, outcome.HasProblems ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+
+        // A file's name and its folder on lines of their own, the folder broken after a backslash where it is long, so a
+        // message box does not break the path in the middle of a word (only a single folder name too long for a line still is).
+        private static string PathLines(string path)
+        {
+            const int width = 60;
+            try
+            {
+                var lines = new List<string>();
+                var line = "in ";
+                var parts = Path.GetDirectoryName(path).Split('\\');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    var part = parts[i] + (i < parts.Length - 1 ? "\\" : string.Empty);
+                    if (line.Length > 3 && line.Length + part.Length > width)
+                    {
+                        lines.Add(line);
+                        line = "   ";
+                    }
+                    line += part;
+                }
+                lines.Add(line);
+                return Path.GetFileName(path) + "\r\n" + string.Join("\r\n", lines.ToArray());
+            }
+            catch (Exception)
+            {
+                return path;
+            }
         }
 
         // Keeps the word fixes edited in Clean up's window with the scene: null when saved, else why not.

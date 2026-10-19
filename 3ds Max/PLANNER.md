@@ -236,7 +236,7 @@ helpers and which are shapes).
 
 **What it is for.** Clean up scene graph brings a scene to the new names, and, with the Planner's layer list imported,
 brings its layers and helpers in line with the list. It replaces Fix phasing names and Build layers and helpers, whose
-buttons are gone. It is on the Schedule tab, and also beside the old-names message on a scene with the old names.
+buttons are gone. It is on the Schedule tab.
 
 **On a live project, wait.** The Planner reads the new names only from its next release (after 0.9.5). Until then a
 cleaned scene's model does not schedule in the live Planner. On a live project, such as HRB, do not run Clean up and do
@@ -258,6 +258,8 @@ MAXScript batch, inside one undo record, "Clean up scene graph".
    - A one-number layer takes its phase from its objects' tags, as the old fixer did (`06-2_Hoarding_Removal_…` with
      objects tagged phase 3 becomes `03_06_2_Hoarding_Removal`).
    - A layer directly under the phasing root moves into the group of its phase.
+   - A layer in the group of another phase (`02_05` in `_03_Roads`) is listed to check, not moved: the Planner may file
+     it there on purpose. With the Planner's layer list imported, the list's nesting decides, and it is not listed.
    - The Max layer is renamed with its helper.
    - A node led by a number inside a layer that does not read as a layer ID (a Max group called "3 Bay Gate") is never
      taken for a layer. It is listed when the Planner would not schedule the tagged objects under it.
@@ -403,9 +405,12 @@ be scheduled so"). Rename by hand, then run Clean up again.
 
 ### 3.4 The review window
 
-The columns are Status, Item, Layer it sits in, Current name in Max, New name, What changes and Answer. The line above
-the list sums it up, for example "1 layer and 2 helpers to create, 76 layers and 152 objects to rename, 3 links, 91
-Planner IDs to write, 14 to choose, 2 to check."
+The columns are Status, Item, Layer it sits in, Current name in Max, New name, What changes and Answer. For a layer,
+helper or Max layer, Layer it sits in is where it is now (named as Clean up names it), and for one Clean up moves, What
+changes says where it goes (also when only its Max layer moves). For an object it is the layer it ends in, after any
+link. The line above the list sums it up, for example "1 layer and 2 helpers to create, 76 layers and 152
+objects to rename, 2 helpers and 2 Max layers to move, 3 links, 91 Planner IDs to write, 14 to choose, 2 to check." (the
+moves only when there are any).
 
 | Status | Colour | Means |
 | --- | --- | --- |
@@ -636,9 +641,8 @@ to the Exporter page's Log tab.
 
 **The Schedule tab**, top to bottom:
 
-- the buttons: **Import layer list…**, **Read the scene again**, **Clean up scene graph…**, **Link objects to their
+- the buttons: **Import layer list…**, **Read the scene**, **Clean up scene graph…**, **Link objects to their
   helpers…**, **Fill IN / RM from names** and **Add layer…**;
-- on a scene with the old names, the old-names message with its own **Clean up scene graph…** button (section 5.6);
 - the list's name and date, what the scene needs, and the notes (as many lines as there is room for; every note in the
   tooltip);
 - the tree of layers, with the Gantt beside it (section 7), and the side list of the chosen row's IN and RM with **Add
@@ -720,7 +724,7 @@ TBC are hidden (section 7). The status says what Clean up scene graph would do t
 | Added in Max — not yet in the Planner | blue |
 
 The status tooltip says how the row found its layer: by its Planner ID, its layer ID, its name or its phase number. The
-statuses are worked out when the tab shows and on **Read the scene again**. After Clean up with the list, every row is
+statuses are worked out when the tab shows and on **Read the scene**. After Clean up with the list, every row is
 Up to date.
 
 **Not in the Planner's list** (below the tree) lists the scene's phasing layers and helpers that no row matches: a layer
@@ -764,25 +768,22 @@ The Link review says so beforehand; it does not affect the export or the Planner
 
 ### 5.6 Scenes on the old names
 
-The tab works on the new names only. On a scene that reads as the old names (section 2.3) a yellow message above the
-tree says: "This scene uses the old Ph/St names, which this tab no longer reads. Clean up scene graph converts it to the
-new names; Fill, the scrubber, the Gantt, Add to IN / RM and Add layer wait until then. On a live project, wait for the
-planning team's go-ahead before cleaning up: the Planner reads the new names only from its next release." Its
-**Clean up scene graph…** button is the same as the one above. At the smallest window heights, where its whole text
-would leave the tree fewer than three rows, it says one short line ("Old Ph/St names: the rest of this tab waits for
-Clean up scene graph (hover to read more).") with the whole message in its tooltip.
+The tab works on the new names only. A scene that reads as the old names (section 2.3) needs **Clean up scene graph…**
+first. No message above the tree says so: Fill and Add layer are greyed out, and the Gantt, the scrubber and the side
+list say why (below).
 
 The tab reads the scene again after Edit > Undo and Redo in 3ds Max (a clean-up taken back is on the old names again),
-and Fill and Add layer read it first too, so a scene put back on the old names waits again.
+and Fill and Add layer read it first too, so a scene put back on the old names waits again. A tab that was filled
+fills again by itself when the scene reads as the new names again (Edit > Redo of the clean-up).
 
 Until the scene reads as the new names:
 
-- Fill IN / RM and Add layer are off; pressed anyway, they say "This scene uses the old Ph/St names: run Clean up scene
-  graph first.";
+- Fill IN / RM and Add layer are greyed out (if the tab has not yet noticed the scene went back to the old names, pressing
+  them reads it and says "This scene uses the old Ph/St names: run Clean up scene graph first.");
 - the scrubber, the preview and Select changing this day are off;
 - the Gantt shows a message instead of the chart;
 - the side list says IN and RM wait for Clean up, and Add to IN / RM and Remove are off;
-- Import layer list, Read the scene again, Clean up and Link work as usual.
+- Import layer list, Read the scene, Clean up and Link work as usual.
 
 On a live project that is waiting for the go-ahead, keep exporting the scene as it is: its export runs the old rules
 (section 2.5).
@@ -792,8 +793,7 @@ menu left after an upgrade) and on 2025/2026; the window's two tabs at the usual
 shifted or overlapping, resizing and the minimum size); importing the HS2 list into an empty scene and running Clean up,
 then Edit > Undo and Edit > Fetch; importing it into the HS2 model; renaming, moving and changing an ID in the Planner,
 exporting the list again and cleaning up; Link objects to their helpers on the HS2 model; the list shown again after
-saving and reopening the scene; the old-names message on an old-name scene at the smallest window and at high display
-scaling; an export afterwards (the counts pair up, but for any groups, Points or splines Link linked).
+saving and reopening the scene; an export afterwards (the counts pair up, but for any groups, Points or splines Link linked).
 
 Files: `SharedProjects/Utilities/Planner/PlannerLayerList.cs` (reading and checking the CSV, the date reader, the stored
 form), `PlannerLayerScene.cs` (the scene model: root, layer and helper units), `PlannerLayerPlanner.cs` (matching,
@@ -907,25 +907,26 @@ A review list, then **Apply**: Hold the scene first (on by default), one MAXScri
 **The scrubber** (at the bottom of the tab, once filled) is a day slider from the project start to the day the last
 activity ends. The days after the works end are the **TBC zone** (shaded), where removals for a layer nobody has are
 parked. It shows the date, the layers at work that day and **Select changing this day (n)**: the objects installed or
-removed that day (installs that start on it, removals whose last minute is on it).
+removed that day (installs that start on it, removals whose last minute is on it). While the scrubber is off the button
+shows no count.
 
 **Preview in the viewport** hides what the Planner's 4D view hides at that date: at the start of the day, as the 4D view
 shows a day, or, with **End of the day**, once the day's work is done. Objects not yet installed and objects already
 removed are hidden, and so is everything linked under them. An object hidden by its own flag (or its layer) is never
 touched. The changes are made in one go with the undo hold suspended, so the preview is never an undo step, then one
-redraw; a scene that needed no saving before a step needs none after it. Nothing is renamed, moved or linked.
+redraw; a scene that needed no saving before a step needs none after it. Nothing is renamed, moved or linked. While the
+preview is on, its button is filled and edged in blue.
 
 The preview ends, and every object gets its own hidden state back, on its button, on leaving the Schedule tab, on
 closing the window, before a new scene, a reset or opening a file, and before every export (from the window or from
 MAXScript), as the export leaves hidden objects out of the GLB. While an export runs, the preview does not start, and
 choosing in the lists does not change the selection. Every save shows the hidden objects first and hides them again
-after, so the file keeps everyone's own state. Read the scene again, Fill and the edits read the objects the preview hid
+after, so the file keeps everyone's own state. Read the scene, Fill and the edits read the objects the preview hid
 as they were before it.
 
 Nothing in the scrubber's row changes size as it moves, so the slider stays under the pointer. At the window's smallest
 size the lists below the tree give way first (down to their tabs), then the notes above it (down to one line counting
-them, every note in the tooltip), then, on a scene with the old names, the old-names message (down to one line), so the
-tree keeps three rows and the side list two. They get their height back when the window grows.
+them, every note in the tooltip), so the tree keeps three rows and the side list two. They get their height back when the window grows.
 
 **Days and times as the Planner reads them.** The tab's days are local midnights, as the Planner's day steps are. An
 activity starts at its time on the wall clock, also on the day the clocks change (a time in the hour the clocks repeat is
@@ -985,7 +986,7 @@ its list; choosing in the side list and in Not scheduled selects in the viewport
 few objects, then Edit > Undo; Add to RM on a closed group clicked in the viewport (one rename, the head's); an object
 with split pieces; Add layer under a phase group and under the root, Edit > Undo and Edit > Fetch, save and reopen
 (still "Added in Max"), then a list that has it; Edit > Undo and Redo with the Schedule tab open (the tab reads the scene
-again; after an undone clean-up it shows the old-names message at once); Planner project start set, saved and reopened; the scrubber across the
+again; after an undone clean-up Fill and the scrubber wait at once, and after Redo the tab is filled again); Planner project start set, saved and reopened; the scrubber across the
 dates with the preview on, dragged, and every object's hidden state back after the button, a tab change, closing the
 window, File > New and opening a file; saving during a preview; a MAXScript export during a preview (the GLB has every
 object); the preview's speed on the full HS2 scene.

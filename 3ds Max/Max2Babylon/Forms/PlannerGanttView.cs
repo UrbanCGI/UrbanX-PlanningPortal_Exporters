@@ -1086,7 +1086,7 @@ namespace Max2Babylon
             var text = HoverText();
             if (!string.IsNullOrEmpty(text))
             {
-                tip.Show(text, this, hoverAt.X + 12, hoverAt.Y + Font.Height + 4, 30000);
+                tip.Show(PlannerTipText.Wrap(text), this, hoverAt.X + 12, hoverAt.Y + Font.Height + 4, 30000);
             }
         }
 
