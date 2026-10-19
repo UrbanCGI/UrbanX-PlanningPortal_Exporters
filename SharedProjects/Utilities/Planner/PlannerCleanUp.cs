@@ -140,6 +140,7 @@ namespace Utilities.Planner
                 var naming = PlannerSchedule.NamingOfScene(new PlannerScheduleModel(state.Original));
                 plan.Naming = naming != null ? naming.Naming : (PlannerNamingKind?)null;
                 state.OldScene = plan.Naming == PlannerNamingKind.Old;
+                state.WithList = buildList != null;
                 // Step 1: layers and helpers, and their Max layers.
                 PlanLayers(state, scene, notes);
             }
@@ -311,6 +312,20 @@ namespace Utilities.Planner
                     && !string.Equals(layer.MaxLayer.ParentName, parent.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     state.MaxLayerMoves.Add(new PhasingMaxLayerMove { Name = layer.MaxLayer.Name, NewParentName = parent.Name });
+                }
+            }
+
+            // A layer filed in the group of another phase (02_05 in _03_Roads) is listed, not moved: the Planner may file it so
+            // on purpose, and its layer list, when imported, decides where it goes.
+            if (!state.WithList)
+            {
+                foreach (var layer in state.Layers.Where(l => !l.Left && !l.UnderRoot && l.Group != null && l.Id != null && l.Id.Phase.HasValue && l.Group.Phase != l.Id.Phase.Value))
+                {
+                    var phase = layer.Id.Phase.Value;
+                    var homes = state.Groups.Where(g => g.Phase == phase).ToList();
+                    layer.Checks.Add("a layer of phase " + phase.ToString(CultureInfo.InvariantCulture) + " in " + layer.Group.NewName + ", a group of phase "
+                        + layer.Group.Phase.ToString(CultureInfo.InvariantCulture) + ", where the Planner files it too; if it belongs to phase " + phase.ToString(CultureInfo.InvariantCulture)
+                        + ", move it " + (homes.Count == 1 ? "into " + homes[0].NewName + " " : string.Empty) + "by hand");
                 }
             }
 
@@ -1843,7 +1858,8 @@ namespace Utilities.Planner
             var top = state.Top;
             foreach (var work in new[] { top }.Concat(state.Groups).Concat(state.ListOnly))
             {
-                var place = work == top ? string.Empty : PlaceOf(state, work.ListParentKey, top.NewName);
+                // Where it sits now; its Why says where the list moves it. One Clean up creates sits where it will be made.
+                var place = work == top ? string.Empty : !work.Created && work.Node != null ? PlaceNow(state, work.Node) : PlaceOf(state, work.ListParentKey, top.NewName);
                 var item = work == top ? "Phasing root" : work.Item == PhasingFixItem.Group ? (state.Groups.Contains(work) ? "Phase group" : "Group") : "Helper";
                 if (work.Created || work.NewName != work.OldName || work.ListChanged)
                 {
@@ -1927,10 +1943,26 @@ namespace Utilities.Planner
             }
         }
 
-        // What a layer sits in, as Clean up names it: its phase group (moved into one or not), the root, or the layer node
-        // (or other node) it is linked under.
+        // What a layer sits in now, as Clean up names it: the phase group, the root, or the layer node (or other node) it is
+        // linked under in the scene as it is (PlaceNow); its row's Why says where Clean up moves it. A layer Clean up creates
+        // sits where it will be made: its phase group or the node the list nests it under.
         private static string PlaceOf(State state, LayerWork layer)
         {
+            if (!layer.Created && layer.Node != null)
+            {
+                return PlaceNow(state, layer.Node);
+            }
+            if (!layer.Created && layer.MaxLayer != null && !layer.MaxLayerIsNew)
+            {
+                // A Max layer without its helper: the Max layer it is in now, by the name Clean up gives it.
+                var parent = layer.MaxLayer.ParentName;
+                if (string.IsNullOrEmpty(parent))
+                {
+                    return string.Empty;
+                }
+                var above = state.Works().FirstOrDefault(w => string.Equals(MaxLayerOf(w, state, state.Original), parent, StringComparison.OrdinalIgnoreCase));
+                return above != null ? above.NewName : parent;
+            }
             if (layer.Group != null)
             {
                 return layer.Group.NewName;
@@ -1940,6 +1972,13 @@ namespace Utilities.Planner
                 return state.Top.NewName;
             }
             return PlaceOf(state, layer.ParentKey, state.Top.NewName);
+        }
+
+        // What a node sits in now: the new name of the node it is linked under in the scene as it is, or nothing at the
+        // scene's top level.
+        private static string PlaceNow(State state, PlannerSceneNode node)
+        {
+            return node.ParentKey.HasValue ? PlaceOf(state, node.ParentKey, string.Empty) : string.Empty;
         }
 
         // The name a node ends with that something sits under: a root, group, layer or list helper's last name, else the node's
@@ -2424,6 +2463,8 @@ namespace Utilities.Planner
         internal sealed class State
         {
             public PlannerSceneSnapshot Original;
+            /// <summary>The Planner's layer list is imported: its nesting decides where layers go.</summary>
+            public bool WithList;
             /// <summary>The scene as step 1 leaves it (with the Planner's list, its new layers and helpers in it): Link plans on it.</summary>
             public PlannerSceneSnapshot Step1;
             /// <summary>The scene as steps 1 and 2 leave it: the objects are read on it.</summary>

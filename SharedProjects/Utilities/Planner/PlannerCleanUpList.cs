@@ -223,6 +223,13 @@ namespace Utilities.Planner
                     work.Why.RemoveAll(w => w.StartsWith("moved into ", StringComparison.Ordinal));
                     work.Why.Add("moved under " + parent.FinalName + (row != null && row.FromOutsideRoot ? " from outside the phasing root" : string.Empty) + ", as the Planner's list nests it");
                 }
+                else if (layer.Move && !layer.Create && layer.ParentIndex.HasValue)
+                {
+                    // Only its Max layer moves (the helper is where the list nests it already): the row says so, as the
+                    // review's summary counts the move.
+                    work.ListChanged = true;
+                    work.Why.Add("its Max layer moved under " + build.BuildLayers[layer.ParentIndex.Value].FinalName + ", as the Planner's list nests it");
+                }
                 if (h.PutOnLayer)
                 {
                     state.HelperPuts.Add(new PlannerNodeLayerMove { Key = key, Name = NameOf(node), FromLayer = node.LayerName, ToLayer = layerRef(layer), ToNewLayer = layer.Create });
@@ -403,6 +410,12 @@ namespace Utilities.Planner
                 {
                     alone.NewName = rename.NewName;
                     alone.Why.Add("named as the Planner's list names it");
+                }
+                var move = state.MaxLayerMoves.FirstOrDefault(m => string.Equals(m.Name, alone.MaxLayer.Name, StringComparison.OrdinalIgnoreCase));
+                if (move != null)
+                {
+                    alone.ListChanged = true;
+                    alone.Why.Add("moved under " + move.NewParentName + ", as the Planner's list nests it");
                 }
             }
 

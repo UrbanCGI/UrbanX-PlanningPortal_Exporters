@@ -320,16 +320,21 @@ namespace Utilities.Planner
         /// One line for the review window, e.g. "76 layers and 152 objects to rename, 3 links, 14 to choose, 2 to check." (with
         /// ", 1 left as it is" after the count to choose when an answer leaves an object). With the Planner's list, what it
         /// creates comes first and the Planner IDs it writes after the links: "1 layer and 2 helpers to create, 76 layers and
-        /// 152 objects to rename, 3 links, 91 Planner IDs to write, 14 to choose, 2 to check."
+        /// 152 objects to rename, 3 links, 91 Planner IDs to write, 14 to choose, 2 to check." Helpers and Max layers it moves
+        /// (into their phase groups, or as the list nests them) come after the renames when there are any: "..., 2 helpers and
+        /// 2 Max layers to move, 3 links, ...", as the report after Apply counts them.
         /// </summary>
         public string Summary()
         {
             var created = NewLayers.Count > 0 || NewHelpers.Count > 0
                 ? PhasingFixScript.Count(NewLayers.Count, "layer", "layers") + " and " + PhasingFixScript.Count(NewHelpers.Count, "helper", "helpers") + " to create, "
                 : string.Empty;
+            var moved = NodeMoves.Count > 0 || MaxLayerMoves.Count > 0
+                ? PhasingFixScript.Count(NodeMoves.Count, "helper", "helpers") + " and " + PhasingFixScript.Count(MaxLayerMoves.Count, "Max layer", "Max layers") + " to move, "
+                : string.Empty;
             var stamps = Stamps.Count + NewHelpers.Count(h => h.PlannerId != null);
             return created + PhasingFixScript.Count(LayersRenamed, "layer", "layers") + " and " + PhasingFixScript.Count(ObjectsRenamed, "object", "objects")
-                + " to rename, " + PhasingFixScript.Count(Links.Count, "link", "links") + ", "
+                + " to rename, " + moved + PhasingFixScript.Count(Links.Count, "link", "links") + ", "
                 + (stamps > 0 ? PhasingFixScript.Count(stamps, "Planner ID", "Planner IDs") + " to write, " : string.Empty)
                 + Open.ToString(CultureInfo.InvariantCulture) + " to choose, "
                 + (Left > 0 ? PhasingFixScript.Count(Left, "left as it is", "left as they are") + ", " : string.Empty)

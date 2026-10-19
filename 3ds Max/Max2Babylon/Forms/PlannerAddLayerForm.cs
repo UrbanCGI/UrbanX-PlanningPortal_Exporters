@@ -21,6 +21,8 @@ namespace Max2Babylon
 
         private readonly ComboBox underBox = new ComboBox();
         private readonly Label underNote = new Label();
+        // The empty cell left of the note, hidden with it.
+        private readonly Label underNoteSpacer = new Label { AutoSize = true };
         // The Max layer of each entry of Under; the phasing root's is null.
         private readonly List<string> underLayers = new List<string>();
         private readonly RadioButton layerKind = new RadioButton();
@@ -67,11 +69,19 @@ namespace Max2Babylon
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
+            // Every control in a cell of its own: hiding the note under Under leaves its row empty and the rows below keep
+            // their places, which they would not if the table flowed its controls into the next free cell.
+            int rows = 0;
+            Action<Control, Control> cells = (left, right) =>
+            {
+                table.RowCount = rows + 1;
+                table.Controls.Add(left, 0, rows);
+                table.Controls.Add(right, 1, rows);
+                rows++;
+            };
             Action<string, Control> row = (text, control) =>
             {
-                var label = new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 10, 0) };
-                table.Controls.Add(label);
-                table.Controls.Add(control);
+                cells(new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 10, 0) }, control);
             };
 
             // Under: the phasing root and every phase group that can take one, indented as they nest. It starts on the row
@@ -90,8 +100,9 @@ namespace Max2Babylon
             underBox.SelectedIndex = Math.Max(0, startIndex);
             underBox.SelectedIndexChanged += (s, e) =>
             {
-                // The note was about where Under started.
+                // The note was about where Under started; its row closes up.
                 underNote.Visible = false;
+                underNoteSpacer.Visible = false;
                 int? groupPhase = PhaseOf(UnderLayer);
                 if (groupPhase.HasValue)
                 {
@@ -116,8 +127,7 @@ namespace Max2Babylon
                 underNote.MaximumSize = new Size(520, 0);
                 underNote.Margin = new Padding(0, 0, 0, 6);
                 underNote.ForeColor = SystemColors.GrayText;
-                table.Controls.Add(new Label { AutoSize = true });
-                table.Controls.Add(underNote);
+                cells(underNoteSpacer, underNote);
             }
 
             layerKind.Text = "Layer (holds work)";
@@ -184,8 +194,7 @@ namespace Max2Babylon
             var buttons = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
             buttons.Controls.Add(cancelButton);
             buttons.Controls.Add(okButton);
-            table.Controls.Add(new Label());
-            table.Controls.Add(buttons);
+            cells(new Label(), buttons);
 
             Controls.Add(table);
             AcceptButton = okButton;

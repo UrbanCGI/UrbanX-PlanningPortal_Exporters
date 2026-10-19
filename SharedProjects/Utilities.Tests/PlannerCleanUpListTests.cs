@@ -217,7 +217,7 @@ namespace Utilities.Tests
             Assert.Equal("IN_Duct", after[duct.Key]);
             // The trailing tag names layer 02_02, which keeps its ID.
             Assert.Equal("IN_Gully_RM_02_02", after[scene.Find("Ph2_St01_IN_Gully_Ph2_St02_RM").Key]);
-            Assert.Equal("3 layers and 3 helpers to create, 4 layers and 5 objects to rename, 1 link, 8 Planner IDs to write, 0 to choose, 1 to check.", result.Summary());
+            Assert.Equal("3 layers and 3 helpers to create, 4 layers and 5 objects to rename, 1 helper and 1 Max layer to move, 1 link, 8 Planner IDs to write, 0 to choose, 1 to check.", result.Summary());
 
             // The review: one row per layer, with what the list does, and the layer the list does not have.
             var kerbRow = result.Rows.Single(r => r.NodeKey == kerbs.Key && r.Status == PlannerCleanUpStatus.Change);
@@ -226,7 +226,8 @@ namespace Utilities.Tests
             Assert.Equal("Layer and helper", kerbRow.Item);
             Assert.Equal("date taken out of the name; named as the Planner's list names it (found by its layer ID); takes the Planner ID f1 from the list (found by its layer ID)", kerbRow.Why);
             var gateRow = result.Rows.Single(r => r.NodeKey == gates.Key && r.Status == PlannerCleanUpStatus.Change);
-            Assert.Equal("_03_Roads", gateRow.LayerItSitsIn);
+            // Where it is now; What changes says where the list moves it.
+            Assert.Equal("_02_Works", gateRow.LayerItSitsIn);
             Assert.Contains("renamed in the Planner", gateRow.Why);
             Assert.Contains("moved under _03_Roads, as the Planner's list nests it", gateRow.Why);
             var posts = result.Rows.Single(r => r.NewName == "02_05_1_Barrier_Posts");
@@ -428,6 +429,79 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void AMaxLayerTheListMovesWithoutItsHelperHasARowSayingWhere()
+        {
+            // The helper is in its phase group already; its Max layer was left under the root's. Only the Max layer moves,
+            // and its row says so, as the summary counts it.
+            var scene = Phasing("_02_Works");
+            var kerbs = scene.Unit("02_01_Kerbs", Root, scene.Find("_02_Works"), "f1");
+            scene.Object("IN_Kerb", kerbs, "02_01_Kerbs");
+            var list = TestCsv.List(TestCsv.Row("g2", null, "_02_Works"), TestCsv.Row("f1", "g2", "02_01_Kerbs", "Layer"));
+            var plan = Plan(scene.Snapshot, list);
+            var result = plan.Resolve(null);
+            Assert.Empty(result.NodeMoves);
+            Assert.Equal(new[] { "_02_Works" }, result.MaxLayerMoves.Where(m => m.Name == "02_01_Kerbs").Select(m => m.NewParentName).ToArray());
+            var row = result.Rows.Single(r => r.NodeKey == kerbs.Key && r.Status == PlannerCleanUpStatus.Change);
+            Assert.Equal("_02_Works", row.LayerItSitsIn);
+            Assert.Contains("its Max layer moved under _02_Works, as the Planner's list nests it", row.Why);
+            Assert.StartsWith("0 layers and 0 objects to rename, 0 helpers and 1 Max layer to move, ", result.Summary());
+            var run = Run(plan, result, scene.Snapshot);
+            Assert.Equal("_02_Works", run.Scene.Layers.Single(l => l.Name == "02_01_Kerbs").ParentName);
+            Assert.False(Plan(run.Scene, list).Resolve(null).HasChanges);
+        }
+
+        [Fact]
+        public void ALayerInAnotherPhasesGroupIsListedNotMoved()
+        {
+            // 02_05 filed in phase 3's group: without the Planner's list, Clean up cannot tell whether the Planner files it
+            // there too, so it lists it for a person and moves nothing.
+            var scene = Phasing("_02_Works", "_03_Roads");
+            var kerbs = Layer(scene, "_03_Roads", "02_05_Kerbs", "IN_Kerb");
+            var result = PlannerCleanUp.Plan(scene.Snapshot, PhasingNameFixer.DefaultWordFixes()).Resolve(null);
+            Assert.Empty(result.NodeMoves);
+            Assert.Empty(result.MaxLayerMoves);
+            var row = result.Rows.Single(r => r.NodeKey == kerbs.Key && r.Status == PlannerCleanUpStatus.Check);
+            Assert.Equal("_03_Roads", row.LayerItSitsIn);
+            Assert.Equal("a layer of phase 2 in _03_Roads, a group of phase 3, where the Planner files it too; if it belongs to phase 2, move it into _02_Works by hand", row.Why);
+            Assert.EndsWith(", 1 to check.", result.Summary());
+
+            // With no group of its phase, the same, without one to name.
+            var alone = Phasing("_03_Roads");
+            var posts = Layer(alone, "_03_Roads", "02_06_Posts", "IN_Post");
+            var left = PlannerCleanUp.Plan(alone.Snapshot, PhasingNameFixer.DefaultWordFixes()).Resolve(null);
+            Assert.Contains(left.Rows, r => r.NodeKey == posts.Key && r.Status == PlannerCleanUpStatus.Check
+                && r.Why == "a layer of phase 2 in _03_Roads, a group of phase 3, where the Planner files it too; if it belongs to phase 2, move it by hand");
+        }
+
+        [Fact]
+        public void TheListKeepsALayerInAnotherPhasesGroupWhereItIs()
+        {
+            // The Planner's list files 02_05 in _03_Roads: the list wins, and the layer ends where it is.
+            var scene = Phasing("_02_Works", "_03_Roads");
+            var kerbs = Layer(scene, "_03_Roads", "02_05_Kerbs", "IN_Kerb");
+            var list = TestCsv.List(TestCsv.Row("g2", null, "_02_Works"), TestCsv.Row("g3", null, "_03_Roads"), TestCsv.Row("f1", "g3", "02_05_Kerbs", "Layer"));
+            var plan = Plan(scene.Snapshot, list);
+            var result = plan.Resolve(null);
+            var run = Run(plan, result, scene.Snapshot);
+            Assert.Equal("_03_Roads", run.Scene.Nodes.Single(n => n.Key == run.Scene.Nodes.Single(k => k.Key == kerbs.Key).ParentKey).Name);
+            Assert.Equal("_03_Roads", run.Scene.Layers.Single(l => l.Name == "02_05_Kerbs").ParentName);
+            var row = result.Rows.Single(r => r.NodeKey == kerbs.Key && r.Status == PlannerCleanUpStatus.Change);
+            Assert.DoesNotContain("moved into", row.Why);
+            Assert.False(Plan(run.Scene, list).Resolve(null).HasChanges);
+        }
+
+        [Fact]
+        public void AMaxLayerWithoutItsHelperSitsInTheMaxLayerItIsInNow()
+        {
+            var scene = Phasing("_02_Works");
+            scene.Layer("02_04_Ducts_20-10-26", "_02_Works");
+            scene.Object("Ph2_St04_IN_Duct", null, "02_04_Ducts_20-10-26");
+            var result = PlannerCleanUp.Plan(scene.Snapshot, PhasingNameFixer.DefaultWordFixes()).Resolve(null);
+            var row = result.Rows.Single(r => r.NodeKey == null && r.CurrentName == "02_04_Ducts_20-10-26" && r.Status == PlannerCleanUpStatus.Change);
+            Assert.Equal("_02_Works", row.LayerItSitsIn);
+        }
+
+        [Fact]
         public void TheListsParentWinsOverThePhaseGroupTheCleanUpWouldChoose()
         {
             // A layer directly under the root: the clean-up alone moves it into the group of its phase; the list nests it in
@@ -443,7 +517,8 @@ namespace Utilities.Tests
             Assert.Equal(new[] { scene.Find("_03_Roads").Key }, result.NodeMoves.Where(m => m.Key == ducts.Key).Select(m => m.ToParentKey).ToArray());
             Assert.Equal(new[] { "_03_Roads" }, result.MaxLayerMoves.Where(m => m.Name == "02_03_Ducts_17-10-26").Select(m => m.NewParentName).ToArray());
             var row = result.Rows.Single(r => r.NodeKey == ducts.Key && r.Status == PlannerCleanUpStatus.Change);
-            Assert.Equal("_03_Roads", row.LayerItSitsIn);
+            // Layer it sits in is where it is now (under the root); What changes says where it goes.
+            Assert.Equal(Root, row.LayerItSitsIn);
             Assert.DoesNotContain("moved into", row.Why);
             Assert.Contains("moved under _03_Roads, as the Planner's list nests it", row.Why);
             var run = Run(plan, result, scene.Snapshot);

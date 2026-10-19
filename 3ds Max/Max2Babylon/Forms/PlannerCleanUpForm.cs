@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using Utilities.Planner;
@@ -43,9 +44,37 @@ namespace Max2Babylon
         private readonly Label warningLabel = new Label();
         private readonly Label summaryLabel = new Label();
         private readonly Label notesLabel = new Label();
-        private readonly DataGridView grid = new DataGridView();
+        private readonly ReviewGrid grid = new ReviewGrid();
         private readonly TableLayoutPanel bottom;
         private readonly ToolTip tips = new ToolTip();
+        // What the last paste did, in the bar at the bottom.
+        private readonly Label pasteLabel = new Label();
+        private readonly ContextMenuStrip answerMenu = new ContextMenuStrip();
+        private AnswerPicker picker;
+        // The answer last copied from an Answer cell, and its choice: pasted into another row it takes the same choice, as
+        // an answer that names the object's own layer reads differently on each row.
+        private string copiedText;
+        private string copiedChoice;
+        // The copied answer's own layer ID: "at the end of its own layer, 02_02_8" is the same answer as "..., 06_05_1" on
+        // a row in 06_05_1, but "Refer to 01_26" is not "Refer to 01_14".
+        private string copiedOwnId;
+        // The row the answer menu was opened on.
+        private int menuRow = -1;
+        // When an answer was last chosen in the search list: a click on the grid just after it is the second click of a
+        // double-click on the list, not a click to open another row's list.
+        private int chosenAt;
+        private bool chosenByClick;
+        // When the grid's last mouse button press happened (GetMessageTime), however late it is handled.
+        private int pressedAt;
+
+        [DllImport("user32.dll")]
+        private static extern int GetMessageTime();
+
+        // Whether the clipboard holds text, asked without opening it (CF_UNICODETEXT).
+        [DllImport("user32.dll")]
+        private static extern bool IsClipboardFormatAvailable(uint format);
+
+        private const uint UnicodeTextFormat = 13;
         private readonly CheckBox listedOnlyBox = new CheckBox();
         private readonly CheckBox copyBox = new CheckBox();
         private readonly CheckBox holdBox = new CheckBox();
@@ -64,11 +93,24 @@ namespace Max2Babylon
         private bool wordFixesSaved;
         private bool filling;
 
-        // A question's line: the question, and the choice each text of its Answer list stands for.
+        // A question's line: the question, its answers in order, and the choice each answer stands for.
         private sealed class QuestionLine
         {
             public PlannerCleanUpQuestion Question;
+            public readonly List<string> Answers = new List<string>();
             public readonly Dictionary<string, string> ChoiceOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        // The review list: Enter, F4, Alt+Down, Ctrl+C and Ctrl+V reach the Answer cells' handling (AnswerKey) before the
+        // grid's own (Enter would move down a row; Ctrl+C still copies the cells as usual).
+        private sealed class ReviewGrid : DataGridView
+        {
+            public Func<Keys, bool> AnswerKey;
+
+            protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+            {
+                return (AnswerKey != null && AnswerKey(keyData)) || base.ProcessCmdKey(ref msg, keyData);
+            }
         }
 
         /// <summary>The plan as last read (word fixes edited here re-read the scene).</summary>
@@ -162,7 +204,8 @@ namespace Max2Babylon
             grid.AllowUserToResizeRows = false;
             grid.RowHeadersVisible = false;
             grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
-            grid.EditMode = DataGridViewEditMode.EditOnEnter;
+            // No cell is edited in place: an answer is chosen in the search list (AnswerPicker).
+            grid.EditMode = DataGridViewEditMode.EditProgrammatically;
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             grid.ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
             grid.BackgroundColor = SystemColors.Window;
@@ -177,27 +220,28 @@ namespace Max2Babylon
             AddColumn("New name", 19);
             AddColumn("What changes", 27);
             AddColumn("Answer", 22);
-            // Only a listed object's Answer list can be changed; every other cell in the column is read-only (ChangeRow).
-            grid.Columns[AnswerColumn].ReadOnly = false;
-            grid.CurrentCellDirtyStateChanged += (s, e) =>
-            {
-                // An answer chosen in the list counts at once, not when the cell is left.
-                if (grid.IsCurrentCellDirty && grid.CurrentCell is DataGridViewComboBoxCell)
-                {
-                    grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
-                }
-            };
-            grid.CellValueChanged += Grid_CellValueChanged;
             grid.DataError += (s, e) => e.ThrowException = false;
-            grid.EditingControlShowing += (s, e) =>
+            // A listed object's answers open in a search list: a click on its Answer, Enter, F4 or Alt+Down, or a key typed
+            // there (which starts the search). Ctrl+C copies an answer and Ctrl+V pastes it into the rows of the cells
+            // chosen; the right-click menu does the same.
+            grid.AnswerKey = AnswerKey;
+            grid.CellMouseClick += Grid_CellMouseClick;
+            // The second press of a double-click on an Answer closes the list the first one opened: it opens again.
+            grid.CellMouseDoubleClick += Grid_CellMouseClick;
+            grid.MouseDown += (s, e) => pressedAt = GetMessageTime();
+            grid.KeyPress += (s, e) =>
             {
-                var combo = e.Control as ComboBox;
-                if (combo != null)
+                var cell = grid.CurrentCell;
+                if (!char.IsControl(e.KeyChar) && cell != null && cell.ColumnIndex == AnswerColumn && LineAt(cell.RowIndex) != null)
                 {
-                    combo.MouseWheel -= Answer_MouseWheel;
-                    combo.MouseWheel += Answer_MouseWheel;
+                    e.Handled = true;
+                    OpenPicker(cell.RowIndex, e.KeyChar.ToString());
                 }
             };
+            // Search and Copy act on the row right-clicked; Paste on the rows chosen.
+            answerMenu.Items.Add("Search answers\u2026", null, (s, e) => OpenPicker(menuRow, null));
+            answerMenu.Items.Add("Copy answer", null, (s, e) => CopyAnswer(menuRow));
+            answerMenu.Items.Add("Paste answer", null, (s, e) => PasteAnswer());
 
             bottom = new TableLayoutPanel
             {
@@ -233,15 +277,15 @@ namespace Max2Babylon
                 // The tip names no file; the Save As dialog still offers one.
             }
             copyBox.Text = "Save a copy first";
-            tips.SetToolTip(copyBox, "Apply first asks where to save the scene as it is now"
-                + (string.IsNullOrEmpty(copyName) ? string.Empty : ", as " + copyName) + ", then cleans it up.");
+            tips.SetToolTip(copyBox, PlannerTipText.Wrap("Apply first asks where to save the scene as it is now"
+                + (string.IsNullOrEmpty(copyName) ? string.Empty : ", as " + copyName) + ", then cleans it up."));
             copyBox.AutoSize = true;
             copyBox.Anchor = AnchorStyles.Right;
             copyBox.Margin = new Padding(3, 3, 12, 3);
             copyBox.Checked = plan != null && plan.OldNames;
             holdBox.Text = "Hold the scene first";
-            tips.SetToolTip(holdBox, "Edit > Fetch then puts the scene back as it was before the clean-up. Edit > Undo takes the clean-up back in one step, but whether it "
-                + "also takes back the Max layers it renamed, moved or made has not been checked in 3ds Max yet: the hold is the sure way back.");
+            tips.SetToolTip(holdBox, PlannerTipText.Wrap("Edit > Fetch then puts the scene back as it was before the clean-up. Edit > Undo takes the clean-up back in one step, but whether it "
+                + "also takes back the Max layers it renamed, moved or made has not been checked in 3ds Max yet: the hold is the sure way back."));
             holdBox.AutoSize = true;
             holdBox.Checked = true;
             holdBox.Anchor = AnchorStyles.Right;
@@ -249,6 +293,13 @@ namespace Max2Babylon
             bottom.Controls.Add(wordFixesButton, 0, 0);
             bottom.Controls.Add(saveListButton, 1, 0);
             bottom.Controls.Add(listedOnlyBox, 2, 0);
+            // Anchored, not docked: a docked label grows the bar's row as soon as it has text.
+            pasteLabel.AutoSize = false;
+            pasteLabel.AutoEllipsis = true;
+            pasteLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            pasteLabel.TextAlign = ContentAlignment.MiddleLeft;
+            pasteLabel.ForeColor = SystemColors.GrayText;
+            bottom.Controls.Add(pasteLabel, 3, 0);
             bottom.Controls.Add(copyBox, 4, 0);
             bottom.Controls.Add(holdBox, 5, 0);
             bottom.Controls.Add(applyButton, 6, 0);
@@ -287,40 +338,9 @@ namespace Max2Babylon
             {
                 boldFont.Dispose();
                 tips.Dispose();
+                answerMenu.Dispose();
             }
             base.Dispose(disposing);
-        }
-
-        // The wheel over an Answer list scrolls the rows, as it does over any other cell: it never changes the answer, which
-        // only a choice in the open list does (a list made current by a click keeps the focus under the pointer).
-        private void Answer_MouseWheel(object sender, MouseEventArgs e)
-        {
-            var handled = e as HandledMouseEventArgs;
-            var combo = sender as ComboBox;
-            if (handled == null || (combo != null && combo.DroppedDown))
-            {
-                return;
-            }
-            handled.Handled = true;
-            if (grid.Rows.Count == 0)
-            {
-                return;
-            }
-            var lines = SystemInformation.MouseWheelScrollLines;
-            var step = lines > 0 ? lines : Math.Max(1, grid.DisplayedRowCount(false));
-            var rows = -e.Delta * step / 120;
-            if (rows == 0)
-            {
-                rows = -Math.Sign(e.Delta);
-            }
-            try
-            {
-                grid.FirstDisplayedScrollingRowIndex = Math.Max(0, Math.Min(grid.Rows.Count - 1, grid.FirstDisplayedScrollingRowIndex + rows));
-            }
-            catch (InvalidOperationException)
-            {
-                // The grid has no room to show rows.
-            }
         }
 
         private void AddColumn(string header, float weight)
@@ -485,10 +505,10 @@ namespace Max2Babylon
             row.CreateCells(grid, status, "Object", question.LayerName, question.CurrentName, rename != null ? rename.NewName : question.CurrentName, why, string.Empty);
             row.DefaultCellStyle.BackColor = back;
             row.Cells[StatusColumn].Style.Font = boldFont;
-            row.Cells[WhyColumn].ToolTipText = why;
+            row.Cells[WhyColumn].ToolTipText = PlannerTipText.Wrap(why);
 
             // The answers: leave, each option, and each layer for an option that needs one (not its own: that is "at the end").
-            var items = new List<string>();
+            var items = line.Answers;
             Action<string, string> add = (text, choice) =>
             {
                 if (!line.ChoiceOf.ContainsKey(text))
@@ -531,21 +551,19 @@ namespace Max2Babylon
                 value = chosen;
                 add(chosen, chosen);
             }
+            // Drawn as a list, but chosen in the search list: the cell holds only the answer it shows.
             var cell = new DataGridViewComboBoxCell
             {
                 FlatStyle = FlatStyle.Flat,
-                DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton,
-                MaxDropDownItems = 16
+                DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
             };
-            cell.Items.AddRange(items.Cast<object>().ToArray());
-            using (var graphics = grid.CreateGraphics())
-            {
-                cell.DropDownWidth = Math.Max(120, items.Max(t => TextRenderer.MeasureText(graphics, t, grid.Font).Width) + SystemInformation.VerticalScrollBarWidth + 12);
-            }
+            cell.Items.Add(value);
             row.Cells[AnswerColumn] = cell;
             cell.Value = value;
-            cell.ReadOnly = false;
-            cell.ToolTipText = "Choose what Clean up does with " + question.CurrentName + ".";
+            // Chosen in the search list, not edited in the cell.
+            cell.ReadOnly = true;
+            cell.ToolTipText = PlannerTipText.Wrap("Choose what Clean up does with " + question.CurrentName + ": click, press Enter or start typing to "
+                + "search the answers. Ctrl+C copies this answer; Ctrl+V pastes a copied answer into the rows chosen.");
             return row;
         }
 
@@ -554,25 +572,21 @@ namespace Max2Babylon
             var row = new DataGridViewRow { Tag = change };
             row.CreateCells(grid, change.StatusText, change.Item, change.LayerItSitsIn, change.CurrentName, change.NewName, change.Why, string.Empty);
             row.DefaultCellStyle.BackColor = change.Status == PlannerCleanUpStatus.Check ? ProblemBack : ChangeBack;
-            row.Cells[WhyColumn].ToolTipText = change.Why;
+            row.Cells[WhyColumn].ToolTipText = PlannerTipText.Wrap(change.Why);
             row.Cells[AnswerColumn].ReadOnly = true;
             return row;
         }
 
-        private void Grid_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        // Answers: chosen in the search list, copied and pasted
+
+        private QuestionLine LineAt(int rowIndex)
         {
-            if (filling || e.RowIndex < 0 || e.ColumnIndex != AnswerColumn)
-            {
-                return;
-            }
-            var line = grid.Rows[e.RowIndex].Tag as QuestionLine;
-            var text = grid.Rows[e.RowIndex].Cells[AnswerColumn].Value as string;
-            string choice;
-            if (line == null || text == null || !line.ChoiceOf.TryGetValue(text, out choice))
-            {
-                return;
-            }
-            var question = line.Question;
+            return rowIndex >= 0 && rowIndex < grid.Rows.Count ? grid.Rows[rowIndex].Tag as QuestionLine : null;
+        }
+
+        // A listed object's answer counts at once: every answer plans again.
+        private void SetChoice(PlannerCleanUpQuestion question, string choice)
+        {
             // The default answer needs no entry. "Leave" chosen is kept, even for a question with no default: the row then
             // reads as left on purpose, not as waiting for an answer.
             if (choice == question.DefaultChoice)
@@ -583,8 +597,560 @@ namespace Max2Babylon
             {
                 choices[question.Id] = choice;
             }
-            // The grid is still inside its edit: plan again once it is over.
-            BeginInvoke(new Action(Fill));
+        }
+
+        private void SetPasteNote(string text)
+        {
+            pasteLabel.Text = text ?? string.Empty;
+            tips.SetToolTip(pasteLabel, string.IsNullOrEmpty(text) ? null : PlannerTipText.Wrap(text));
+        }
+
+        private bool AnswerKey(Keys keyData)
+        {
+            var cell = grid.CurrentCell;
+            var onAnswer = cell != null && cell.ColumnIndex == AnswerColumn && LineAt(cell.RowIndex) != null;
+            switch (keyData)
+            {
+                case Keys.Enter:
+                case Keys.F4:
+                case Keys.Alt | Keys.Down:
+                    if (onAnswer)
+                    {
+                        OpenPicker(cell.RowIndex, null);
+                    }
+                    return onAnswer;
+                case Keys.Control | Keys.C:
+                case Keys.Control | Keys.Insert:
+                    // An answer is copied with the clipboard guarded; other cells as the grid copies them.
+                    if (onAnswer)
+                    {
+                        CopyAnswer(cell.RowIndex);
+                    }
+                    return onAnswer;
+                case Keys.Control | Keys.V:
+                case Keys.Shift | Keys.Insert:
+                    PasteAnswer();
+                    return true;
+            }
+            return false;
+        }
+
+        private void Grid_CellMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            {
+                return;
+            }
+            if (e.Button == MouseButtons.Right)
+            {
+                // Paste acts on the cells chosen, or on the one clicked when it is not among them; Search and Copy on the
+                // row clicked.
+                if (!grid[e.ColumnIndex, e.RowIndex].Selected)
+                {
+                    grid.CurrentCell = grid[e.ColumnIndex, e.RowIndex];
+                }
+                menuRow = e.RowIndex;
+                var onAnswer = e.ColumnIndex == AnswerColumn && LineAt(e.RowIndex) != null;
+                answerMenu.Items[0].Enabled = onAnswer;
+                answerMenu.Items[1].Enabled = onAnswer;
+                bool busy;
+                answerMenu.Items[2].Enabled = (ClipboardText(out busy) != null || busy) && TargetLines().Count > 0;
+                answerMenu.Show(Cursor.Position);
+                return;
+            }
+            // Ctrl+ and Shift+click choose several cells (to paste into) without opening the list; so does the second click
+            // of a double-click on an answer in the list, which lands on the grid once the list has closed: pressed within
+            // the double-click time of that choice, however long the re-plan took.
+            var secondOfDouble = chosenByClick && unchecked(pressedAt - chosenAt) >= 0 && unchecked(pressedAt - chosenAt) <= SystemInformation.DoubleClickTime;
+            chosenByClick = false;
+            if (e.Button == MouseButtons.Left && e.ColumnIndex == AnswerColumn && ModifierKeys == Keys.None && LineAt(e.RowIndex) != null && !secondOfDouble)
+            {
+                OpenPicker(e.RowIndex, null);
+            }
+        }
+
+        private void OpenPicker(int rowIndex, string typed)
+        {
+            var line = LineAt(rowIndex);
+            if (line == null)
+            {
+                return;
+            }
+            if (picker != null && !picker.IsDisposed)
+            {
+                picker.Close();
+            }
+            var cell = grid.Rows[rowIndex].Cells[AnswerColumn];
+            if (grid.CurrentCell != cell)
+            {
+                grid.CurrentCell = cell;
+            }
+            // Opened by a key on a row scrolled out of view: the row is brought into view, so the list sits under it.
+            var shown = grid.GetCellDisplayRectangle(AnswerColumn, rowIndex, false);
+            if (shown.Height < cell.Size.Height)
+            {
+                try
+                {
+                    grid.FirstDisplayedScrollingRowIndex = rowIndex;
+                }
+                catch (InvalidOperationException)
+                {
+                    // The grid has no room to show rows.
+                }
+                shown = grid.GetCellDisplayRectangle(AnswerColumn, rowIndex, false);
+            }
+            var bounds = grid.RectangleToScreen(shown.IsEmpty ? grid.ClientRectangle : shown);
+            picker = new AnswerPicker(line.Answers, cell.Value as string, typed, grid.Font, bounds, grid.RectangleToScreen(grid.ClientRectangle), () =>
+            {
+                bool busy;
+                var text = ClipboardText(out busy);
+                return text != null ? AnswerFor(line, text) : null;
+            }, (text, byClick) =>
+            {
+                string choice;
+                if (!line.ChoiceOf.TryGetValue(text, out choice))
+                {
+                    return;
+                }
+                chosenByClick = byClick;
+                chosenAt = GetMessageTime();
+                SetPasteNote(null);
+                SetChoice(line.Question, choice);
+                BeginInvoke(new Action(Fill));
+            });
+            picker.Show(this);
+        }
+
+        private void NoteCopied(QuestionLine line, string text)
+        {
+            string choice;
+            if (line == null || text == null || !line.ChoiceOf.TryGetValue(text, out choice))
+            {
+                return;
+            }
+            copiedText = text;
+            copiedChoice = choice;
+            copiedOwnId = OwnLayerId(line);
+        }
+
+        // The layer ID of the layer a listed object sits in, as answers write it, or null.
+        private static string OwnLayerId(QuestionLine line)
+        {
+            var layer = PlannerNaming.ParseLayerNameV2(line.Question.LayerName);
+            return layer != null ? PlannerNaming.LayerIdText(layer.Id) : null;
+        }
+
+        private void CopyAnswer(int rowIndex)
+        {
+            var line = LineAt(rowIndex);
+            var text = line != null ? grid.Rows[rowIndex].Cells[AnswerColumn].Value as string : null;
+            if (text == null)
+            {
+                return;
+            }
+            try
+            {
+                // A few short tries, not the default second, while another program holds the clipboard.
+                Clipboard.SetDataObject(text, true, 3, 50);
+            }
+            catch (Exception)
+            {
+                // Another program holds the clipboard: Ctrl+V would paste what it held before.
+                SetPasteNote("The clipboard is busy: press Ctrl+C again.");
+                return;
+            }
+            NoteCopied(line, text);
+            SetPasteNote("Answer copied: choose the rows to give it to, and press Ctrl+V.");
+        }
+
+        // The clipboard's first line, or null; busy when another program held the clipboard.
+        private static string ClipboardText(out bool busy)
+        {
+            busy = false;
+            try
+            {
+                if (!Clipboard.ContainsText())
+                {
+                    // Text that cannot be read is held by another program.
+                    busy = IsClipboardFormatAvailable(UnicodeTextFormat);
+                    return null;
+                }
+                var text = Clipboard.GetText().Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    // Text that reads as nothing while text is there is held by another program.
+                    busy = IsClipboardFormatAvailable(UnicodeTextFormat);
+                    return null;
+                }
+                return text.Trim();
+            }
+            catch (Exception)
+            {
+                busy = true;
+                return null;
+            }
+        }
+
+        // The listed objects of the rows whose cells are chosen (any column), or of the current cell's row when none is.
+        private List<QuestionLine> TargetLines()
+        {
+            var rows = grid.SelectedCells.Cast<DataGridViewCell>().Select(c => c.RowIndex).ToList();
+            if (rows.Count == 0 && grid.CurrentCell != null)
+            {
+                rows.Add(grid.CurrentCell.RowIndex);
+            }
+            return rows.Distinct().OrderBy(r => r).Select(LineAt).Where(l => l != null).ToList();
+        }
+
+        // The answer of this row that a copied or pasted text stands for, or null. The answer last copied here gives this
+        // row's answer for the same choice when that reads the same but for its layer IDs ("Removed at the end of its own
+        // layer, 02_02_8" is "..., 06_05_1" here); not when the same choice reads otherwise (taking out the second RM_ of
+        // RM_RM_ is not taking out the RM_ of IN_RM_; a reference the Planner's list has renumbered). Any other text gives
+        // the answer that reads the same (spaces and case aside, and the " (default)" the list adds).
+        private string AnswerFor(QuestionLine line, string text)
+        {
+            var plain = Plain(text);
+            if (copiedText != null && copiedChoice != null && string.Equals(Plain(copiedText), plain, StringComparison.OrdinalIgnoreCase))
+            {
+                var copied = WithoutOwnId(copiedText, copiedOwnId);
+                var ownId = OwnLayerId(line);
+                var same = line.ChoiceOf.Where(p => p.Value == copiedChoice).Select(p => p.Key)
+                    .FirstOrDefault(a => string.Equals(WithoutOwnId(a, ownId), copied, StringComparison.OrdinalIgnoreCase));
+                if (same != null)
+                {
+                    return same;
+                }
+            }
+            return line.Answers.FirstOrDefault(a => string.Equals(Plain(a), plain, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // An answer as Plain gives it, with its row's own layer ID (written whole: not 02_02 inside 02_02_8) as "#".
+        private static string WithoutOwnId(string answer, string ownId)
+        {
+            var text = Plain(answer);
+            return string.IsNullOrEmpty(ownId)
+                ? text
+                : System.Text.RegularExpressions.Regex.Replace(text, "(?<![0-9A-Za-z_])" + System.Text.RegularExpressions.Regex.Escape(ownId) + "(?![0-9A-Za-z]|_[0-9])", "#");
+        }
+
+        // Pastes the clipboard's answer into every row chosen that has an answer for it (AnswerFor).
+        private void PasteAnswer()
+        {
+            bool busy;
+            var text = ClipboardText(out busy);
+            var lines = TargetLines();
+            if (text == null)
+            {
+                SetPasteNote(busy ? "The clipboard is busy: press Ctrl+V again." : "Nothing to paste: copy an answer first.");
+                return;
+            }
+            if (lines.Count == 0)
+            {
+                SetPasteNote("Choose the Answer cells (or rows) to paste into.");
+                return;
+            }
+            int pasted = 0;
+            var missed = new List<string>();
+            foreach (var line in lines)
+            {
+                var answer = AnswerFor(line, text);
+                string choice;
+                if (answer == null || !line.ChoiceOf.TryGetValue(answer, out choice))
+                {
+                    missed.Add(line.Question.CurrentName);
+                    continue;
+                }
+                SetChoice(line.Question, choice);
+                pasted++;
+            }
+            SetPasteNote((pasted > 0 ? "Answer pasted into " + Count(pasted, "row", "rows") : "Answer not pasted")
+                + (missed.Count > 0 ? "; " + Count(missed.Count, "row has", "rows have") + " no answer that matches it: " + string.Join(", ", missed.Take(3).ToArray())
+                    + (missed.Count > 3 ? ", \u2026" : string.Empty) : string.Empty)
+                + ".");
+            if (pasted > 0)
+            {
+                Fill();
+            }
+        }
+
+        // An answer with its spaces evened out and without the " (default)" its list adds to the default one.
+        private static string Plain(string answer)
+        {
+            const string mark = " (default)";
+            var text = string.Join(" ", answer.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries));
+            return text.EndsWith(mark, StringComparison.OrdinalIgnoreCase) ? text.Substring(0, text.Length - mark.Length) : text;
+        }
+
+        // One question's answers, searched as they are typed, in a small window under its Answer cell. Every word typed must
+        // be in an answer, in any order and any case; the best matches come first (Score: whole words, then word starts,
+        // and an answer that begins with what was typed before all), and the first is chosen while words are typed.
+        // Enter or a click chooses;
+        // Esc, or a click anywhere else, closes it unchanged; Up, Down, Page Up and Page Down move. Ctrl+V chooses the
+        // answer a copied one stands for on this row (or, when none does, pastes the text into the search).
+        private sealed class AnswerPicker : Form
+        {
+            private const int EmSetCueBanner = 0x1501;
+            private const int VisibleRows = 14;
+            private readonly TextBox search = new TextBox();
+            private readonly Label none = new Label();
+            private readonly ListBox list = new ListBox();
+            private readonly List<string> answers;
+            private readonly string current;
+            private readonly Rectangle cell;
+            private readonly Rectangle room;
+            private readonly Func<string> pasted;
+            private readonly Action<string, bool> choose;
+            private bool done;
+
+            [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+            private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+            /// <param name="pasted">The answer of this row the clipboard stands for, or null.</param>
+            /// <param name="cell">The Answer cell, on the screen.</param>
+            /// <param name="room">The review list, on the screen: the list stays inside it.</param>
+            public AnswerPicker(List<string> answers, string current, string typed, Font font, Rectangle cell, Rectangle room, Func<string> pasted, Action<string, bool> choose)
+            {
+                this.answers = answers;
+                this.current = current;
+                this.cell = cell;
+                this.room = room;
+                this.pasted = pasted;
+                this.choose = choose;
+                FormBorderStyle = FormBorderStyle.None;
+                ShowInTaskbar = false;
+                StartPosition = FormStartPosition.Manual;
+                Text = "Answers";
+                Font = font;
+                // A one-pixel frame round the box and the list.
+                BackColor = SystemColors.ControlDark;
+                Padding = new Padding(1);
+                search.Dock = DockStyle.Top;
+                search.BorderStyle = BorderStyle.FixedSingle;
+                none.Dock = DockStyle.Top;
+                none.AutoSize = false;
+                none.Height = font.Height + 6;
+                none.TextAlign = ContentAlignment.MiddleLeft;
+                none.BackColor = SystemColors.Window;
+                none.ForeColor = SystemColors.GrayText;
+                none.Text = "No answer has every word typed.";
+                none.Visible = false;
+                list.Dock = DockStyle.Fill;
+                list.IntegralHeight = false;
+                // The box keeps the focus (Tab included), so typing always searches and Enter always chooses.
+                list.TabStop = false;
+                // A press on the list gives it the focus; the box takes it back on the release, after the list's click has
+                // chosen (or not: a press on its empty part, or released off an item), so typing goes on searching.
+                list.MouseUp += (s, e) =>
+                {
+                    if (!done && !IsDisposed)
+                    {
+                        search.Focus();
+                    }
+                };
+                list.BorderStyle = BorderStyle.None;
+                // Docking runs from the last control added: the box on top, the note under it, the list below.
+                Controls.Add(list);
+                Controls.Add(none);
+                Controls.Add(search);
+                search.TextChanged += (s, e) => Filter();
+                search.KeyDown += Search_KeyDown;
+                list.MouseClick += (s, e) =>
+                {
+                    var index = list.IndexFromPoint(e.Location);
+                    if (index >= 0)
+                    {
+                        Choose(list.Items[index] as string, true);
+                    }
+                };
+                // As the other windows do: keys typed here are not 3ds Max shortcuts. Leaving it closes it.
+                Activated += (s, e) => Loader.Global.DisableAccelerators();
+                Deactivate += (s, e) =>
+                {
+                    Loader.Global.EnableAccelerators();
+                    if (!done && !IsDisposed)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            if (!IsDisposed)
+                            {
+                                Close();
+                            }
+                        }));
+                    }
+                };
+                Filter();
+                if (!string.IsNullOrEmpty(typed))
+                {
+                    search.Text = typed;
+                }
+            }
+
+            protected override void OnLoad(EventArgs e)
+            {
+                base.OnLoad(e);
+                // Measured now the list has its handle (before it, its row height is a default, not its font's): as wide as
+                // the cell or the longest answer, and as many rows as fit up to VisibleRows, under the cell or above it,
+                // inside the review list (so a double-click's second press never lands on the buttons below it) and the
+                // screen; on the side with more room, with fewer rows, when neither side has room for them all.
+                var area = Screen.FromRectangle(cell).WorkingArea;
+                var inside = Rectangle.Intersect(area, room);
+                if (inside.Height <= 0)
+                {
+                    inside = area;
+                }
+                int widest = answers.Count > 0 ? answers.Max(a => TextRenderer.MeasureText(a, list.Font).Width) : 0;
+                int width = Math.Min(area.Width - 8, Math.Max(cell.Width, widest + SystemInformation.VerticalScrollBarWidth + 16));
+                int frame = search.Height + Padding.Vertical + 4;
+                int height = frame + list.ItemHeight * Math.Max(1, Math.Min(VisibleRows, answers.Count));
+                int below = inside.Bottom - cell.Bottom;
+                int above = cell.Top - inside.Top;
+                int y;
+                if (height <= below)
+                {
+                    y = cell.Bottom;
+                }
+                else if (height <= above)
+                {
+                    y = cell.Top - height;
+                }
+                else
+                {
+                    var space = Math.Max(below, above);
+                    height = Math.Max(frame + list.ItemHeight, frame + (space - frame) / list.ItemHeight * list.ItemHeight);
+                    y = below >= above ? cell.Bottom : cell.Top - height;
+                }
+                int x = Math.Max(area.Left, Math.Min(cell.Left, area.Right - width));
+                Bounds = new Rectangle(x, y, width, height);
+            }
+
+            protected override void OnShown(EventArgs e)
+            {
+                base.OnShown(e);
+                try
+                {
+                    SendMessage(search.Handle, EmSetCueBanner, (IntPtr)1, "Type to search");
+                }
+                catch (Exception)
+                {
+                    // The box shows no hint.
+                }
+                search.Focus();
+                search.SelectionStart = search.Text.Length;
+            }
+
+            protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+            {
+                if (keyData == (Keys.Control | Keys.V) || keyData == (Keys.Shift | Keys.Insert))
+                {
+                    var answer = pasted != null ? pasted() : null;
+                    if (answer != null)
+                    {
+                        Choose(answer, false);
+                        return true;
+                    }
+                }
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
+
+            protected override bool ProcessDialogKey(Keys keyData)
+            {
+                if (keyData == Keys.Escape)
+                {
+                    done = true;
+                    Close();
+                    return true;
+                }
+                return base.ProcessDialogKey(keyData);
+            }
+
+            // How well an answer matches the words typed, or -1 when one of them is not in it: each word counts 2 as a whole
+            // word, 1 as the start of a word and 0 inside one ("no" in "North"), and an answer that begins with all that was
+            // typed comes before the rest ("no removal" finds "No removal: ..." first).
+            private static int Score(string answer, string[] words)
+            {
+                int score = 0;
+                foreach (var word in words)
+                {
+                    int best = -1;
+                    for (int at = answer.IndexOf(word, StringComparison.OrdinalIgnoreCase); at >= 0 && best < 2;
+                        at = at + 1 < answer.Length ? answer.IndexOf(word, at + 1, StringComparison.OrdinalIgnoreCase) : -1)
+                    {
+                        bool starts = at == 0 || !char.IsLetterOrDigit(answer[at - 1]);
+                        bool ends = at + word.Length == answer.Length || !char.IsLetterOrDigit(answer[at + word.Length]);
+                        best = Math.Max(best, starts ? (ends ? 2 : 1) : 0);
+                    }
+                    if (best < 0)
+                    {
+                        return -1;
+                    }
+                    score += best;
+                }
+                if (words.Length > 0 && answer.StartsWith(string.Join(" ", words), StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 2 * words.Length + 1;
+                }
+                return score;
+            }
+
+            // The answers that hold every word typed, best first. With nothing typed the row's own answer is chosen; with
+            // words typed, the best match.
+            private void Filter()
+            {
+                var words = search.Text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                var shown = answers.Select((answer, order) => new { answer, order, score = Score(answer, words) })
+                    .Where(a => a.score >= 0).OrderByDescending(a => a.score).ThenBy(a => a.order).Select(a => a.answer).ToList();
+                list.BeginUpdate();
+                list.Items.Clear();
+                list.Items.AddRange(shown.Cast<object>().ToArray());
+                list.EndUpdate();
+                none.Visible = shown.Count == 0;
+                var index = words.Length == 0 && current != null ? list.Items.IndexOf(current) : -1;
+                list.SelectedIndex = shown.Count == 0 ? -1 : Math.Max(0, index);
+            }
+
+            private void Search_KeyDown(object sender, KeyEventArgs e)
+            {
+                int step;
+                switch (e.KeyCode)
+                {
+                    case Keys.Down:
+                        step = 1;
+                        break;
+                    case Keys.Up:
+                        step = -1;
+                        break;
+                    case Keys.PageDown:
+                        step = VisibleRows - 1;
+                        break;
+                    case Keys.PageUp:
+                        step = 1 - VisibleRows;
+                        break;
+                    case Keys.Enter:
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        Choose(list.SelectedItem as string, false);
+                        return;
+                    default:
+                        return;
+                }
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                if (list.Items.Count > 0)
+                {
+                    list.SelectedIndex = Math.Max(0, Math.Min(list.Items.Count - 1, list.SelectedIndex + step));
+                }
+            }
+
+            private void Choose(string answer, bool byClick)
+            {
+                if (answer == null || done)
+                {
+                    return;
+                }
+                done = true;
+                Close();
+                choose(answer, byClick);
+            }
         }
 
         // Buttons
