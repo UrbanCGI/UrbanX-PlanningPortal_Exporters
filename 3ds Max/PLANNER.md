@@ -421,6 +421,17 @@ moves only when there are any).
 | Change | yellow | renamed, moved, linked or made |
 | Check | red | left as it is for a person to look at |
 
+- **Choosing an answer.** Click a row's Answer (or press Enter, F4 or Alt+Down on it, or just start typing) to open its
+  answers in a search list under the cell. Type any part of an answer, a layer's ID or name for example: every word
+  typed must be in the answer, in any order. The best matches come first: an answer that begins with what you typed,
+  then whole words, then the starts of words ("no removal" finds "No removal" before "...North_Removal..."). The best
+  match is chosen as you type; Up and Down move, Enter or a click chooses, Esc closes it unchanged.
+- **Copying an answer to other rows.** Ctrl+C on an Answer copies it. Either open another row's list and press Ctrl+V
+  there, or choose several rows (Ctrl+click or Shift+click any of their cells) and press Ctrl+V on the list: each row
+  takes the same answer, so "Removed at the end of its own layer" stays that on every row, whatever the layer; a row
+  where that answer reads otherwise (an install rather than a removal, say) is not given it. Other text pasted must read
+  as one of the row's answers does (spaces and case aside). The line at the bottom says how many rows took it and which
+  have no answer that matches. The right-click menu has Search answers, Copy answer and Paste answer too.
 - **Only rows to choose or check** hides the rest.
 - **Word fixes…** edits the project's spelling fixes (section 3.6). The scene is read again when it closes.
 - **Save list…** writes the review as CSV (`<scene>_clean_up.csv`).
