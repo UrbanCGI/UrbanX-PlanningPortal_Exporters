@@ -584,6 +584,201 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void ARootFolderRenamedInThePlannerBeforeAnyListStampedTheRootRenamesItWithAGroupLeftAtTheTop()
+        {
+            // The Planner renamed North's root folder North_Phasing_Area before any list stamped North's helper, and the
+            // planner moved North's group _02 to the top. The folder keeps the root Generate made it for, so the list has
+            // no Root row of North's old name: f1 holds _01, and _02 sits at the top with no parent. With South beside it,
+            // and with North the scene's one root.
+            foreach (var withSouth in new[] { true, false })
+            {
+                var scene = withSouth ? TwoRoots() : new TestScene();
+                if (!withSouth)
+                {
+                    var one = scene.Unit(North, null, null);
+                    scene.Unit("_01_North_Enabling", North, one);
+                    scene.Unit("_02_North_Roads", North, one);
+                }
+                var north = scene.Find(North);
+                Assert.Null(north.PlannerId);
+                Layer(scene, "_01_North_Enabling", "01_01_Drainage", "IN_Pipe");
+                Layer(scene, "_02_North_Roads", "02_01_Binder", "IN_Binder");
+                var roads = scene.Find("_02_North_Roads");
+                var rows = new List<string[]>
+                {
+                    TestCsv.Row("g2", null, "_02_North_Roads"),
+                    TestCsv.Row("l2", "g2", "02_01_Binder", "Layer"),
+                    TestCsv.Row("f1", null, "North_Phasing_Area", "Root"),
+                    TestCsv.Row("g1", "f1", "_01_North_Enabling"),
+                    TestCsv.Row("l1", "g1", "01_01_Drainage", "Layer"),
+                };
+                if (withSouth)
+                {
+                    rows.Add(TestCsv.Row("r2", null, South, "Root"));
+                    rows.Add(TestCsv.Row("g7", "r2", "_07_South_Enabling"));
+                }
+                var list = TestCsv.List(rows.ToArray());
+                var plan = Plan(scene.Snapshot, list);
+                var result = plan.Resolve(null);
+                var after = After(scene.Snapshot, result);
+
+                // North is found by what f1's rows find, and renamed, helper and Max layer, taking f1's Planner ID. No root is made.
+                Assert.Equal("North_Phasing_Area", after[north.Key]);
+                Assert.Contains(result.MaxLayerRenames, r => r.OldName == North && r.NewName == "North_Phasing_Area");
+                Assert.Contains(result.Stamps, s => s.Key == north.Key && s.PlannerId == "f1");
+                Assert.Empty(result.NewHelpers);
+                Assert.Empty(result.NewLayers);
+                // _02 stays in North.
+                Assert.DoesNotContain(result.NodeMoves, m => m.Key == roads.Key);
+                Assert.DoesNotContain(result.MaxLayerMoves, m => m.Name == "_02_North_Roads");
+                var build = PlannerLayerPlanner.Plan(list, scene.Snapshot);
+                Assert.Equal(0, build.ProblemCount);
+                Assert.Empty(build.UnlistedRoots);
+
+                var run = Run(plan, result, scene.Snapshot);
+                var roots = new PlannerSceneModel(run.Scene).PhasingRoots.Select(r => r.Name).ToArray();
+                Assert.Equal(withSouth ? new[] { "North_Phasing_Area", South } : new[] { "North_Phasing_Area" }, roots);
+                var again = Plan(run.Scene, list).Resolve(null);
+                Assert.False(again.HasChanges, string.Join("\n", again.Rows.Where(r => r.Status == PlannerCleanUpStatus.Change).Select(r => r.CurrentName + " -> " + r.NewName + ": " + r.Why)));
+            }
+        }
+
+        [Fact]
+        public void ARootFolderRenamedInThePlannerBeforeAnyListStampedTheRootRenamesItThoughItAlsoHoldsAnotherRootsGroup()
+        {
+            // As above, and the planner also moved South's group _07 into North's renamed folder North_Phasing_Area. Neither
+            // root helper has a Planner ID. f1's rows find their layers in North and in South; South's own Root row takes South
+            // by its name, so f1 is North. With _02 at the top, and with _02 still in f1.
+            foreach (var roadsAtTop in new[] { true, false })
+            {
+                var scene = TwoRoots();
+                var north = scene.Find(North);
+                var south = scene.Find(South);
+                Assert.Null(north.PlannerId);
+                Assert.Null(south.PlannerId);
+                Layer(scene, "_01_North_Enabling", "01_01_Drainage", "IN_Pipe");
+                Layer(scene, "_02_North_Roads", "02_01_Binder", "IN_Binder");
+                Layer(scene, "_07_South_Enabling", "07_01_Hoarding", "IN_Hoarding");
+                var roads = scene.Find("_02_North_Roads");
+                var enabling = scene.Find("_07_South_Enabling");
+                var rows = new List<string[]>();
+                if (roadsAtTop)
+                {
+                    rows.Add(TestCsv.Row("g2", null, "_02_North_Roads"));
+                    rows.Add(TestCsv.Row("l2", "g2", "02_01_Binder", "Layer"));
+                }
+                rows.Add(TestCsv.Row("f1", null, "North_Phasing_Area", "Root"));
+                rows.Add(TestCsv.Row("g1", "f1", "_01_North_Enabling"));
+                rows.Add(TestCsv.Row("l1", "g1", "01_01_Drainage", "Layer"));
+                if (!roadsAtTop)
+                {
+                    rows.Add(TestCsv.Row("g2", "f1", "_02_North_Roads"));
+                    rows.Add(TestCsv.Row("l2", "g2", "02_01_Binder", "Layer"));
+                }
+                rows.Add(TestCsv.Row("g7", "f1", "_07_South_Enabling"));
+                rows.Add(TestCsv.Row("l7", "g7", "07_01_Hoarding", "Layer"));
+                rows.Add(TestCsv.Row("f2", null, South, "Root"));
+                var list = TestCsv.List(rows.ToArray());
+                var plan = Plan(scene.Snapshot, list);
+                var result = plan.Resolve(null);
+                var after = After(scene.Snapshot, result);
+
+                // North is renamed, helper and Max layer, and takes f1's Planner ID; South keeps its name and takes f2's. No
+                // root is made.
+                Assert.Equal("North_Phasing_Area", after[north.Key]);
+                Assert.Equal(South, after[south.Key]);
+                Assert.Contains(result.MaxLayerRenames, r => r.OldName == North && r.NewName == "North_Phasing_Area");
+                Assert.DoesNotContain(result.MaxLayerRenames, r => r.OldName == South);
+                Assert.Contains(result.Stamps, s => s.Key == north.Key && s.PlannerId == "f1");
+                Assert.Contains(result.Stamps, s => s.Key == south.Key && s.PlannerId == "f2");
+                Assert.Empty(result.NewHelpers);
+                Assert.Empty(result.NewLayers);
+                // _07 moves into North, node and Max layer (the move names North's Max layer as it is now); _02 stays in North.
+                Assert.Contains(result.NodeMoves, m => m.Key == enabling.Key && m.ToParentKey == north.Key);
+                Assert.Contains(result.MaxLayerMoves, m => m.Name == "_07_South_Enabling" && m.NewParentName == North);
+                Assert.DoesNotContain(result.NodeMoves, m => m.Key == roads.Key);
+                Assert.DoesNotContain(result.MaxLayerMoves, m => m.Name == "_02_North_Roads");
+                var build = PlannerLayerPlanner.Plan(list, scene.Snapshot);
+                Assert.Equal(0, build.ProblemCount);
+                Assert.Empty(build.UnlistedRoots);
+
+                var run = Run(plan, result, scene.Snapshot);
+                Assert.Equal(new[] { "North_Phasing_Area", South }, new PlannerSceneModel(run.Scene).PhasingRoots.Select(r => r.Name).ToArray());
+                Assert.Equal(north.Key, run.Scene.Nodes.Single(n => n.Key == enabling.Key).ParentKey);
+                Assert.Equal("North_Phasing_Area", run.Scene.Layers.Single(l => l.Name == "_07_South_Enabling").ParentName);
+                var again = Plan(run.Scene, list).Resolve(null);
+                Assert.False(again.HasChanges, string.Join("\n", again.Rows.Where(r => r.Status == PlannerCleanUpStatus.Change).Select(r => r.CurrentName + " -> " + r.NewName + ": " + r.Why)));
+            }
+        }
+
+        [Fact]
+        public void ARootFolderRenamedInThePlannerHoldingNoneOfItsRootsGroupsIsMadeANewEmptyRootAndTheRootIsNotInTheList()
+        {
+            // The Planner renamed North's root folder North_Phasing_Area, which records North, so the list has no Root row of
+            // North's old name, and the planner moved both of North's groups to the top. Nothing under f1 finds a root, so
+            // 3ds Max makes f1 a new, empty root and keeps North as it is, listed as a root the list does not name. This is
+            // the accepted outcome (spec 8.1): no safeguard. With South beside it, and with North the scene's one root.
+            foreach (var withSouth in new[] { true, false })
+            {
+                var scene = withSouth ? TwoRoots() : new TestScene();
+                if (!withSouth)
+                {
+                    var one = scene.Unit(North, null, null);
+                    scene.Unit("_01_North_Enabling", North, one);
+                    scene.Unit("_02_North_Roads", North, one);
+                }
+                var north = scene.Find(North);
+                Assert.Null(north.PlannerId);
+                Layer(scene, "_01_North_Enabling", "01_01_Drainage", "IN_Pipe");
+                Layer(scene, "_02_North_Roads", "02_01_Binder", "IN_Binder");
+                var rows = new List<string[]>
+                {
+                    TestCsv.Row("g1", null, "_01_North_Enabling"),
+                    TestCsv.Row("l1", "g1", "01_01_Drainage", "Layer"),
+                    TestCsv.Row("g2", null, "_02_North_Roads"),
+                    TestCsv.Row("l2", "g2", "02_01_Binder", "Layer"),
+                    TestCsv.Row("f1", null, "North_Phasing_Area", "Root"),
+                };
+                if (withSouth)
+                {
+                    rows.Add(TestCsv.Row("r2", null, South, "Root"));
+                    rows.Add(TestCsv.Row("g7", "r2", "_07_South_Enabling"));
+                }
+                var list = TestCsv.List(rows.ToArray());
+                var plan = Plan(scene.Snapshot, list);
+                var result = plan.Resolve(null);
+                var after = After(scene.Snapshot, result);
+
+                // North_Phasing_Area is made, helper and Max layer at the top, with f1's Planner ID.
+                var made = result.NewHelpers.Single();
+                Assert.Equal("North_Phasing_Area", made.Name);
+                Assert.Null(made.ParentKey);
+                Assert.Equal("f1", made.PlannerId);
+                Assert.Contains(result.NewLayers, l => l.Name == "North_Phasing_Area" && l.ParentName == null);
+                // North keeps its name, its groups and no Planner ID.
+                Assert.Equal(North, after[north.Key]);
+                Assert.DoesNotContain(result.MaxLayerRenames, r => r.OldName == North);
+                Assert.DoesNotContain(result.Stamps, s => s.Key == north.Key);
+                foreach (var group in new[] { "_01_North_Enabling", "_02_North_Roads" })
+                {
+                    Assert.DoesNotContain(result.NodeMoves, m => m.Key == scene.Find(group).Key);
+                    Assert.DoesNotContain(result.MaxLayerMoves, m => m.Name == group);
+                }
+                // North is listed as a root the list does not name: kept, as Clean up never deletes.
+                var build = PlannerLayerPlanner.Plan(list, scene.Snapshot);
+                Assert.Equal(0, build.ProblemCount);
+                Assert.Equal(new[] { North }, build.UnlistedRoots.Select(r => r.Name).ToArray());
+                Assert.Contains(result.Rows, r => r.Item == "Phasing root" && r.NewName == North && r.Status == PlannerCleanUpStatus.Check);
+
+                var run = Run(plan, result, scene.Snapshot);
+                var roots = new PlannerSceneModel(run.Scene).PhasingRoots.Select(r => r.Name).ToArray();
+                Assert.Equal(withSouth ? new[] { "North_Phasing_Area", North, South } : new[] { "North_Phasing_Area", North }, roots);
+                var again = Plan(run.Scene, list).Resolve(null);
+                Assert.False(again.HasChanges, string.Join("\n", again.Rows.Where(r => r.Status == PlannerCleanUpStatus.Change).Select(r => r.CurrentName + " -> " + r.NewName + ": " + r.Why)));
+            }
+        }
+
+        [Fact]
         public void ARootFolderMadeInThePlannerForSomeGroupsIsASecondRootBesideTheModelsOwnRoot()
         {
             // Spec 5, adding a second root in the Planner: one root, Work_Phasing, holds _01 to _06. The planner makes the

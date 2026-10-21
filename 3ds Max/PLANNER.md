@@ -336,9 +336,12 @@ root, and gets its helper. A scene with neither gets the layer and helper `Work_
 **Root rows.** A Planner project with several roots writes a row of Kind `Root` for each, with an empty Parent ID; its
 groups and layers have that row's Planner ID as their Parent ID. Each Root row finds its root by the root helper's
 Planner ID (every Root row by ID first, so a root renamed in the Planner is never taken by another row's name), else by
-its exact name (any capitals), else as the one root that holds what the rows under it find. A root found under another
-name is renamed, helper and Max layer together, as the Planner owns the root's name. A Root row the scene has no root
-for gets its helper made at the top, on the Max layer of its name when the scene has one, else on one made at the top.
+its exact name (any capitals), else as the one root that holds what the rows under it find, leaving out the roots other
+Root rows have taken: a group moved into the row in the Planner from another root, which that root's own row has
+already found by its Planner ID or name, does not count (with both roots' folders renamed in the Planner before any
+list stamped their helpers, the order of the rows can still make one of them a new root). A root found under another name is renamed, helper and Max layer together, as the Planner owns the
+root's name. A Root row the scene has no root for gets its helper made at the top, on the Max layer of its name when
+the scene has one, else on one made at the top.
 The exception is the Planner's own row for a root of its model (Planner ID `root:` and the root's name) with nothing
 under it that finds no root: the name a root another Root row takes has now, or a name no root of the scene has. The
 Planner writes that row for its model's root after the root folder was renamed, until it reads an export with the new

@@ -712,10 +712,10 @@ namespace Utilities.Planner
         }
 
         // Each row that stands for a root takes it: a Root row finds its root by the root helper's Planner ID, else by its
-        // exact name (any capitals), else as the one scene root that holds what the rows under it find; else the build makes
-        // it, layer and helper at the top, unless it has nothing under it and is a root's old name (OldName). A found root
-        // with another name is renamed, helper and layer together, as the Planner owns the root's name. A top-level row named
-        // like a root (a list with no Root rows) is that root.
+        // exact name (any capitals), else as the one scene root no other Root row has taken that holds what the rows under it
+        // find; else the build makes it, layer and helper at the top, unless it has nothing under it and is a root's old name
+        // (OldName). A found root with another name is renamed, helper and layer together, as the Planner owns the root's name.
+        // A top-level row named like a root (a list with no Root rows) is that root.
         private static void TakeRoots(PlannerLayerPlan plan, PlannerSceneModel scene, HashSet<PlannerLayerRow> rootRows, Dictionary<PlannerLayerRow, PlannerRowPlan> byRow)
         {
             var ordered = rootRows.OrderBy(r => r.Index).ToList();
@@ -773,8 +773,9 @@ namespace Utilities.Planner
                         && (NameIs(r.Helper.CurrentName, row.Layer) || NameIs(r.Layer.CurrentName, row.Layer))));
                     continue;
                 }
-                // The one scene root the rows under it find their layers in: a root renamed in the Planner before any list
-                // stamped its helper's Planner ID.
+                // The one scene root the rows under it find their layers in, of those no other Root row has taken: a root
+                // renamed in the Planner before any list stamped its helper's Planner ID. A group moved into it in the
+                // Planner from another root, which that root's own Root row has taken, does not count.
                 var below = new HashSet<PlannerPhasingRoot>();
                 var pending = new Stack<PlannerLayerRow>(row.Children);
                 while (pending.Count > 0)
@@ -790,6 +791,7 @@ namespace Utilities.Planner
                         pending.Push(grandchild);
                     }
                 }
+                below.RemoveWhere(s => !plan.Roots.Any(r => unclaimed(r) && r.SceneRoot == s));
                 var root = below.Count == 1 ? plan.Roots.FirstOrDefault(r => unclaimed(r) && r.SceneRoot == below.First()) : null;
                 Take(plan, scene, root ?? AddRoot(plan, scene, null, row.Layer), byRow[row]);
             }
