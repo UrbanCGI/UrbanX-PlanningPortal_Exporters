@@ -338,15 +338,22 @@ groups and layers have that row's Planner ID as their Parent ID. Each Root row f
 Planner ID (every Root row by ID first, so a root renamed in the Planner is never taken by another row's name), else by
 its exact name (any capitals), else as the one root that holds what the rows under it find. A root found under another
 name is renamed, helper and Max layer together, as the Planner owns the root's name. A Root row the scene has no root
-for gets its helper made at the top, on the Max layer of its name when the scene has one, else on one made at the top. A root of the scene that no Root row names is left
-as it is and listed ("not in the Planner's list"). A Root row with a Parent ID, or without "phasing" in its name, is a
-problem.
+for gets its helper made at the top, on the Max layer of its name when the scene has one, else on one made at the top.
+The exception is the Planner's own row for a root of its model (Planner ID `root:` and the root's name) with nothing
+under it that finds no root: the name a root another Root row takes has now, or a name no root of the scene has. The
+Planner writes that row for its model's root after the root folder was renamed, until it reads an export with the new
+name, so the row is up to date, with a note naming the root's new name, and no root is made for it. A Root row of a
+folder is made whatever its name: an empty root folder made in the Planner under a renamed root's old name gets its
+own helper and Max layer. A root of the scene that no Root row names is left as it is and listed ("not in the Planner's list"). A Root row
+with a Parent ID, or without "phasing" in its name, is a problem.
 
 **Top-level rows.** A Group or Layer row with an empty Parent ID stays in the root its layer and helper are in. A new
-one, or one found outside every root, goes into the first root in name order (of those the list's Root rows name,
-when it has them), with a note. So a list without Root rows
-never pulls one root's groups into another. A row whose Parent ID leads to another root moves there, layer and helper,
-like any other move the list makes. In a list with no Root rows, a top-level row named like a root stands for that root.
+one, or one found outside every root, goes into the first root in name order, with a note: of the roots the list's
+Root rows name, when it has them; else of those the list's other rows are found in, the roots the Planner has seen,
+even one hidden for the moment; else of those the export writes. So a new row never goes into a root the Planner has
+not seen (a hidden backup copy, an area not exported yet) ahead of one it has, and a list without Root rows never
+pulls one root's groups into another. A row whose Parent ID leads to another root moves there, layer and helper, like
+any other move the list makes. In a list with no Root rows, a top-level row named like a root stands for that root.
 
 **Each row finds its layer and helper** in this order:
 
@@ -588,8 +595,9 @@ root, taken in name order.
 - **To add a root** in 3ds Max: make a top-level Dummy whose name contains "Phasing", with a Max layer of the same name,
   and put its phase groups and layers under it. Or make a top-level folder with "phasing" in its name in the Planner,
   move or make groups in it, export the list, and run Clean up with it here.
-- **A backup copy of the phasing** counts as a root too, so delete it, or rename it without "phasing", before Clean up.
-  Otherwise Clean up asks which root keeps the IDs they share (section 3.3).
+- **A backup copy of the phasing** counts as a root too, so delete it before Clean up. Otherwise Clean up asks which
+  root keeps the IDs they share (section 3.3). Renaming it without "phasing" is not enough: its copied helpers would
+  still reach the Planner, outside every root, and be read as the original layers.
 
 In the Planner, a model with two or more roots gets a top-level folder for each root, named as the root. A project with
 one root looks as it always has.
@@ -750,10 +758,10 @@ know are ignored, with a note.
 
 | Column | Meaning |
 | --- | --- |
-| Planner ID | the Planner folder's ID; unique; how the tool finds the row's layer again (the helper's `planner_id`) |
+| Planner ID | the Planner folder's ID; unique; how the tool finds the row's layer again (the helper's `planner_id`); `root:` and the root's name for a Root row the Planner writes for a root of its model that no folder stands for (section 3.2) |
 | Parent ID | the parent row's Planner ID; empty for a Root row, and for a top-level row, which goes directly under its phasing root (section 3.2) |
 | Layer | the name of the Max layer and its helper: `<ID>_<Name>` for a layer (`02_01_4_Construction_of_Phase1_TM`), `_<n>_<Name>` for a phase group, the root's name for a Root row |
-| Kind | `Group` (holds other layers), `Layer` (holds work) or `Root` (a phasing root, written only for a project with several; a list with Root rows needs this release or later, as an older tool marks them problems) |
+| Kind | `Group` (holds other layers), `Layer` (holds work) or `Root` (a phasing root: written for each top-level folder of the Planner named as a root, in a project with several roots or one that keeps a root folder, and, once there is one, for each root of the model that still has groups or layers outside every root folder; a list with Root rows needs this release or later, as an older tool marks them problems) |
 | ID, Phase, Stage, Sub-stage | the layer ID (`02_01_2`, 2, 1, 2), empty for a group; the ID also finds a layer built by hand |
 | Name | the name after the ID |
 | Start, Finish | the layer's first and last day in the Planner: the span of its own work. The preview and the Gantt use them. |

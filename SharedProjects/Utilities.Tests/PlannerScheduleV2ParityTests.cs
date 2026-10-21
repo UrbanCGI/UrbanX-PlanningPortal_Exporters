@@ -201,22 +201,6 @@ namespace Utilities.Tests
             return token == null || token.Type == JTokenType.Null ? new List<string>() : token.Select(t => (string)t).ToList();
         }
 
-        /// <summary>
-        /// The Planner's untagged objects without the phasing roots: its results here were made before roots stopped being
-        /// objects (R19), when it listed each root as an untagged object. A root is an empty node at the top whose name has
-        /// "phasing" in it and reads as neither a phase group nor a layer (R10). Once the results are made again, this
-        /// leaves them as they are.
-        /// </summary>
-        internal static List<string> WithoutRoots(IEnumerable<string> names, Dictionary<string, PlannerModelNode> index)
-        {
-            return names.Where(n =>
-            {
-                PlannerModelNode node;
-                return !(index.TryGetValue(n, out node) && node.Parent == null && !node.Mesh && n.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0
-                    && !PlannerSceneModel.ReadsAsPhasingName(n));
-            }).ToList();
-        }
-
         /// <summary>Runs the tab's schedule on a scene and lists every way it differs from the Planner's result for it.</summary>
         internal static List<string> Compare(JObject scene, JObject planner, Counts counts, out PlannerSchedule schedule)
         {
@@ -358,7 +342,7 @@ namespace Utilities.Tests
                 }
             };
             list("matched", report.Matched, Strings(planner["matched"]));
-            list("skipped", report.Skipped, WithoutRoots(Strings(planner["skipped"]), built.Index));
+            list("skipped", report.Skipped, Strings(planner["skipped"]));
             list("unfiled", report.Unfiled, Strings(planner["unfiled"]));
             list("layer issues", built.LayerIssues.OrderBy(t => t, StringComparer.Ordinal), Strings(planner["layerIssues"]).OrderBy(t => t, StringComparer.Ordinal));
             list("TBC activities", report.TbcActivities, Strings(planner["tbcActivities"]));

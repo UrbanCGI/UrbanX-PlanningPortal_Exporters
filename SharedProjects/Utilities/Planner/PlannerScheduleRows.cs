@@ -272,7 +272,7 @@ namespace Utilities.Planner
             // A phasing root of the scene that no Root row of the list names (the list has Root rows): kept, never deleted.
             foreach (var root in PlannerNaturalOrder.StableSort(plan.UnlistedRoots, (a, b) => PlannerNaturalOrder.Compare(a.Name, b.Name)))
             {
-                const string note = "the Planner's list names its phasing roots, and not this one: left as it is (a backup copy? delete it, or rename it without \"phasing\")";
+                const string note = "the Planner's list names its phasing roots, and not this one: left as it is (a backup copy? delete it)";
                 var row = RootRow(root, PlannerScheduleRowSource.Unlisted, note);
                 row.UnlistedItem = new PlannerUnlistedItem { Name = root.Name, What = "phasing root", Note = note };
                 rows.Add(row);

@@ -924,9 +924,8 @@ namespace Utilities.Tests
             list("scheduled", read.Matched, Strings(planner["matched"]));
             // Untagged objects as a set: a GLB mesh of several materials reaches the Planner's index as a node of its pieces,
             // after the meshes, where the scene (one mesh per 3ds Max object) has it among them; only this list's order shows it.
-            // The phasing roots are never objects (R19), which the Planner's results here predate.
-            list("untagged", read.Skipped.OrderBy(s => s, StringComparer.Ordinal),
-                PlannerScheduleV2ParityTests.WithoutRoots(Strings(planner["skipped"]), read.Index).OrderBy(s => s, StringComparer.Ordinal));
+            // Neither side lists a phasing root: it is never an object (R19).
+            list("untagged", read.Skipped.OrderBy(s => s, StringComparer.Ordinal), Strings(planner["skipped"]).OrderBy(s => s, StringComparer.Ordinal));
 
             // The report: each of the Planner's items once, as code, severity and name.
             var expected = new List<string>();

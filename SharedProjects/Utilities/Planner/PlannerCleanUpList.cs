@@ -538,7 +538,7 @@ namespace Utilities.Planner
                     CurrentName = node != null ? NameOf(node) : root.Name,
                     NewName = root.Name,
                     Why = "the Planner's list names its phasing roots, and not this one: kept, as Clean up never deletes; its groups and layers stay as they are"
-                        + " (a backup copy? delete it, or rename it without \"phasing\")",
+                        + " (a backup copy? delete it)",
                     NodeKey = node != null ? node.Key : (long?)null
                 });
             }
