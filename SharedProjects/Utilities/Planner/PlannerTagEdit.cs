@@ -148,7 +148,7 @@ namespace Utilities.Planner
     /// Every new name is read back as the Planner reads it (<see cref="PlannerNaming.ParseObjectNameV2"/>): one that would
     /// not read as meant (the same type at both ends, another own name, a type word read where none was meant, a new
     /// naming error) is refused. Refused too: a name with an old Ph/St tag (Clean up scene graph converts it), a layer's
-    /// helper, the phasing root, a layer node, a split piece chosen alone and an object under no layer's helper (link it
+    /// helper, any phasing root, a layer node, a split piece chosen alone and an object under no layer's helper (link it
     /// first). Nothing is moved or linked.
     ///
     /// Each edit is then checked by reading the scene again with the new names, as the new names' preview reads it
@@ -502,7 +502,8 @@ namespace Utilities.Planner
             var asked = new Dictionary<long, List<PlannerTagEditRequest>>();
             var valid = (requests ?? new List<PlannerTagEditRequest>()).Where(r => r != null && r.Target != null && r.Target.Id != null && nodes.ContainsKey(r.Key)).ToList();
 
-            // Helpers carry their layers' names, and splines the export leaves out are never seen: never objects.
+            // Helpers carry their layers' names (every phasing root's helper its root's, R19), and splines the export leaves
+            // out are never seen: never objects.
             var unitHelpers = new Dictionary<long, PlannerSceneUnit>();
             foreach (var unit in scene.Units.Where(u => u.Helper != null))
             {
@@ -511,12 +512,17 @@ namespace Utilities.Planner
             Func<long, string> notAnObject = key =>
             {
                 PlannerSceneUnit unit;
-                if (unitHelpers.TryGetValue(key, out unit) || (scene.RootNode != null && scene.RootNode.Key == key))
-                {
-                    return "it is the helper of " + (unit != null ? "the layer " + unit.Name : "the phasing root") + ": its name is the layer's, not an object's";
-                }
                 PlannerSceneNode sceneNode;
-                if (scene.NodeByKey.TryGetValue(key, out sceneNode) && scene.LeftOut(sceneNode))
+                scene.NodeByKey.TryGetValue(key, out sceneNode);
+                if (unitHelpers.TryGetValue(key, out unit))
+                {
+                    return "it is the helper of the layer " + unit.Name + ": its name is the layer's, not an object's";
+                }
+                if (scene.IsPhasingRootNode(sceneNode))
+                {
+                    return "it is the helper of the phasing root " + sceneNode.Name + ": its name is the root's, not an object's";
+                }
+                if (sceneNode != null && scene.LeftOut(sceneNode))
                 {
                     return "it is a spline with nothing exported under it, which the export leaves out, so the Planner never sees it";
                 }

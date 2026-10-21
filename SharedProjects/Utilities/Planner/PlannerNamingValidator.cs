@@ -72,8 +72,16 @@ namespace Utilities.Planner
         public int Untagged;
         /// <summary>Naming v2: the names Clean up scene graph converts (old tags; dates or TBC in layer and helper names; hyphens; underscores at the ends).</summary>
         public readonly List<string> CleanUp = new List<string>();
-        /// <summary>Naming v2: the phasing layers and helpers counted, as the export log has shown them (null with no phasing root).</summary>
-        public PhasingCounts Counts;
+        /// <summary>
+        /// Naming v2: the phasing layers and helpers counted, as the export log has shown them, one for each root helper in
+        /// name order (none with no root helper).
+        /// </summary>
+        public readonly List<PhasingCounts> RootCounts = new List<PhasingCounts>();
+        /// <summary>
+        /// Naming v2: the Max layers counted in <see cref="RootCounts"/>, each once (two roots of one name share their Max
+        /// layer, so its tree is in both).
+        /// </summary>
+        public int LayersTogether;
 
         public int Errors { get { return Issues.Count(i => i.Severity == NamingSeverity.Error); } }
         public int Warnings { get { return Issues.Count(i => i.Severity == NamingSeverity.Warning); } }
@@ -153,6 +161,23 @@ namespace Utilities.Planner
                 return null;
             }
             return PhasingFixScript.Count(CleanUp.Count, "name can", "names can") + " be converted by Clean up scene graph\u2026 on the Schedule tab.";
+        }
+
+        /// <summary>
+        /// Naming v2: the phasing counts for the export log, one line for each root (<see cref="RootCounts"/>), and in a scene
+        /// with two or more roots one more for them all ("Phasing counts, 2 roots together: 11 layers, 11 helper nodes."),
+        /// with each Max layer once (<see cref="LayersTogether"/>). Empty with no root helper.
+        /// </summary>
+        public List<string> CountsLines()
+        {
+            var lines = RootCounts.Select(c => c.Describe(false)).ToList();
+            if (RootCounts.Count > 1)
+            {
+                lines.Add("Phasing counts, " + RootCounts.Count.ToString(CultureInfo.InvariantCulture) + " roots together: "
+                    + PhasingFixScript.Count(LayersTogether, "layer", "layers") + ", "
+                    + PhasingFixScript.Count(RootCounts.Sum(c => c.Helpers), "helper node", "helper nodes") + ".");
+            }
+            return lines;
         }
     }
 

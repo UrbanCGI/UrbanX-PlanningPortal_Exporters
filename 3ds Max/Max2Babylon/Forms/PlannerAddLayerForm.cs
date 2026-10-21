@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using Utilities.Planner;
 
@@ -8,12 +9,12 @@ namespace Max2Babylon
 {
     /// <summary>
     /// UrbanCGI fork: the Add layer dialog of the Schedule tab. It asks where the layer goes (Under: the phasing root or a
-    /// phase group, <see cref="PlannerAddLayer.Parents"/>, starting on the row chosen in the tab, <see
-    /// cref="PlannerAddLayer.StartUnder"/>, with a note when that is not the row itself), a layer's ID (phase, stage and a
-    /// sub-stage if it has one) and name, or a phase group's phase and name, and shows, as it is typed, the name the
-    /// convention gives it (<see cref="PlannerAddLayer.Compose"/>: &lt;ID&gt;_&lt;Name&gt;, a group _&lt;nn&gt;_&lt;Name&gt;) or why it
-    /// cannot be written. It asks for no date: every date comes from the Planner's layer list (D20). Built in code; modal
-    /// over the exporter window.
+    /// phase group; in a scene with several roots, a root or a phase group beneath it, <see cref="PlannerAddLayer.Parents"/>,
+    /// starting on the row chosen in the tab, <see cref="PlannerAddLayer.StartUnder"/>, with a note when that is not the row
+    /// itself), a layer's ID (phase, stage and a sub-stage if it has one) and name, or a phase group's phase and name, and
+    /// shows, as it is typed, the name the convention gives it (<see cref="PlannerAddLayer.Compose"/>: &lt;ID&gt;_&lt;Name&gt;, a
+    /// group _&lt;nn&gt;_&lt;Name&gt;) or why it cannot be written. It asks for no date: every date comes from the Planner's
+    /// layer list (D20). Built in code; modal over the exporter window.
     /// </summary>
     internal sealed class PlannerAddLayerForm : Form
     {
@@ -23,7 +24,8 @@ namespace Max2Babylon
         private readonly Label underNote = new Label();
         // The empty cell left of the note, hidden with it.
         private readonly Label underNoteSpacer = new Label { AutoSize = true };
-        // The Max layer of each entry of Under; the phasing root's is null.
+        // The Max layer of each entry of Under; the phasing root's is null when the scene has one root (with several, each
+        // root's entry has its name).
         private readonly List<string> underLayers = new List<string>();
         private readonly RadioButton layerKind = new RadioButton();
         private readonly RadioButton groupKind = new RadioButton();
@@ -39,8 +41,8 @@ namespace Max2Babylon
         private readonly Button cancelButton = new Button();
         private readonly Font boldFont;
 
-        /// <param name="parents">The phase groups it can go under besides the phasing root, in the tree's order.</param>
-        /// <param name="start">The one Under starts on, or null for the phasing root.</param>
+        /// <param name="parents">The phase groups it can go under besides the phasing root, in the tree's order; in a scene with several roots, each root with its phase groups beneath it.</param>
+        /// <param name="start">The one Under starts on, or null for the phasing root (the first root, with several).</param>
         /// <param name="note">Why Under starts there and not on the row chosen, or null.</param>
         public PlannerAddLayerForm(IList<PlannerAddLayerParent> parents, string start, string note)
         {
@@ -84,14 +86,20 @@ namespace Max2Babylon
                 cells(new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 10, 0) }, control);
             };
 
-            // Under: the phasing root and every phase group that can take one, indented as they nest. It starts on the row
-            // chosen in the tab (with a note when it cannot), and the phase follows the group chosen here.
+            // Under: the phasing root and every phase group that can take one, indented as they nest; in a scene with several
+            // roots, each root with its phase groups beneath it, and no entry for the top of the scene (Add layer makes no new
+            // root). It starts on the row chosen in the tab (with a note when it cannot), else on the first entry, and the
+            // phase follows the group chosen here.
             underBox.DropDownStyle = ComboBoxStyle.DropDownList;
             underBox.Width = 320;
             underBox.Margin = new Padding(0, 3, 0, 3);
-            underBox.Items.Add(RootText);
-            underLayers.Add(null);
-            foreach (var parent in parents ?? new List<PlannerAddLayerParent>())
+            parents = parents ?? new List<PlannerAddLayerParent>();
+            if (!parents.Any(p => p.IsRoot))
+            {
+                underBox.Items.Add(RootText);
+                underLayers.Add(null);
+            }
+            foreach (var parent in parents)
             {
                 underBox.Items.Add(new string(' ', 4 * parent.Depth) + parent.Layer);
                 underLayers.Add(parent.Layer);
@@ -206,10 +214,10 @@ namespace Max2Babylon
             UpdateName(true);
         }
 
-        /// <summary>The Max layer chosen in Under, or null for the phasing root.</summary>
+        /// <summary>The Max layer chosen in Under (a root's name, with several roots), or null for the phasing root.</summary>
         public string UnderLayer
         {
-            get { return underBox.SelectedIndex > 0 && underBox.SelectedIndex < underLayers.Count ? underLayers[underBox.SelectedIndex] : null; }
+            get { return underBox.SelectedIndex >= 0 && underBox.SelectedIndex < underLayers.Count ? underLayers[underBox.SelectedIndex] : null; }
         }
 
         /// <summary>What was asked for: the ID and the name.</summary>

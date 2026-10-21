@@ -20,13 +20,18 @@ namespace Utilities.Planner
         public string Name;
     }
 
-    /// <summary>A phase group Add layer can add under (<see cref="PlannerAddLayer.Parents"/>).</summary>
+    /// <summary>A phase group, or in a scene with several phasing roots a root, Add layer can add under (<see cref="PlannerAddLayer.Parents"/>).</summary>
     public sealed class PlannerAddLayerParent
     {
-        /// <summary>Its name: the Max layer's and its helper's.</summary>
+        /// <summary>Its name: the Max layer's and its helper's (a root with no Max layer of its name yet: its helper's).</summary>
         public string Layer;
-        /// <summary>How many of the phase groups listed with it are above it (0 for one directly in the phasing root's tree).</summary>
+        /// <summary>
+        /// How many of the entries listed with it are above it: 0 for a root, and for a phase group directly in the tree of
+        /// a scene's one root.
+        /// </summary>
         public int Depth;
+        /// <summary>A phasing root: listed only in a scene with several, each with its phase groups beneath it.</summary>
+        public bool IsRoot;
     }
 
     /// <summary>A layer added in 3ds Max and not yet in the Planner's list, kept with the scene. It holds no date (D20).</summary>
@@ -34,7 +39,10 @@ namespace Utilities.Planner
     {
         /// <summary>Its name: the Max layer's and its helper's.</summary>
         public string Layer;
-        /// <summary>The Max layer it was added under; empty for the phasing root.</summary>
+        /// <summary>
+        /// The Max layer it was added under: a phase group's, or its root's for one added straight under a root. A record
+        /// written before there could be several roots has it empty for the one phasing root.
+        /// </summary>
         public string ParentLayer = string.Empty;
         /// <summary>"Group" or "Layer".</summary>
         public string Kind;
@@ -258,14 +266,15 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// Add layer in the Schedule tab: a phase group or a layer made in 3ds Max under the phasing root or a phase group, as
+    /// Add layer in the Schedule tab: a phase group or a layer made in 3ds Max under a phasing root or a phase group, as
     /// the Planner files layers only there (<see cref="Parents"/>; the dialog starts on the row chosen, <see
     /// cref="StartUnder"/>), its name composed in the new names' convention
     /// (&lt;ID&gt;_&lt;Name&gt;, the ID two or three numbers; a group _&lt;nn&gt;_&lt;Name&gt;) with no date (D20: every date comes
     /// from the Planner's layer list), checked to read back with the ID and the name intended (<see
     /// cref="PlannerNaming.ParseLayerNameV2"/>) and not to clash with a layer, node, ID, phase number or list row already
-    /// there, then built with the layer builder's own batch (<see cref="PlannerLayerScript"/>): the Max layer under its
-    /// parent's layer and a Dummy of the same name on it, linked under the parent's helper. Pure logic, no 3ds Max.
+    /// there, in any root, then built with the layer builder's own batch (<see cref="PlannerLayerScript"/>): the Max layer
+    /// under its parent's layer and a Dummy of the same name on it, linked under the parent's helper, whichever root the
+    /// parent is in. Add layer makes no new root, but Work_Phasing in a scene with none. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerAddLayer
     {
@@ -376,27 +385,32 @@ namespace Utilities.Planner
         /// so a parent that is neither the phasing root (null or empty here) nor a phase group (_&lt;n&gt;_&lt;name&gt;) would
         /// not hold it in the Planner, and the next layer list from the Planner would move it out from under it.
         /// <paramref name="groupAbove"/>: the nearest phase group above the parent, to suggest instead, or null.
+        /// <paramref name="root"/>: the parent's root, to suggest by name in a scene with several, or null for "the phasing root".
         /// </summary>
-        public static string ParentProblem(string parentLayer, string groupAbove)
+        public static string ParentProblem(string parentLayer, string groupAbove, string root = null)
         {
             if (string.IsNullOrEmpty(parentLayer) || PlannerSchedule.ParsePhaseGroup(parentLayer) != null)
             {
                 return null;
             }
             return "the Planner files a layer in the phase group above it (or at the top), not under " + parentLayer + ", so the next layer list from the "
-                + "Planner would move it out from under " + parentLayer + ": add it under " + (groupAbove ?? "a phase group") + " or the phasing root instead";
+                + "Planner would move it out from under " + parentLayer + ": add it under " + (groupAbove ?? "a phase group") + " or " + (root ?? "the phasing root") + " instead";
         }
 
         /// <summary>
-        /// Where a layer or a phase group can be added, besides the phasing root (Add layer's Under list): the phase groups of
-        /// the phasing tree with their Max layer and their helper, as <see cref="Plan"/> takes them, in the tree's order: from
-        /// the phasing root down, a group's own groups after it, siblings in the Planner's name order. Each has its depth: how
-        /// many of the groups listed are above it. A phase group may sit in another: the Planner reads it as one.
+        /// Where a layer or a phase group can be added (Add layer's Under list): the phase groups of the phasing tree with
+        /// their Max layer and their helper, as <see cref="Plan"/> takes them, in the tree's order: from the root down, a
+        /// group's own groups after it, siblings in the Planner's name order. Each has its depth: how many of the entries
+        /// listed are above it. A phase group may sit in another: the Planner reads it as one. With one root, the root is not
+        /// listed (the dialog offers it as the phasing root, and a scene with none gets one). With several, each root is
+        /// listed, in name order, with its phase groups beneath it, and there is no entry for the top of the scene: Add
+        /// layer makes no new root. A root with no Max layer of its name has none of its groups listed, and nothing is added
+        /// under it until Clean up scene graph gives it one.
         /// </summary>
         public static List<PlannerAddLayerParent> Parents(PlannerSceneModel scene)
         {
             var result = new List<PlannerAddLayerParent>();
-            if (scene == null || scene.RootLayer == null)
+            if (scene == null)
             {
                 return result;
             }
@@ -408,7 +422,9 @@ namespace Utilities.Planner
                     units[unit.Layer.Name] = unit;
                 }
             }
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { scene.RootLayer.Name };
+            // Every root's layer counts as seen: a root's layer sitting in another root's tree holds that root's groups,
+            // listed under it.
+            var seen = new HashSet<string>(scene.PhasingRoots.Where(r => r.Layer != null).Select(r => r.Layer.Name), StringComparer.OrdinalIgnoreCase);
             Action<string, int> walk = null;
             walk = (layerName, depth) =>
             {
@@ -427,15 +443,26 @@ namespace Utilities.Planner
                     walk(child.Name, takes ? depth + 1 : depth);
                 }
             };
-            walk(scene.RootLayer.Name, 0);
+            bool several = scene.PhasingRoots.Count > 1;
+            foreach (var root in scene.PhasingRoots)
+            {
+                if (several)
+                {
+                    result.Add(new PlannerAddLayerParent { Layer = RootName(root), Depth = 0, IsRoot = true });
+                }
+                if (root.Layer != null)
+                {
+                    walk(root.Layer.Name, several ? 1 : 0);
+                }
+            }
             return result;
         }
 
         /// <summary>
         /// Where Add layer's Under starts for the row chosen in the tab, by its Max layer (null or empty: no row chosen, the
-        /// phasing root): that layer when it is one of <paramref name="parents"/>; else the nearest phase group above it that
-        /// is, or the phasing root (null), and <paramref name="note"/> says why, for the dialog to show. The note is null when
-        /// Under starts on the row chosen, or none was chosen.
+        /// first root): that layer when it is one of <paramref name="parents"/> (a phase group, or in a scene with several
+        /// roots a root); else the nearest of them above it, or the first root (null), and <paramref name="note"/> says why,
+        /// for the dialog to show. The note is null when Under starts on the row chosen, or none was chosen.
         /// </summary>
         public static string StartUnder(PlannerSceneModel scene, IList<PlannerAddLayerParent> parents, string chosenLayer, out string note)
         {
@@ -451,14 +478,15 @@ namespace Utilities.Planner
                 return own.Layer;
             }
             PhasingMaxLayer layer;
-            if (!scene.LayerByName.TryGetValue(chosenLayer, out layer) || (scene.RootLayer != null && string.Equals(layer.Name, scene.RootLayer.Name, StringComparison.OrdinalIgnoreCase)))
+            if (!scene.LayerByName.TryGetValue(chosenLayer, out layer) || RootNamed(scene, layer.Name) != null)
             {
                 return null;
             }
+            bool several = scene.PhasingRoots.Count > 1;
             string why;
             if (!scene.TreeLayers.Contains(layer.Name))
             {
-                why = layer.Name + " is outside the phasing root";
+                why = layer.Name + " is outside " + (several ? "every phasing root" : "the phasing root");
             }
             else if (PlannerSchedule.ParsePhaseGroup(layer.Name) != null)
             {
@@ -471,8 +499,27 @@ namespace Utilities.Planner
             var above = scene.LayerAncestors(layer).Select(l => parents.FirstOrDefault(p => string.Equals(p.Layer, l.Name, StringComparison.OrdinalIgnoreCase)))
                 .FirstOrDefault(p => p != null);
             var start = above != null ? above.Layer : null;
-            note = why + ", so Under starts on " + (start ?? "the phasing root") + ".";
+            note = why + ", so Under starts on " + (start ?? (several ? RootName(scene.FirstRoot) : "the phasing root")) + ".";
             return start;
+        }
+
+        // A root's name as Add layer gives it: its Max layer's, else its helper's (a root has the Max layer of its name).
+        private static string RootName(PlannerPhasingRoot root)
+        {
+            return root.Layer != null ? root.Layer.Name : root.Name;
+        }
+
+        // The root a parent names, by its Max layer or its helper (any capitals), or null.
+        private static PlannerPhasingRoot RootNamed(PlannerSceneModel scene, string name)
+        {
+            return scene.PhasingRoots.FirstOrDefault(r => string.Equals(RootName(r), name, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Where a unit of the phasing tree is, for a problem's text: its root in a scene with several, else the scene.
+        private static string Where(PlannerSceneModel scene, PlannerSceneUnit unit)
+        {
+            return scene.PhasingRoots.Count > 1 && unit.Root != null ? "in " + RootName(unit.Root) : "in the scene";
         }
 
         /// <summary>The nearest phase group (_&lt;n&gt;_&lt;name&gt;) among the Max layers above a layer, or null.</summary>
@@ -495,14 +542,15 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// Plans adding the layer under <paramref name="parentLayer"/> (a Max layer name of the phasing tree, or null or
-        /// empty for the phasing root), checking it against the scene, the Planner's list and the layers added before that
-        /// are still in the scene.
+        /// Plans adding the layer under <paramref name="parentLayer"/> (a phase group's Max layer in any root, a root by its
+        /// Max layer or helper, or null or empty for the first root), checking it against the scene (every root), the
+        /// Planner's list and the layers added before that are still in the scene.
         /// </summary>
         public static PlannerAddLayerPlan Plan(PlannerSceneSnapshot snapshot, string parentLayer, PlannerNewLayer spec, PlannerLayerList list, IEnumerable<PlannerAddedLayer> added)
         {
             var plan = new PlannerAddLayerPlan();
             var scene = new PlannerSceneModel(snapshot);
+            bool several = scene.PhasingRoots.Count > 1;
             string problem;
             var name = Compose(spec, out problem);
             plan.LayerName = name;
@@ -541,8 +589,8 @@ namespace Utilities.Planner
                 plan.Problem = "the Planner's list has a layer called " + sameRow.Layer + " already";
                 return plan;
             }
-            // The ID, and for a group its name without capitals and its phase number: a layer or group of the phasing tree,
-            // a row, a layer added before.
+            // The ID, and for a group its name without capitals and its phase number: a layer or group of the phasing tree
+            // (every root's: IDs, group names and phase numbers are unique across roots), a row, a layer added before.
             var parsed = PlannerNaming.ParseLayerNameV2(name);
             if (spec.Kind == PlannerLayerKind.Layer)
             {
@@ -550,7 +598,7 @@ namespace Utilities.Planner
                 var unit = scene.Units.FirstOrDefault(u => u.InPhasingTree && key.Equals(u.IdKey));
                 if (unit != null)
                 {
-                    plan.Problem = "the layer " + unit.Name + " in the scene has the ID " + key + " already";
+                    plan.Problem = "the layer " + unit.Name + " " + Where(scene, unit) + " has the ID " + key + " already";
                     return plan;
                 }
                 var row = rows.FirstOrDefault(r => key.Equals(r.IdKey) || key.Equals(PlannerLayerIdKey.FromName(r.Layer)));
@@ -571,18 +619,22 @@ namespace Utilities.Planner
                 var unit = scene.Units.FirstOrDefault(u => u.InPhasingTree && string.Equals(u.Name, name, StringComparison.OrdinalIgnoreCase));
                 if (unit != null)
                 {
-                    plan.Problem = "the phasing tree has a group called " + unit.Name + " already";
+                    plan.Problem = "the phasing tree has a group called " + unit.Name + " already" + (several ? " (" + Where(scene, unit) + ")" : string.Empty);
                     return plan;
                 }
                 // Clean up scene graph takes a phase group for the list's group of its phase number when that number is on
                 // one row of the list and one group of the phasing tree (a group renamed in the Planner): a second group of a
-                // phase would be taken for the other.
+                // phase would be taken for the other. So a phase number belongs to one group in the whole scene, and each
+                // root takes its own phases (R21).
                 int phase = spec.Phase.Value;
                 var sameGroup = scene.Units.FirstOrDefault(u => u.InPhasingTree && u.IdKey == null && PhaseOf(u.Name) == phase);
                 if (sameGroup != null)
                 {
                     plan.Problem = "the phasing tree has a group of phase " + phase.ToString(CultureInfo.InvariantCulture) + " already (" + sameGroup.Name
-                        + "): add the layers under it, as Clean up scene graph takes a group for the list's group of the same phase number";
+                        + (several
+                            ? ", " + Where(scene, sameGroup) + "): a phase number belongs to one phase group across every root, so give the group a phase no root "
+                                + "has yet, or add the layers under " + sameGroup.Name
+                            : "): add the layers under it, as Clean up scene graph takes a group for the list's group of the same phase number");
                     return plan;
                 }
                 var sameGroupRow = rows.FirstOrDefault(r => PhaseOf(r.Layer) == phase);
@@ -599,15 +651,13 @@ namespace Utilities.Planner
                 return plan;
             }
 
-            // The parent: the root, or a phase group of the phasing tree with its helper.
-            var build = new PlannerLayerPlan();
-            PlannerLayerPlanner.PlanRoot(build, scene);
-            int parentLayerIndex = 0;
-            int parentHelperIndex = 0;
-            plan.ParentName = build.RootName;
-            if (!string.IsNullOrEmpty(parentLayer) && !(build.BuildLayers[0].CurrentName != null && string.Equals(parentLayer, build.BuildLayers[0].CurrentName, StringComparison.OrdinalIgnoreCase)))
+            // The parent: a root (none named: the first root, or Work_Phasing in a scene with none), or a phase group of the
+            // phasing tree with its helper, in whichever root it is. A name that is neither makes no new root.
+            var root = string.IsNullOrEmpty(parentLayer) ? scene.FirstRoot : RootNamed(scene, parentLayer);
+            PlannerSceneUnit parent = null;
+            if (!string.IsNullOrEmpty(parentLayer) && root == null)
             {
-                var parent = scene.UnitOfLayer(parentLayer);
+                parent = scene.UnitOfLayer(parentLayer);
                 if (parent == null || parent.Layer == null)
                 {
                     plan.Problem = "its parent " + parentLayer + " is not a Max layer of the scene: run Clean up scene graph with the Planner's list imported first";
@@ -620,15 +670,31 @@ namespace Utilities.Planner
                 }
                 if (!parent.InPhasingTree)
                 {
-                    plan.Problem = "its parent " + parent.Layer.Name + " is outside the phasing root: run Clean up scene graph with the Planner's list imported first";
+                    plan.Problem = "its parent " + parent.Layer.Name + " is outside " + (several ? "every phasing root" : "the phasing root")
+                        + ": run Clean up scene graph with the Planner's list imported first";
                     return plan;
                 }
-                var parentProblem = ParentProblem(parent.Layer.Name, PhaseGroupAbove(scene, parent.Layer.Name));
+                root = parent.Root ?? scene.FirstRoot;
+                var parentProblem = ParentProblem(parent.Layer.Name, PhaseGroupAbove(scene, parent.Layer.Name), several && root != null ? RootName(root) : null);
                 if (parentProblem != null)
                 {
                     plan.Problem = parentProblem;
                     return plan;
                 }
+            }
+            // A root with no Max layer of its name waits for Clean up, which gives it one and brings its groups' layers under it.
+            if (root != null && root.Node != null && root.Layer == null)
+            {
+                plan.Problem = "the phasing root " + root.Name + " has no Max layer of its name: run Clean up scene graph first, which gives it one";
+                return plan;
+            }
+            var build = new PlannerLayerPlan();
+            PlannerLayerPlanner.PlanOneRoot(build, scene, root);
+            int parentLayerIndex = 0;
+            int parentHelperIndex = 0;
+            plan.ParentName = build.RootName;
+            if (parent != null)
+            {
                 plan.ParentName = parent.Layer.Name;
                 build.BuildLayers.Add(new PlannerBuildLayer
                 {
@@ -690,7 +756,8 @@ namespace Utilities.Planner
             plan.Added = new PlannerAddedLayer
             {
                 Layer = name,
-                ParentLayer = parentLayerIndex == 0 ? string.Empty : build.BuildLayers[parentLayerIndex].FinalName,
+                // Straight under a root: the root's Max layer, so the tab shows it under that root.
+                ParentLayer = build.BuildLayers[parentLayerIndex].FinalName,
                 Kind = kind,
                 Id = spec.Kind == PlannerLayerKind.Layer ? Id(spec) : string.Empty,
                 Name = spec.Kind == PlannerLayerKind.Layer && parsed != null ? parsed.Name : Spaces.Replace((spec.Name ?? string.Empty).Trim(PlannerNaming.JavaScriptSpaceChars), "_")

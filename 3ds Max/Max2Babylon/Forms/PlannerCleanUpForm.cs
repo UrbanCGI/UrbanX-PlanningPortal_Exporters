@@ -473,19 +473,30 @@ namespace Max2Babylon
             var rename = result.NodeRenames.FirstOrDefault(r => r.Key == question.Key);
             var check = result.Rows.FirstOrDefault(r => r.Status == PlannerCleanUpStatus.Check && r.NodeKey == question.Key);
             bool answered = choices.ContainsKey(question.Id);
+            // Asked of two phasing roots that share layer IDs, not of an object: its answer renumbers one root's layers.
+            bool roots = question.Case == PlannerCleanUpCase.SharedIds;
             string status, why;
             Color back;
             if (open && LeftAsItIs(question.Id))
             {
                 status = "Left";
-                why = question.Why + "; left as it is for now: it keeps its old name";
+                why = question.Why + (roots ? "; left for now: they still share them, and the export check reports it" : "; left as it is for now: it keeps its old name");
                 back = LeftBack;
             }
             else if (open)
             {
                 status = "Choose";
-                why = question.Why + "; it keeps its name until answered";
+                why = question.Why + (roots ? "; nothing is renumbered until answered" : "; it keeps its name until answered");
                 back = ChooseBack;
+            }
+            else if (roots)
+            {
+                // Answered here, or no longer asked: another answer gave the two roots different IDs.
+                string given;
+                var kept = choices.TryGetValue(question.Id, out given) && given != null && given.StartsWith(PlannerCleanUpOption.KeepPrefix, StringComparison.Ordinal);
+                status = kept ? "Answered" : "Check";
+                why = question.Why + (kept ? string.Empty : "; no longer needed: another answer has given them different IDs");
+                back = kept ? AnsweredBack : ProblemBack;
             }
             else if (rename != null || otherOpen)
             {
@@ -502,7 +513,10 @@ namespace Max2Babylon
             }
 
             var row = new DataGridViewRow { Tag = line };
-            row.CreateCells(grid, status, "Object", question.LayerName, question.CurrentName, rename != null ? rename.NewName : question.CurrentName, why, string.Empty);
+            string chosenRoot;
+            var keeps = roots && choices.TryGetValue(question.Id, out chosenRoot) ? question.OptionFor(chosenRoot) : null;
+            row.CreateCells(grid, status, roots ? "Phasing roots" : "Object", question.LayerName, question.CurrentName,
+                roots ? (keeps != null ? keeps.Name : question.CurrentName) : rename != null ? rename.NewName : question.CurrentName, why, string.Empty);
             row.DefaultCellStyle.BackColor = back;
             row.Cells[StatusColumn].Style.Font = boldFont;
             row.Cells[WhyColumn].ToolTipText = PlannerTipText.Wrap(why);

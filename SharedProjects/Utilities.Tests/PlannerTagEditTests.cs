@@ -485,6 +485,46 @@ namespace Utilities.Tests
         }
 
         [Fact]
+        public void AddToInAndRmRefuseEveryPhasingRootsHelper()
+        {
+            // One root: its helper is no object.
+            var one = SelectionScene();
+            var refused = AddTo(one, IN, "02_01", "Work_Phasing");
+            Assert.Empty(refused.Renames);
+            Assert.Equal("it is the helper of the phasing root Work_Phasing: its name is the root's, not an object's", refused.Review.Single(r => r.Status == "Problem").Why);
+
+            // Two roots: each root's helper is refused, and a tag may name a layer in either root (R3, R19).
+            var scene = new TestScene();
+            scene.Layer("0");
+            var south = scene.Unit("Work_Phasing_South", null, null);
+            var north = scene.Unit("Work_Phasing_North", null, null);
+            var enabling = scene.Unit("_01_North_Enabling", "Work_Phasing_North", north);
+            var drainage = scene.Unit("01_01_Drainage", "_01_North_Enabling", enabling);
+            scene.Object("Pipe", drainage, "01_01_Drainage");
+            var area = scene.Unit("_07_South_Enabling", "Work_Phasing_South", south);
+            var hoarding = scene.Unit("07_01_Hoarding", "_07_South_Enabling", area);
+            scene.Object("Panel", hoarding, "07_01_Hoarding");
+
+            foreach (var root in new[] { "Work_Phasing_South", "Work_Phasing_North" })
+            {
+                foreach (var type in new[] { IN, RM })
+                {
+                    var plan = AddTo(scene, type, "07_01", root);
+                    Assert.Empty(plan.Renames);
+                    Assert.Equal(1, plan.ProblemCount);
+                    Assert.Equal("it is the helper of the phasing root " + root + ": its name is the root's, not an object's", plan.Review.Single().Why);
+                }
+            }
+            // The second root chosen with its object: the root is refused, and its object is not taken as part of it.
+            var withObject = AddTo(scene, IN, "07_01", "Work_Phasing_South", "Panel");
+            Assert.Equal(1, withObject.ProblemCount);
+            Assert.Equal("IN_Panel", withObject.Renames.Single().NewName);
+            // South's object removed in North's layer, North's installed in South's.
+            Assert.Equal("Panel_RM_01_01", AddTo(scene, RM, "01_01", "Panel").Renames.Single().NewName);
+            Assert.Equal("Pipe_IN_07_01", AddTo(scene, IN, "07_01", "Pipe").Renames.Single().NewName);
+        }
+
+        [Fact]
         public void SplitPiecesAreRenamedWithTheirObject()
         {
             var scene = SelectionScene();

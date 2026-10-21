@@ -7,13 +7,17 @@ using System.Text.RegularExpressions;
 
 namespace Utilities.Planner
 {
-    /// <summary>What a row of the Planner's layer list is: a layer that holds only other layers, or one that holds work.</summary>
+    /// <summary>
+    /// What a row of the Planner's layer list is: a layer that holds only other layers, one that holds work, or a phasing
+    /// root (one area of the schedule, a scene may hold several), which holds groups and layers.
+    /// </summary>
     public enum PlannerLayerKind
     {
-        /// <summary>The Kind cell says neither Group nor Layer.</summary>
+        /// <summary>The Kind cell says neither Group, Layer nor Root.</summary>
         Unknown,
         Group,
-        Layer
+        Layer,
+        Root
     }
 
     /// <summary>
@@ -261,10 +265,13 @@ namespace Utilities.Planner
             get { return Problems.Count > 0; }
         }
 
-        /// <summary>"Group", "Layer", or the Kind cell as written.</summary>
+        /// <summary>"Group", "Layer", "Root", or the Kind cell as written.</summary>
         public string KindDisplay
         {
-            get { return Kind == PlannerLayerKind.Group ? "Group" : Kind == PlannerLayerKind.Layer ? "Layer" : (KindText ?? string.Empty); }
+            get
+            {
+                return Kind == PlannerLayerKind.Group ? "Group" : Kind == PlannerLayerKind.Layer ? "Layer" : Kind == PlannerLayerKind.Root ? "Root" : (KindText ?? string.Empty);
+            }
         }
     }
 
@@ -402,6 +409,12 @@ namespace Utilities.Planner
             get { return Rows.Count(r => r.Kind == PlannerLayerKind.Layer); }
         }
 
+        /// <summary>The Root rows: a list from a Planner project with several phasing roots has one per root.</summary>
+        public int RootRows
+        {
+            get { return Rows.Count(r => r.Kind == PlannerLayerKind.Root); }
+        }
+
         public int RowsWithProblems
         {
             get { return Rows.Count(r => r.HasProblem); }
@@ -453,8 +466,9 @@ namespace Utilities.Planner
             {
                 return "The list cannot be used: " + string.Join(" ", Errors.ToArray());
             }
-            var text = PhasingFixScript.Count(Rows.Count, "row", "rows") + ": " + PhasingFixScript.Count(Groups, "group", "groups")
-                + " and " + PhasingFixScript.Count(Layers, "layer", "layers");
+            var text = PhasingFixScript.Count(Rows.Count, "row", "rows") + ": "
+                + (RootRows > 0 ? PhasingFixScript.Count(RootRows, "root", "roots") + ", " : string.Empty)
+                + PhasingFixScript.Count(Groups, "group", "groups") + " and " + PhasingFixScript.Count(Layers, "layer", "layers");
             var unknown = Rows.Count(r => r.Kind == PlannerLayerKind.Unknown);
             if (unknown > 0)
             {
@@ -618,6 +632,7 @@ namespace Utilities.Planner
                 };
                 row.Kind = string.Equals(row.KindText, "Group", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Group
                     : string.Equals(row.KindText, "Layer", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Layer
+                    : string.Equals(row.KindText, "Root", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Root
                     : PlannerLayerKind.Unknown;
                 row.Tbc = row.TbcText.Length > 0 && !string.Equals(row.TbcText, "No", StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(row.TbcText, "False", StringComparison.OrdinalIgnoreCase) && row.TbcText != "0";
@@ -712,7 +727,20 @@ namespace Utilities.Planner
                 }
                 if (row.Kind == PlannerLayerKind.Unknown)
                 {
-                    row.Problems.Add(row.KindText.Length == 0 ? "its Kind is empty (Group or Layer)" : "its Kind is \"" + row.KindText + "\", not Group or Layer");
+                    row.Problems.Add(row.KindText.Length == 0 ? "its Kind is empty (Group, Layer or Root)" : "its Kind is \"" + row.KindText + "\", not Group, Layer or Root");
+                }
+                // A root sits at the top, and its name says "phasing", as every root's must: only a list edited by hand has
+                // either problem.
+                if (row.Kind == PlannerLayerKind.Root)
+                {
+                    if (row.ParentId.Length > 0)
+                    {
+                        row.Problems.Add("it is a Root, so its Parent ID must be empty (a root sits at the top)");
+                    }
+                    if (row.Layer.Length > 0 && row.Layer.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        row.Problems.Add("it is a Root, so its name must contain \"phasing\"");
+                    }
                 }
             }
 

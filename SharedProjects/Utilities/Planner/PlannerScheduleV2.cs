@@ -677,12 +677,25 @@ namespace Utilities.Planner
             public readonly Dictionary<string, PlannerObjectNameV2> Parsed = new Dictionary<string, PlannerObjectNameV2>(StringComparer.Ordinal);
         }
 
+        // The GLB names of the phasing roots' helpers, every root's: never objects (R19), as the Planner reads a root.
+        private IEnumerable<string> RootNames()
+        {
+            foreach (var root in Model.Scene.PhasingRoots.Where(r => r.Node != null))
+            {
+                PlannerModelNode node;
+                if (Model.ByKey.TryGetValue(root.Node.Key, out node))
+                {
+                    yield return node.Name;
+                }
+            }
+        }
+
         /// <summary>
         /// Read a new-name model (spec 2.2, 3.1, 3.2; readModelV2): its layers by ID, and each object's events. Layer nodes,
-        /// number-led nodes passed over and phase groups are never objects. A tagged object is scheduled in the layer node it
-        /// sits under. Not scheduled: one under none, and one whose nearest layer to the old reader is a number-led node that
-        /// is no layer ID here (a one-number "05_Retainment", an older "02_05-2_..."), even inside another layer's helper; both
-        /// are unfiled, and such a node is listed with how many it holds.
+        /// number-led nodes passed over, phase groups and the phasing roots are never objects. A tagged object is scheduled in
+        /// the layer node it sits under. Not scheduled: one under none, and one whose nearest layer to the old reader is a
+        /// number-led node that is no layer ID here (a one-number "05_Retainment", an older "02_05-2_..."), even inside another
+        /// layer's helper; both are unfiled, and such a node is listed with how many it holds.
         /// </summary>
         private ModelReadV2 ReadModelV2(PlannerLayerNodeIndex nodes, Dictionary<string, string> oldLayers, Dictionary<string, string> splits)
         {
@@ -727,8 +740,9 @@ namespace Utilities.Planner
                 read.SharedIds.Add(shared);
             }
 
-            // Each object's events. Layer nodes, number-led nodes passed over and phase groups are never objects.
-            var notObjects = new HashSet<string>(nodes.Layers.Concat(nodes.Skipped), StringComparer.Ordinal);
+            // Each object's events. Layer nodes, number-led nodes passed over, phase groups and the phasing roots (R19) are
+            // never objects.
+            var notObjects = new HashSet<string>(nodes.Layers.Concat(nodes.Skipped).Concat(RootNames()), StringComparer.Ordinal);
             var skippedNodes = new HashSet<string>(nodes.Skipped, StringComparer.Ordinal);
             var objects = ToObjects(Names, splits).Where(n => !notObjects.Contains(n) && ParsePhaseGroup(n) == null).ToList();
             // A number-led node that is no layer ID, and the tagged objects under it, in the order first met.
@@ -2081,14 +2095,14 @@ namespace Utilities.Planner
         /// <summary>Why a tagged new-name object under no layer node is not scheduled.</summary>
         public const string NoLayerReasonV2 = "it is not linked under a layer's helper (a node named <ID>_<Name>, the ID two or three numbers), so the Planner cannot place it";
 
-        // Every node under the phasing root that is geometry, and every tagged node anywhere, that the Planner does not
-        // schedule (as on the old names, read the new way); and the scheduled objects the Planner reads only in part: a tag it
-        // does not read, or a reference to a layer nobody has. Helpers, layer nodes, number-led nodes and phase groups are
-        // not objects, nor the pieces of an object.
+        // Every node under a phasing root (any of them) that is geometry, and every tagged node anywhere, that the Planner
+        // does not schedule (as on the old names, read the new way); and the scheduled objects the Planner reads only in part:
+        // a tag it does not read, or a reference to a layer nobody has. Helpers, layer nodes, number-led nodes, phase groups
+        // and the phasing roots (R19) are not objects, nor the pieces of an object.
         private void ListNotScheduledV2(PlannerLayerNodeIndex nodes, Dictionary<string, string> oldLayers)
         {
             var scene = Model.Scene;
-            var notObjects = new HashSet<string>(nodes.Layers.Concat(nodes.Skipped), StringComparer.Ordinal);
+            var notObjects = new HashSet<string>(nodes.Layers.Concat(nodes.Skipped).Concat(RootNames()), StringComparer.Ordinal);
             var skippedNodes = new HashSet<string>(nodes.Skipped, StringComparer.Ordinal);
             var issuesOf = new Dictionary<string, List<PlannerNamingCode>>(StringComparer.Ordinal);
             if (V2 != null)
@@ -2191,7 +2205,7 @@ namespace Utilities.Planner
             }
             var reason = NoLayerReasonV2;
             var unit = node.LayerName != null ? Model.Scene.UnitOfLayer(node.LayerName) : null;
-            if (unit != null && unit.InPhasingTree && PlannerNaming.ParseLayerNameV2(unit.Name) != null)
+            if (PlannerLinkPlanner.Links(Model.Scene, unit) && PlannerNaming.ParseLayerNameV2(unit.Name) != null)
             {
                 reason += " (it sits on the layer " + node.LayerName + ": Link objects to their helpers puts it under the layer's helper)";
             }

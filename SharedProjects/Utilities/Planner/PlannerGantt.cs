@@ -22,7 +22,7 @@ namespace Utilities.Planner
         None,
         /// <summary>Before Fill IN / RM: a layer's own dates (from the Planner's list), in the neutral colour.</summary>
         Neutral,
-        /// <summary>A group: a grey span over everything inside it, as the Planner's export draws a folder.</summary>
+        /// <summary>A group (or a phasing root): a grey span over everything inside it, as the Planner's export draws a folder.</summary>
         Group,
         /// <summary>After Fill: a dated layer whose dates place no work, its own dates outlined.</summary>
         Outline
@@ -72,6 +72,7 @@ namespace Utilities.Planner
         public int Parent = -1;
         /// <summary>Rows sit under it: it can be collapsed.</summary>
         public bool HasChildren;
+        /// <summary>A group or a phasing root (<see cref="PlannerScheduleRow.IsGroup"/>).</summary>
         public bool IsGroup;
         /// <summary>Its own dates, from the Planner's list (the row's Start and Finish); null when it has none.</summary>
         public DateTime? OwnStart;
@@ -299,7 +300,8 @@ namespace Utilities.Planner
                 {
                     Row = row,
                     Parent = open.Count > 0 ? open[open.Count - 1] : -1,
-                    IsGroup = string.Equals(row.Kind, "Group", StringComparison.OrdinalIgnoreCase)
+                    // A phasing root draws as a group does: a span over what it holds.
+                    IsGroup = row.IsGroup
                 };
                 if (g.Parent >= 0)
                 {

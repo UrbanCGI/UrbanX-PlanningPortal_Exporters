@@ -90,7 +90,8 @@ namespace Max2Babylon
         /// <summary>
         /// The naming check on the new names (naming v2, spec 5.10; <see cref="PlannerNamingValidator.ValidateV2"/>): the rules
         /// read the scene as the Planner reads the exported model, with the imported layer list's layers as the Planner's. The
-        /// log lists the issues, the pointer to Clean up scene graph, the summary, what the Planner reads, and the phasing counts.
+        /// log lists the issues, the pointer to Clean up scene graph, the summary, what the Planner reads, and the phasing counts:
+        /// a line for each phasing root, and one for them all in a scene with two or more.
         /// </summary>
         /// <returns>False when the export must stop: strict mode is on and at least one naming error was found.</returns>
         private bool RunPlannerNamingCheckV2(PlannerScheduleModel exported, MaxExportParameters parameters)
@@ -113,9 +114,9 @@ namespace Max2Babylon
             }
             RaiseMessage(report.Summary(), report.Errors > 0 ? Color.Red : Color.Black, 0, true);
             RaiseMessage(report.Reads(), Color.Black, 0, true);
-            if (report.Counts != null)
+            foreach (var line in report.CountsLines())
             {
-                RaiseMessage(report.Counts.Describe(false), Color.Black, 0, true);
+                RaiseMessage(line, Color.Black, 0, true);
             }
             return !StopsOnNamingErrors(report, parameters);
         }

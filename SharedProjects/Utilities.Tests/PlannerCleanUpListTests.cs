@@ -422,8 +422,8 @@ namespace Utilities.Tests
             Assert.Contains(result.Rows, r => r.NewName == Root && r.Why.StartsWith("the scene has no phasing root", StringComparison.Ordinal));
             var run = Run(plan, result, scene.Snapshot);
             var model = new PlannerSceneModel(run.Scene);
-            Assert.Equal(Root, model.RootNode.Name);
-            Assert.Equal(Root, model.RootLayer.Name);
+            Assert.Equal(Root, model.FirstRoot.Node.Name);
+            Assert.Equal(Root, model.FirstRoot.Layer.Name);
             Assert.Equal(3, model.Units.Count(u => u.InPhasingTree && u.Layer != null && u.Helper != null));
             Assert.False(Plan(run.Scene, list).Resolve(null).HasChanges);
         }

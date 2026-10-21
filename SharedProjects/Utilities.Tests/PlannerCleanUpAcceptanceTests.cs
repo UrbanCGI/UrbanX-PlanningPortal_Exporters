@@ -477,11 +477,11 @@ namespace Utilities.Tests
                 }
                 var helper = helpers[0];
                 var layer = after.Layers.FirstOrDefault(l => l.Name == row.Layer);
-                var parentName = row.Parent != null ? row.Parent.Layer : model.RootNode.Name;
+                var parentName = row.Parent != null ? row.Parent.Layer : model.FirstRoot.Node.Name;
                 var parent = model.ParentOf(helper);
                 if (helper.Name != row.Layer) bad.Add("helper " + helper.Name + ", the list says " + row.Layer);
                 if (layer == null) bad.Add("no Max layer " + row.Layer);
-                else if (layer.ParentName != (row.Parent != null ? row.Parent.Layer : model.RootLayer.Name)) bad.Add("Max layer " + row.Layer + " under " + layer.ParentName);
+                else if (layer.ParentName != (row.Parent != null ? row.Parent.Layer : model.FirstRoot.Layer.Name)) bad.Add("Max layer " + row.Layer + " under " + layer.ParentName);
                 if (helper.LayerName != row.Layer) bad.Add("helper " + helper.Name + " on " + helper.LayerName);
                 if (parent == null || parent.Name != parentName) bad.Add("helper " + helper.Name + " under " + (parent != null ? parent.Name : "nothing") + ", the list says " + parentName);
             }
@@ -500,7 +500,7 @@ namespace Utilities.Tests
             var model = new PlannerSceneModel(snapshot);
             var inTree = model.Units.Where(u => u.InPhasingTree).ToList();
             Assert.DoesNotContain(inTree, u => u.Layer == null || u.Helper == null);
-            Assert.True(model.RootNode != null && model.RootLayer != null && string.Equals(model.RootNode.Name, model.RootLayer.Name, StringComparison.OrdinalIgnoreCase));
+            Assert.True(model.FirstRoot != null && model.FirstRoot.Node != null && model.FirstRoot.Layer != null && string.Equals(model.FirstRoot.Node.Name, model.FirstRoot.Layer.Name, StringComparison.OrdinalIgnoreCase));
             return inTree.Count + 1;
         }
 
