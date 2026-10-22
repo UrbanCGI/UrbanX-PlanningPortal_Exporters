@@ -70,7 +70,7 @@ carries only the helper, so to the Planner the helper is the layer. A layer's ob
 | One ID, one layer | No two layers share an ID, across all of a project's working models. |
 | Trap | After a two-number ID, a name must not start with one or two digits and an underscore. `02_05_3_Storey_Frame` reads as layer `02_05_3` named `Storey_Frame`. |
 | One number | `05_Retainment` is not a layer on the new names. The Planner does not schedule the tagged objects under it. |
-| Unchanged | Phase groups, `_<n>_<Name>` (`_02_Phase1_TM`), and the phasing root: the first top-level node with "phasing" in its name. |
+| Unchanged | Phase groups, `_<n>_<Name>` (`_02_Phase1_TM`), and the phasing roots: every top-level helper with "phasing" in its name that reads as neither a phase group nor a layer, each on the Max layer of exactly its name. A scene may hold several, one per area of the schedule (section 3.8). |
 
 ### 2.2 Object names
 
@@ -191,6 +191,19 @@ as the Planner's.
 | Warning | a reference to a layer neither the scene nor the imported list has (parked TBC; `99_99` is work whose date is not known yet); own names shared by several objects; the same or nearly the same own names in one layer naming different layers; the old order without the letters; a reference to the object's own layer; a split piece whose name alone names a layer; a type word in the middle; lower-case near-tags; hyphens and spaces in object names; dates or TBC in a helper's name, or in a layer's Max layer name (not in a group's: its name is the Planner's folder name, kept as written); a space in a layer name, or nothing after its ID; a layer helper that does not reach the Planner (hidden or not exported, with nothing exported under it); a helper in the phasing tree led by a number that is not a layer ID; a tagged object under no layer's helper; two exported groups with one name |
 | Note | underscores at the ends of an own name; a reference to a layer only the imported list has (planned in the Planner, not built in 3ds Max yet); an install at the end only (`Kerb_IN`); an untagged object in a layer; a layer that holds no object (the Planner still makes a folder for it, flagged TBC); a layer ID written another way than the current one; a Max layer and its helper named differently; layers and helpers that do not pair up |
 
+With several phasing roots (section 3.8), the check reads every root, and adds:
+
+| Severity | Case |
+| --- | --- |
+| Error | a layer helper of one name in two roots: the Planner reads it as one layer. Clean up asks which root keeps the ID and renumbers the other's. Shared IDs in two roots name the roots and say the same |
+| Error | a phase group of one name in two roots: the Planner makes one folder of it. Give each root groups of its own, with phase numbers no other root uses |
+| Warning | a phasing root with no Max layer of exactly its name: Link and the Max-only checks pass it over, and Add layer adds nothing in it. Clean up gives it one; or rename the Max layer its groups sit in to the root's name (offered only when Clean up would rename it too, section 3.1), or make a top-level Max layer of the root's name, put the helper on it and its groups' Max layers in it |
+| Warning | two phasing root helpers of one name (a backup merged in): rename one, for example to `Old_Phasing_copy`, or delete it, before Clean up |
+| Warning | a top-level Max layer with "phasing" in its name and no root helper of its name: it is not a root, and the Max layers under it are outside the phasing tree |
+| Note | the roots, in name order: "Phasing roots (2): Old_Phasing_copy, Work_Phasing". A backup copy counts as a root, so look for one here |
+
+The Max-only checks (hidden layer helpers, dates in Max layer names, helpers led by a number, pairing) run in every root.
+
 After the issues the log has, in this order:
 
 - when Clean up can convert names: "N names can be converted by Clean up scene graph… on the Schedule tab.";
@@ -216,7 +229,10 @@ After the summary the log gives the phasing counts, for a quick comparison with 
 matrix, for example "Phasing counts: 91 layers in the Max layer HS2_…, 91 helper nodes under HS2_…."
 
 - **Layers**: the 3ds Max layers inside the phasing top layer's tree, at any depth. The top layer is the Max layer named
-  like the phasing root (any capitals), else the first top-level Max layer with "phasing" in its name. It is not counted.
+  like the phasing root (any capitals); in a scene with no root helper, the first top-level Max layer with "phasing" in
+  its name. It is not counted. With several roots, there is one counts line per root, then "Phasing counts, 2 roots
+  together: N layers, M helper nodes.", which counts each Max layer once. A root with no Max layer of its name has its
+  helpers counted, and its line says "no Max layer named <root> to count layers in".
 - **Helper nodes**: the dummies, points, group heads and other helper objects under the phasing root, at any depth (the
   root not counted). 3ds Max decides what is a helper.
 - **Shapes** (splines such as RailClone paths) are not counted: the export leaves them out, so the Planner never sees
@@ -257,7 +273,12 @@ MAXScript batch, inside one undo record, "Clean up scene graph".
    - The ID is written the current way (`01_04-2_…` and `01_04.2_…` become `01_04_2_…`).
    - A one-number layer takes its phase from its objects' tags, as the old fixer did (`06-2_Hoarding_Removal_…` with
      objects tagged phase 3 becomes `03_06_2_Hoarding_Removal`).
-   - A layer directly under the phasing root moves into the group of its phase.
+   - A layer directly under a phasing root moves into the group of its phase in that root, never into another root's.
+   - A phasing root whose Max layer has another name is paired with one. The Max layer its phase groups and layers sit
+     in (or, with none yet, the one its helper sits on) is renamed to the root's name when it holds nothing else: no
+     other Max layers or objects, and it is not the default layer `0`, another root's layer, a layer above a root's, or
+     a phasing layer. Otherwise a new Max layer of the root's name is made at the top, the helper is put on it, and the
+     groups' Max layers move into it. Add layer waits for this: it adds nothing in a root with no Max layer of its name.
    - A layer in the group of another phase (`02_05` in `_03_Roads`) is listed to check, not moved: the Planner may file
      it there on purpose. With the Planner's layer list imported, the list's nesting decides, and it is not listed.
    - The Max layer is renamed with its helper.
@@ -307,10 +328,35 @@ made, renamed and nested as it has them, never with dates. Nothing is deleted." 
 names are cleaned, and a scene with no phasing root has nothing to clean up (Clean up says so). MAXScript's
 `CleanUpSceneGraph` uses the list kept with the scene.
 
-**The phasing root** is the first top-level node with "phasing" in its name, and the layer of its name (else the first
-top-level layer with "phasing" in its name). A scene with neither gets the layer and helper `Work_Phasing` at the top. A
-root with only its layer or only its helper gets the other half. Top-level rows go under the root. A top-level row named
-like the root stands for the root itself.
+**The phasing roots** are every top-level helper with "phasing" in its name that reads as neither a phase group nor a
+layer, each with the Max layer of exactly its name. A root whose Max layer has another name is paired with one, as
+section 3.1 says. A scene with no root helper takes the first top-level layer with "phasing" in its name as its one
+root, and gets its helper. A scene with neither gets the layer and helper `Work_Phasing` at the top.
+
+**Root rows.** A Planner project with several roots writes a row of Kind `Root` for each, with an empty Parent ID; its
+groups and layers have that row's Planner ID as their Parent ID. Each Root row finds its root by the root helper's
+Planner ID (every Root row by ID first, so a root renamed in the Planner is never taken by another row's name), else by
+its exact name (any capitals), else as the one root that holds what the rows under it find, leaving out the roots other
+Root rows have taken: a group moved into the row in the Planner from another root, which that root's own row has
+already found by its Planner ID or name, does not count (with both roots' folders renamed in the Planner before any
+list stamped their helpers, the order of the rows can still make one of them a new root). A root found under another name is renamed, helper and Max layer together, as the Planner owns the
+root's name. A Root row the scene has no root for gets its helper made at the top, on the Max layer of its name when
+the scene has one, else on one made at the top.
+The exception is the Planner's own row for a root of its model (Planner ID `root:` and the root's name) with nothing
+under it that finds no root: the name a root another Root row takes has now, or a name no root of the scene has. The
+Planner writes that row for its model's root after the root folder was renamed, until it reads an export with the new
+name, so the row is up to date, with a note naming the root's new name, and no root is made for it. A Root row of a
+folder is made whatever its name: an empty root folder made in the Planner under a renamed root's old name gets its
+own helper and Max layer. A root of the scene that no Root row names is left as it is and listed ("not in the Planner's list"). A Root row
+with a Parent ID, or without "phasing" in its name, is a problem.
+
+**Top-level rows.** A Group or Layer row with an empty Parent ID stays in the root its layer and helper are in. A new
+one, or one found outside every root, goes into the first root in name order, with a note: of the roots the list's
+Root rows name, when it has them; else of those the list's other rows are found in, the roots the Planner has seen,
+even one hidden for the moment; else of those the export writes. So a new row never goes into a root the Planner has
+not seen (a hidden backup copy, an area not exported yet) ahead of one it has, and a list without Root rows never
+pulls one root's groups into another. A row whose Parent ID leads to another root moves there, layer and helper, like
+any other move the list makes. In a list with no Root rows, a top-level row named like a root stands for that root.
 
 **Each row finds its layer and helper** in this order:
 
@@ -395,6 +441,18 @@ files the removal in that layer now, and there is no default, so the object keep
 
 **A trailing tag naming a stage that several layers have** (its sub-stages): choose the layer it means, or one of the
 other answers.
+
+**Two phasing roots that share layer IDs** (a backup copy of the phasing, or IDs given again in another area). The
+Planner reads each shared ID as one layer, so the question comes first in the review, once per pair of roots:
+"Work_Phasing and Old_Phasing_copy share 2 layer IDs (01_01, 01_02): which root keeps them?"
+- **Keep them in Work_Phasing; renumber Old_Phasing_copy's** (or the other way round). The other root's layers that
+  have those IDs take the next free stages in their phases, past every stage any root or the list uses, in layer order
+  (`01_01` becomes `01_07`; `01_04` and `01_04_2` become `01_07` and `01_07_2`). Their helpers and Max layers are
+  renamed, and that root's own objects whose tags name those IDs (`_RM_01_01`, `_IN_01_01`) follow. The numbering then
+  runs on the new IDs.
+- **Leave it for now**: nothing is renumbered, each such layer is listed, and the export check reports the shared IDs.
+
+Phase groups of one name in both roots stay as they are; the export check reports them.
 
 **Rows to check.** Clean up lists, and leaves as they are, what a person has to look at: a name another node or Max
 layer already has; a cleaned name that would not read back; a layer of a phase with no group to move it into, or with
@@ -525,6 +583,27 @@ reading of its report), `PlannerLayerPlanner.cs` (matching rows to the scene), `
 reuses), `PhasingWordFixText.cs` (the stored word fixes); `Max2Babylon/Forms/PlannerCleanUpForm.cs`,
 `PhasingWordFixForm.cs`, `PlannerScheduleTab.cs` (the button and Apply), `Max2Babylon/Tools/PlannerScheduleScene.cs`
 (runs the batch, saves the copy), `PhasingScene.cs` (the word fixes), `MaxScriptManager.CleanUpSceneGraph`.
+
+### 3.8 Several phasing roots
+
+A scene may hold several phasing roots, one per area of the site, all in one schedule: one Planner project and one
+project start. Each root is a top-level Dummy whose name contains "Phasing", on a Max layer of exactly its name, with
+its own phase groups and layers under it. Clean up, Link, Add layer, the Schedule tab and the export check work on every
+root, taken in name order.
+
+- **Give each root its own phase numbers** (North 1 to 6, South 7 to 12), so layer IDs and phase-group names stay
+  unique across the whole scene. A tag may then name a layer in any root (`IN_Hoarding_RM_02_01` in South comes down in
+  North's 02_01).
+- **Keep all the roots in one scene.** The layer list has no model-file column.
+- **To add a root** in 3ds Max: make a top-level Dummy whose name contains "Phasing", with a Max layer of the same name,
+  and put its phase groups and layers under it. Or make a top-level folder with "phasing" in its name in the Planner,
+  move or make groups in it, export the list, and run Clean up with it here.
+- **A backup copy of the phasing** counts as a root too, so delete it before Clean up. Otherwise Clean up asks which
+  root keeps the IDs they share (section 3.3). Renaming it without "phasing" is not enough: its copied helpers would
+  still reach the Planner, outside every root, and be read as the original layers.
+
+In the Planner, a model with two or more roots gets a top-level folder for each root, named as the root. A project with
+one root looks as it always has.
 
 ## 4. Updating from inside the exporter
 
@@ -682,10 +761,10 @@ know are ignored, with a note.
 
 | Column | Meaning |
 | --- | --- |
-| Planner ID | the Planner folder's ID; unique; how the tool finds the row's layer again (the helper's `planner_id`) |
-| Parent ID | the parent row's Planner ID; empty for a top-level row, which goes directly under the phasing root |
-| Layer | the name of the Max layer and its helper: `<ID>_<Name>` for a layer (`02_01_4_Construction_of_Phase1_TM`), `_<n>_<Name>` for a phase group |
-| Kind | `Group` (holds other layers) or `Layer` (holds work) |
+| Planner ID | the Planner folder's ID; unique; how the tool finds the row's layer again (the helper's `planner_id`); `root:` and the root's name for a Root row the Planner writes for a root of its model that no folder stands for (section 3.2) |
+| Parent ID | the parent row's Planner ID; empty for a Root row, and for a top-level row, which goes directly under its phasing root (section 3.2) |
+| Layer | the name of the Max layer and its helper: `<ID>_<Name>` for a layer (`02_01_4_Construction_of_Phase1_TM`), `_<n>_<Name>` for a phase group, the root's name for a Root row |
+| Kind | `Group` (holds other layers), `Layer` (holds work) or `Root` (a phasing root: written for each top-level folder of the Planner named as a root, in a project with several roots or one that keeps a root folder, and, once there is one, for each root of the model that still has groups or layers outside every root folder; a list with Root rows needs this release or later, as an older tool marks them problems) |
 | ID, Phase, Stage, Sub-stage | the layer ID (`02_01_2`, 2, 1, 2), empty for a group; the ID also finds a layer built by hand |
 | Name | the name after the ID |
 | Start, Finish | the layer's first and last day in the Planner: the span of its own work. The preview and the Gantt use them. |
@@ -722,6 +801,12 @@ come in the order the Planner sorts names in (numbers as numbers, so `02_10` aft
 the list's Order column says. Layers added in Max sit among their parent's rows in the same order, never in the order
 they were added. With no list imported, the tree shows the scene's own phasing tree (the layers in the root, nested as
 the Max layers nest, in the same order).
+
+**Several roots.** With two or more phasing roots, each root has a bold row of Kind Root at the top, in name order, with
+its groups and layers under it; with one root, the tree is as before. With the list, its Root rows show with their
+statuses. Root rows act like groups: never TBC, a grey Gantt bar over what they hold, no dates of their own. A layer
+added in Max straight under a root shows under that root's row. A root the list does not name is listed under Not in the
+Planner's list, left as it is.
 
 The columns are Layer, Kind, Start, Finish, TBC, IN, RM and **Status in the scene**. Beside the Gantt, Start, Finish and
 TBC are hidden (section 7). The status says what Clean up scene graph would do to bring the row in line with the list:
@@ -772,6 +857,11 @@ linked under it is. Listed as Problems and not moved: an object whose top ancest
 objects of a phasing layer without its helper (Clean up adds the helper when the Planner's list has the layer). Objects
 on the root layer itself are left as they are (a note says how many). A review list, then Apply with Hold and one undo
 record ("Link objects to their helpers"); the report gives the counts. Clean up runs the same Link as its step 2.
+
+Link works on every phasing root's layers, and gives the note on objects sitting on a root's own layer once per root. A
+root with no Max layer of its name is passed over, with its layers, and shown as a Problem: Clean up gives it one.
+Link never moves an object from one root to another: one under a root's helpers, on a Max layer of another root (a
+backup copy on the same layers), is left as it is and listed as a Problem.
 
 A Max group (by its group head), a Point or another helper, or a spline with objects under it, once linked under a
 layer's helper, is exported as an empty node, which the export log counts as a helper node without a layer of its name.
@@ -896,8 +986,8 @@ scheduled, and the review says so.
 - The own name, and any note after a space, stay as written. A tag at the end goes before the note.
 - Every new name is read back as the Planner reads it. A name with the same type at both ends, another own name, or a new
   naming error is refused.
-- Refused too: a name that still carries an old Ph/St tag (Clean up converts it first); a layer's helper; the phasing
-  root; a split piece chosen alone (choose its object); an object under no layer's helper (link it first); a new name
+- Refused too: a name that still carries an old Ph/St tag (Clean up converts it first); a layer's helper; every phasing
+  root's helper (a tag may still name a layer in any root); a split piece chosen alone (choose its object); an object under no layer's helper (link it first); a new name
   another node has; removing from a column the object is not in.
 - A closed group selected whole is tagged on its head. Its untagged members are left out, with a note, as the Planner
   shows and hides them with it. A member with a tag of its own inside a closed group is a Problem (open the group to
@@ -945,8 +1035,13 @@ its first occurrence, as the Planner reads it), so work chained across a change 
 
 ### 6.4 Add layer…
 
-**Add layer…** adds a layer or a phase group, with its helper, under the phasing root (made as Clean up makes it when
-the scene has none) or a phase group (`_<n>_<name>`) with its Max layer and helper. The Planner files every layer in the
+**Add layer…** adds a layer or a phase group, with its helper, under a phasing root (made as Clean up makes it when
+the scene has none) or a phase group (`_<n>_<name>`) with its Max layer and helper. With several roots, Under lists each
+root by name with its phase groups beneath it, starts on the chosen row's group or root (else the first root), and the
+ID, name and group checks cover every root; a phase number belongs to one group in the whole scene. Add layer never
+makes a new root, only the helper of a root that is a Max layer alone, at the top. In a root whose helper has no Max
+layer of its name it adds nothing, with a message: Clean up gives the root its layer first, with its groups' layers in
+it (section 3.1). The Planner files every layer in the
 phase group above it, so nothing goes under a layer or a group that is not a phase group. A phase group may go in
 another phase group: the Planner reads it as one.
 

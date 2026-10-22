@@ -34,10 +34,48 @@ namespace Utilities.Planner
         PhaseNumber
     }
 
+    /// <summary>
+    /// A phasing root the build ends with: one the scene has, or one the build makes (a Root row the scene has no root for,
+    /// or Work_Phasing in a scene with no root and a list with no Root row). Its layer and helper come before every row's in
+    /// <see cref="PlannerLayerPlan.BuildLayers"/> and <see cref="PlannerLayerPlan.BuildHelpers"/>.
+    /// </summary>
+    public sealed class PlannerBuildRoot
+    {
+        public PlannerBuildLayer Layer;
+        public PlannerBuildHelper Helper;
+        /// <summary>The scene's root it is, or null for a root the build makes.</summary>
+        public PlannerPhasingRoot SceneRoot;
+        /// <summary>The list's row for it (a Root row, or a top-level row named like it), or null.</summary>
+        public PlannerRowPlan Row;
+        /// <summary>
+        /// The Planner has seen the scene root: a row of the list found a layer or helper in it, whatever is hidden now. False
+        /// for a root that is new to the Planner (a backup copy kept hidden, an area not exported yet) and for one the build
+        /// makes.
+        /// </summary>
+        public bool Seen;
+        /// <summary>
+        /// The export writes the scene root's helper, so the Planner sees the root: the helper, or a node under it, is not
+        /// hidden, not Do not export and not left out of this export (a shape aside), as <see cref="PlannerScheduleModel"/>
+        /// reads the scene. False for a root that is a Max layer alone, and for one the build makes.
+        /// </summary>
+        public bool Exported;
+        /// <summary>
+        /// The root had no Max layer of its name, so the one its helper sits on is renamed to it (a layer no other root,
+        /// layer or helper has).
+        /// </summary>
+        public bool LayerTakenOver;
+
+        /// <summary>The root's name as the build ends with it: its layer's.</summary>
+        public string Name
+        {
+            get { return Layer.FinalName; }
+        }
+    }
+
     /// <summary>A Max layer the build ends with: one the scene has (found by its current name) or one the build creates.</summary>
     public sealed class PlannerBuildLayer
     {
-        /// <summary>Position in <see cref="PlannerLayerPlan.BuildLayers"/>; 0 is the phasing root.</summary>
+        /// <summary>Position in <see cref="PlannerLayerPlan.BuildLayers"/>; the phasing roots come first.</summary>
         public int Index;
         /// <summary>The name today, or null for a layer the build creates.</summary>
         public string CurrentName;
@@ -61,7 +99,7 @@ namespace Utilities.Planner
     /// <summary>A helper node the build ends with: one the scene has (found by its handle) or a Dummy the build creates.</summary>
     public sealed class PlannerBuildHelper
     {
-        /// <summary>Position in <see cref="PlannerLayerPlan.BuildHelpers"/>; 0 is the phasing root.</summary>
+        /// <summary>Position in <see cref="PlannerLayerPlan.BuildHelpers"/>; the phasing roots come first.</summary>
         public int Index;
         /// <summary>The node's handle, or null for a helper the build creates.</summary>
         public long? Key;
@@ -111,8 +149,23 @@ namespace Utilities.Planner
         /// <summary>The layer and helper the build ends with for this row; null for a row that cannot be built and has nothing in the scene.</summary>
         public PlannerBuildLayer Layer;
         public PlannerBuildHelper Helper;
-        /// <summary>A top-level row named like the phasing root: it stands for the root, and its rows go under the root.</summary>
+        /// <summary>
+        /// A Root row, or a top-level row named like a phasing root: it stands for that root, and its rows go under it.
+        /// </summary>
         public bool IsRoot;
+        /// <summary>
+        /// A Root row with nothing under it that names a root by a name it had (the Planner writes one for a root of its model
+        /// until it reads an export with the root's new name): up to date, with no layer or helper of its own, so nothing
+        /// builds, renames, stamps or lists it. See <see cref="OldNameOf"/>.
+        /// </summary>
+        public bool OldRootName;
+        /// <summary>
+        /// For an <see cref="OldRootName"/> row, the root another Root row takes, which has the row's name now; null once the
+        /// scene has no root of that name (renamed, or removed, since the export the Planner read).
+        /// </summary>
+        public PlannerBuildRoot OldNameOf;
+        /// <summary>The root the row is built in (for a top-level row, where its parent is the root), or null for a Root row.</summary>
+        public PlannerBuildRoot Root;
         /// <summary>Things worth knowing that do not stop the row (e.g. another node with the same name).</summary>
         public readonly List<string> Notes = new List<string>();
 
@@ -163,17 +216,60 @@ namespace Utilities.Planner
         public const string ReviewCsvHeader = "Status,Item,Name,Change,From,To,Why";
 
         public PlannerLayerList List;
-        /// <summary>The phasing root's name (its layer's when the two differ).</summary>
-        public string RootName;
-        public bool RootLayerCreated;
-        public bool RootHelperCreated;
-        /// <summary>Index 0 is the root layer.</summary>
+        /// <summary>
+        /// The phasing roots the build ends with: the scene's, in name order, then the ones the build makes. Their layers and
+        /// helpers come first in <see cref="BuildLayers"/> and <see cref="BuildHelpers"/>.
+        /// </summary>
+        public readonly List<PlannerBuildRoot> Roots = new List<PlannerBuildRoot>();
+        /// <summary>The layers the build ends with: the phasing roots' first, then the rows'.</summary>
         public readonly List<PlannerBuildLayer> BuildLayers = new List<PlannerBuildLayer>();
-        /// <summary>Index 0 is the root helper.</summary>
+        /// <summary>The helpers the build ends with: the phasing roots' first, then the rows'.</summary>
         public readonly List<PlannerBuildHelper> BuildHelpers = new List<PlannerBuildHelper>();
         /// <summary>Every row of the list, in outline order.</summary>
         public readonly List<PlannerRowPlan> Rows = new List<PlannerRowPlan>();
         public readonly List<PlannerUnlistedItem> NotInList = new List<PlannerUnlistedItem>();
+        /// <summary>Roots of the scene that no Root row of the list names, in a list that has Root rows: left as they are.</summary>
+        public readonly List<PlannerPhasingRoot> UnlistedRoots = new List<PlannerPhasingRoot>();
+
+        /// <summary>
+        /// The first root in name order, where a new top-level row goes, or null: the first the list's Root rows name, else
+        /// the scene's first root the list's rows are found in (<see cref="PlannerBuildRoot.Seen"/>), else the scene's first
+        /// root the export writes, else the scene's first root, else the first the build makes.
+        /// </summary>
+        public PlannerBuildRoot FirstRoot
+        {
+            get
+            {
+                // The list's Root rows name the roots a new row may go in, when it has them. Else the roots the list's rows
+                // are found in, the ones the Planner has seen, whatever is hidden for the moment: a root it has not seen (a
+                // hidden backup copy, an area not exported yet) never takes a new row ahead of them. Else the scene's roots,
+                // the ones the export writes first.
+                var listed = Roots.Where(r => r.Row != null && r.Row.Row.Kind == PlannerLayerKind.Root).ToList();
+                var scene = Roots.Where(r => r.SceneRoot != null).ToList();
+                var seen = scene.Where(r => r.Seen).ToList();
+                var exported = scene.Where(r => r.Exported).ToList();
+                var from = listed.Count > 0 ? listed : seen.Count > 0 ? seen : exported.Count > 0 ? exported : scene.Count > 0 ? scene : Roots;
+                return PlannerNaturalOrder.StableSort(from, (a, b) => PlannerNaturalOrder.Compare(a.Name, b.Name)).FirstOrDefault();
+            }
+        }
+
+        /// <summary>The first root's name (its layer's), or null.</summary>
+        public string RootName
+        {
+            get { return FirstRoot != null ? FirstRoot.Name : null; }
+        }
+
+        /// <summary>The first root's layer is made by the build.</summary>
+        public bool RootLayerCreated
+        {
+            get { return FirstRoot != null && FirstRoot.Layer.Create; }
+        }
+
+        /// <summary>The first root's helper is made by the build.</summary>
+        public bool RootHelperCreated
+        {
+            get { return FirstRoot != null && FirstRoot.Helper.Create; }
+        }
         public readonly List<string> Notes = new List<string>();
         private List<PlannerReviewRow> review;
 
@@ -352,6 +448,12 @@ namespace Utilities.Planner
         /// <summary>How the note naming the phasing root starts.</summary>
         public const string RootNoteStart = "Phasing root: ";
 
+        /// <summary>
+        /// How the Planner starts the Planner ID of a Root row it writes for a root of its model that no folder stands for,
+        /// the root's name as that model has it after it (<c>root:Work_Phasing</c>): no folder's ID has a colon.
+        /// </summary>
+        public const string ModelRootIdStart = "root:";
+
         public static PlannerLayerPlan Plan(PlannerLayerList list, PlannerSceneSnapshot snapshot)
         {
             return Plan(list, new PlannerSceneModel(snapshot));
@@ -361,7 +463,7 @@ namespace Utilities.Planner
         {
             var plan = new PlannerLayerPlan { List = list };
             var usable = list != null && list.Usable;
-            PlanRoot(plan, scene);
+            PlanRoots(plan, scene, usable && list.Rows.Any(r => r.Kind == PlannerLayerKind.Root && !r.HasProblem));
             if (!usable)
             {
                 if (list != null)
@@ -372,8 +474,8 @@ namespace Utilities.Planner
             }
 
             var outline = list.Outline();
-            var rootRow = RootRow(plan, list);
-            var matches = Match(list, outline.Where(r => r != rootRow).ToList(), scene);
+            var rootRows = RootRows(plan, list);
+            var matches = Match(list, outline.Where(r => !rootRows.Contains(r)).ToList(), scene);
             var rowPlans = outline.Select(r =>
             {
                 RowMatch match;
@@ -387,95 +489,414 @@ namespace Utilities.Planner
                 };
             }).ToList();
             var byRow = rowPlans.ToDictionary(p => p.Row);
-            if (rootRow != null)
+            TakeRoots(plan, scene, rootRows, byRow);
+            // The roots the list's rows are found in, which the Planner has seen (FirstRoot, for the top-level rows).
+            var seen = new HashSet<PlannerPhasingRoot>(matches.Values.Where(m => m.Unit.Root != null).Select(m => m.Unit.Root));
+            foreach (var root in plan.Roots.Where(r => r.SceneRoot != null && seen.Contains(r.SceneRoot)))
             {
-                // The list has the root itself as a top-level row: it is the root, and its rows go under the root.
-                var rootPlan = byRow[rootRow];
-                rootPlan.IsRoot = true;
-                rootPlan.MatchedBy = PlannerMatchKind.Name;
-                rootPlan.Layer = plan.BuildLayers[0];
-                rootPlan.Helper = plan.BuildHelpers[0];
-                rootPlan.Layer.Row = rootPlan;
-                rootPlan.Helper.Row = rootPlan;
-                var idNow = scene.RootNode != null ? scene.RootNode.PlannerId : null;
-                if (!string.Equals(idNow, rootRow.PlannerId, StringComparison.Ordinal))
-                {
-                    rootPlan.Helper.StampId = rootRow.PlannerId;
-                }
-                rootPlan.State = PlannerRowState.UpToDate;
-                rootPlan.StatusText = "Up to date (the phasing root)";
+                root.Seen = true;
             }
+            PlaceTopRows(plan, rowPlans, byRow);
 
             ResolveProblems(plan, rowPlans, byRow, scene);
             BuildEntries(plan, rowPlans, byRow, scene);
             plan.Rows.AddRange(rowPlans);
             ListUnlisted(plan, list, scene, matches);
+            if (list.Rows.Any(r => r.Kind == PlannerLayerKind.Root))
+            {
+                // Not one whose own Root row has a problem: that row is listed as one.
+                var withProblem = list.Rows.Where(r => r.Kind == PlannerLayerKind.Root && r.HasProblem).ToList();
+                plan.UnlistedRoots.AddRange(scene.PhasingRoots.Where(r => !plan.Roots.Any(e => e.SceneRoot == r && e.Row != null)
+                    && !withProblem.Any(w => (r.Node != null && string.Equals(r.Node.PlannerId, w.PlannerId, StringComparison.Ordinal)) || NameIs(r.Name, w.Layer)
+                        || (r.Layer != null && NameIs(r.Layer.Name, w.Layer)))));
+            }
             return plan;
         }
 
-        // The root
+        // The roots
 
-        internal static void PlanRoot(PlannerLayerPlan plan, PlannerSceneModel scene)
+        /// <summary>
+        /// The scene's phasing roots as the build ends with them (each with its layer and helper), and Work_Phasing for a scene
+        /// with none when the list has no Root row (<paramref name="listHasRoots"/>): the Planner writes a Root row for each
+        /// top-level folder named as a root (a project with several roots, or one that keeps a root folder), so a row with
+        /// "phasing" in its name that is not a Root row is an ordinary group or layer that goes under a root.
+        /// </summary>
+        internal static void PlanRoots(PlannerLayerPlan plan, PlannerSceneModel scene, bool listHasRoots)
         {
-            // A scene without a root always gets Work_Phasing: the Planner never writes the root as a row, so a row with
-            // "phasing" in its name is an ordinary group or layer that goes under it.
-            var layerName = scene.RootLayer != null ? scene.RootLayer.Name : scene.RootNode != null ? scene.RootNode.Name : PlannerSceneModel.DefaultRootName;
-            var helperName = scene.RootNode != null ? scene.RootNode.Name : layerName;
-            plan.RootName = layerName;
-            plan.RootLayerCreated = scene.RootLayer == null;
-            plan.RootHelperCreated = scene.RootNode == null;
-            plan.BuildLayers.Add(new PlannerBuildLayer
+            // A root that is a Max layer alone (a scene with no root helper) is one, in a list with Root rows, only when a Root
+            // row names it (TakeRoots): the build never makes a helper for a root the list leaves out.
+            foreach (var root in scene.PhasingRoots.Where(r => r.Node != null || !listHasRoots))
             {
-                Index = 0,
-                CurrentName = scene.RootLayer != null ? scene.RootLayer.Name : null,
-                FinalName = layerName,
-                Create = scene.RootLayer == null,
-                ParentNameNow = scene.RootLayer != null ? scene.RootLayer.ParentName : null
-            });
-            plan.BuildHelpers.Add(new PlannerBuildHelper
-            {
-                Index = 0,
-                Key = scene.RootNode != null ? scene.RootNode.Key : (long?)null,
-                CurrentName = scene.RootNode != null ? scene.RootNode.Name : null,
-                FinalName = helperName,
-                Create = scene.RootNode == null,
-                LayerIndex = 0,
-                LayerNow = scene.RootNode != null ? scene.RootNode.LayerName : null,
-                IsGroupHead = scene.RootNode != null && scene.RootNode.IsGroupHead,
-                IsGroupMember = scene.RootNode != null && scene.RootNode.IsGroupMember
-            });
-            if (scene.RootNode == null && scene.RootLayer == null)
+                AddRoot(plan, scene, root, null);
+            }
+            if (plan.Roots.Count == 0 && !listHasRoots)
             {
                 plan.Notes.Add("The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): the layer and helper "
-                    + layerName + " are created at the top, and everything else under them.");
-            }
-            else if (scene.RootNode == null)
-            {
-                plan.Notes.Add(RootNoteStart + "the layer " + layerName + ". It has no helper node of its name, so one is created at the top.");
-            }
-            else if (scene.RootLayer == null)
-            {
-                plan.Notes.Add(RootNoteStart + "the node " + helperName + ". It has no layer of its name, so one is created at the top.");
-            }
-            else
-            {
-                plan.Notes.Add(RootNoteStart + (string.Equals(layerName, helperName, StringComparison.Ordinal)
-                    ? layerName + " (layer and helper)."
-                    : "the node " + helperName + " and the layer " + layerName + "."));
-            }
-            if (scene.RootNode == null && scene.Nodes.Any(n => string.Equals(n.Name, helperName, StringComparison.OrdinalIgnoreCase)))
-            {
-                plan.Notes.Add("Another node is already called " + helperName + "; the new root helper has the same name.");
+                    + PlannerSceneModel.DefaultRootName + " are created at the top, and everything else under them.");
+                AddRoot(plan, scene, null, PlannerSceneModel.DefaultRootName);
             }
         }
 
-        // The one top-level row named like the phasing root (its layer or its helper, any capitals), or null.
-        private static PlannerLayerRow RootRow(PlannerLayerPlan plan, PlannerLayerList list)
+        /// <summary>
+        /// One root as the build ends with it, for Add layer: the scene's root given (its Max layer of exactly its name, else
+        /// one made at the top, with its helper put on it), or Work_Phasing for a scene with none, layer and helper made.
+        /// </summary>
+        internal static void PlanOneRoot(PlannerLayerPlan plan, PlannerSceneModel scene, PlannerPhasingRoot root)
         {
-            var named = list.TopRows
-                .Where(r => !r.HasProblem && (NameIs(plan.BuildLayers[0].FinalName, r.Layer) || NameIs(plan.BuildHelpers[0].FinalName, r.Layer)))
-                .ToList();
-            return named.Count == 1 ? named[0] : null;
+            if (root != null)
+            {
+                AddRoot(plan, scene, root, null, false);
+                return;
+            }
+            plan.Notes.Add("The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): the layer and helper "
+                + PlannerSceneModel.DefaultRootName + " are created at the top, and everything else under them.");
+            AddRoot(plan, scene, null, PlannerSceneModel.DefaultRootName);
+        }
+
+        // The export writes a root's helper when the helper, or a node under it, is one it writes for itself: not hidden, not
+        // Do not export, not left out of this export, not a shape (PlannerScheduleModel). Export hidden objects is not read,
+        // as the scene model does not keep it: a hidden root written with it reaches the Planner, which then writes Root rows.
+        private static bool HelperExported(PlannerSceneModel scene, PlannerPhasingRoot root)
+        {
+            Func<PlannerSceneNode, bool> writes = n => !n.Hidden && !n.NoExport && !n.NotInThisExport && !n.IsShape;
+            return writes(root.Node) || root.TreeNodes.Any(key => writes(scene.NodeByKey[key]));
+        }
+
+        // A root's entries: the scene's root (its layer of exactly its name, else, with <paramref name="takeOver"/>, the layer
+        // its groups sit in renamed to it (TakeableLayer), else one made at the top with the helper put on it; its helper, else
+        // one made at the top), or a root made with <paramref name="madeName"/>, on a Max layer of that name the scene has.
+        private static PlannerBuildRoot AddRoot(PlannerLayerPlan plan, PlannerSceneModel scene, PlannerPhasingRoot root, string madeName, bool takeOver = true)
+        {
+            var node = root != null ? root.Node : null;
+            var name = node != null ? node.Name : root != null ? root.Layer.Name : madeName;
+            var takenOver = takeOver && root != null && root.Layer == null ? TakeableLayer(scene, root) : null;
+            var existing = root != null ? root.Layer ?? takenOver : null;
+            PhasingMaxLayer named;
+            if (root == null && scene.LayerByName.TryGetValue(name, out named) && named.Name != "0"
+                && !plan.BuildLayers.Any(l => l.Rename && NameIs(l.CurrentName, named.Name)))
+            {
+                // A root the build makes takes a Max layer of its name the scene has already (3ds Max layer names are
+                // unique), unless a root being renamed gives that layer up: then its own is made.
+                existing = named;
+            }
+            var entry = new PlannerBuildRoot { SceneRoot = root, Exported = node != null && HelperExported(scene, root), LayerTakenOver = takenOver != null };
+            entry.Layer = new PlannerBuildLayer
+            {
+                Index = plan.BuildLayers.Count,
+                CurrentName = existing != null ? existing.Name : null,
+                FinalName = existing != null && takenOver == null ? existing.Name : name,
+                Create = existing == null,
+                ParentNameNow = existing != null ? existing.ParentName : null
+            };
+            plan.BuildLayers.Add(entry.Layer);
+            entry.Helper = new PlannerBuildHelper
+            {
+                Index = plan.BuildHelpers.Count,
+                Key = node != null ? node.Key : (long?)null,
+                CurrentName = node != null ? node.Name : null,
+                FinalName = node != null ? node.Name : entry.Layer.FinalName,
+                Create = node == null,
+                LayerIndex = entry.Layer.Index,
+                // A root helper with no Max layer of its name, nor one to rename, is put on the one made for it.
+                PutOnLayer = node != null && (existing == null || takenOver != null && !string.Equals(node.LayerName, takenOver.Name, StringComparison.OrdinalIgnoreCase)),
+                LayerNow = node != null ? node.LayerName : null,
+                IsGroupHead = node != null && node.IsGroupHead,
+                IsGroupMember = node != null && node.IsGroupMember
+            };
+            plan.BuildHelpers.Add(entry.Helper);
+            plan.Roots.Add(entry);
+            if (node == null && scene.Nodes.Any(n => string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                plan.Notes.Add("Another node is already called " + name + "; the new root helper has the same name.");
+            }
+            if (root == null)
+            {
+                return entry;
+            }
+            if (node == null)
+            {
+                plan.Notes.Add(RootNoteStart + "the layer " + name + ". It has no helper node of its name, so one is created at the top.");
+            }
+            else if (takenOver != null)
+            {
+                plan.Notes.Add(RootNoteStart + "the node " + name + ". It has no layer of its name, so its Max layer " + takenOver.Name + " is renamed to it.");
+            }
+            else if (root.Layer == null)
+            {
+                plan.Notes.Add(RootNoteStart + "the node " + name + ". It has no layer of its name, so one is created at the top and the node put on it.");
+            }
+            else
+            {
+                plan.Notes.Add(RootNoteStart + (string.Equals(root.Layer.Name, name, StringComparison.Ordinal)
+                    ? name + " (layer and helper)."
+                    : "the node " + name + " and the layer " + root.Layer.Name + "."));
+            }
+            return entry;
+        }
+
+        /// <summary>
+        /// The Max layer a root with no layer of its name can take, named for it: the one Max layer its own phase groups and
+        /// layers sit in (or, with none yet, the one its helper sits on), when that layer holds nothing but them, their objects
+        /// and the root's helper, and is not the default layer "0", another root's layer, a layer above a root's or inside a
+        /// root's tree, nor a phasing layer of the scene (paired with a helper, or named as a layer or a phase group); else
+        /// null, and a layer of its name is made at the top, with the root's helper put on it and its groups' Max layers moved
+        /// under it. Clean up, and the export check's advice, follow it.
+        /// </summary>
+        public static PhasingMaxLayer TakeableLayer(PlannerSceneModel scene, PlannerPhasingRoot root)
+        {
+            if (root == null || root.Node == null || root.Layer != null)
+            {
+                return null;
+            }
+            var own = RootChildLayers(scene, root);
+            PhasingMaxLayer layer;
+            if (own.Count > 0)
+            {
+                var parents = own.Select(l => l.ParentName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (parents.Count != 1 || parents[0] == null || !scene.LayerByName.TryGetValue(parents[0], out layer))
+                {
+                    return null;
+                }
+            }
+            else if (root.Node.LayerName == null || !scene.LayerByName.TryGetValue(root.Node.LayerName, out layer))
+            {
+                return null;
+            }
+            var ownNames = new HashSet<string>(own.Select(l => l.Name), StringComparer.OrdinalIgnoreCase);
+            if (layer.Name == "0"
+                || scene.ChildLayersOf(layer.Name).Any(l => !ownNames.Contains(l.Name))
+                || scene.Nodes.Any(n => string.Equals(n.LayerName, layer.Name, StringComparison.OrdinalIgnoreCase) && n.Key != root.Node.Key && !root.TreeNodes.Contains(n.Key))
+                || scene.PhasingRoots.Any(r => r != root && r.Layer != null && string.Equals(r.Layer.Name, layer.Name, StringComparison.OrdinalIgnoreCase))
+                || scene.PhasingRoots.Any(r => r.Layer != null && scene.LayerAncestors(r.Layer).Any(a => string.Equals(a.Name, layer.Name, StringComparison.OrdinalIgnoreCase)))
+                || scene.TreeLayers.Contains(layer.Name)
+                || PlannerSceneModel.ReadsAsPhasingName(layer.Name)
+                || scene.Units.Any(u => u.Layer == layer && u.Helper != null))
+            {
+                return null;
+            }
+            return layer;
+        }
+
+        /// <summary>The Max layers of the phase groups and layers directly under a root's helper, each once.</summary>
+        public static List<PhasingMaxLayer> RootChildLayers(PlannerSceneModel scene, PlannerPhasingRoot root)
+        {
+            if (root == null || root.Node == null)
+            {
+                return new List<PhasingMaxLayer>();
+            }
+            var keys = new HashSet<long>(scene.ChildrenOf(root.Node).Select(c => c.Key));
+            return scene.Units.Where(u => u.Helper != null && u.Layer != null && keys.Contains(u.Helper.Key)).Select(u => u.Layer).Distinct().ToList();
+        }
+
+        // The rows that stand for a root: every Root row, and, for a scene root no Root row may name (the list has none for
+        // it), the one top-level row named like it (its layer or its helper, any capitals), as a list from a Planner that
+        // writes no Root row names the one root. A Root row with a problem is no root: it and the rows under it are left.
+        private static HashSet<PlannerLayerRow> RootRows(PlannerLayerPlan plan, PlannerLayerList list)
+        {
+            var rows = new HashSet<PlannerLayerRow>(list.Rows.Where(r => r.Kind == PlannerLayerKind.Root && !r.HasProblem));
+            if (rows.Count > 0)
+            {
+                return rows;
+            }
+            foreach (var root in plan.Roots)
+            {
+                var named = list.TopRows
+                    .Where(r => !r.HasProblem && r.Kind != PlannerLayerKind.Root && (NameIs(root.Layer.FinalName, r.Layer) || NameIs(root.Helper.FinalName, r.Layer)))
+                    .ToList();
+                if (named.Count == 1)
+                {
+                    rows.Add(named[0]);
+                }
+            }
+            return rows;
+        }
+
+        // Each row that stands for a root takes it: a Root row finds its root by the root helper's Planner ID, else by its
+        // exact name (any capitals), else as the one scene root no other Root row has taken that holds what the rows under it
+        // find; else the build makes it, layer and helper at the top, unless it has nothing under it and is a root's old name
+        // (OldName). A found root with another name is renamed, helper and layer together, as the Planner owns the root's name.
+        // A top-level row named like a root (a list with no Root rows) is that root.
+        private static void TakeRoots(PlannerLayerPlan plan, PlannerSceneModel scene, HashSet<PlannerLayerRow> rootRows, Dictionary<PlannerLayerRow, PlannerRowPlan> byRow)
+        {
+            var ordered = rootRows.OrderBy(r => r.Index).ToList();
+            // A top-level row named like a root (a list with no Root rows), the scene's or the Work_Phasing the build makes.
+            foreach (var row in ordered.Where(r => r.Kind != PlannerLayerKind.Root))
+            {
+                var root = plan.Roots.FirstOrDefault(r => r.Row == null && (NameIs(r.Layer.FinalName, row.Layer) || NameIs(r.Helper.FinalName, row.Layer)));
+                if (root != null)
+                {
+                    Take(plan, scene, root, byRow[row]);
+                }
+            }
+            var rows = ordered.Where(r => r.Kind == PlannerLayerKind.Root).ToList();
+            var listIds = new HashSet<string>(rows.Select(r => r.PlannerId), StringComparer.Ordinal);
+            Func<PlannerBuildRoot, bool> free = r => r.SceneRoot != null && r.Row == null;
+            // A root whose helper carries another Root row's Planner ID is that row's, whatever its name.
+            Func<PlannerBuildRoot, bool> unclaimed = r => free(r) && (r.SceneRoot.Node == null || r.SceneRoot.Node.PlannerId == null || !listIds.Contains(r.SceneRoot.Node.PlannerId));
+            // Root rows by the root helper's Planner ID first, every row, then by exact name.
+            foreach (var row in rows)
+            {
+                var root = plan.Roots.FirstOrDefault(r => free(r) && r.SceneRoot.Node != null && string.Equals(r.SceneRoot.Node.PlannerId, row.PlannerId, StringComparison.Ordinal));
+                if (root != null)
+                {
+                    Take(plan, scene, root, byRow[row]);
+                }
+            }
+            var waiting = new List<PlannerLayerRow>();
+            foreach (var row in rows.Where(r => !byRow[r].IsRoot))
+            {
+                var root = plan.Roots.FirstOrDefault(r => unclaimed(r) && (NameIs(r.Helper.CurrentName, row.Layer) || NameIs(r.Layer.CurrentName, row.Layer)));
+                if (root == null)
+                {
+                    // A root that is a Max layer alone (a scene with no root helper) is one only when a Root row names it.
+                    var alone = scene.PhasingRoots.FirstOrDefault(r => r.Node == null && r.Layer != null && NameIs(r.Layer.Name, row.Layer) && !plan.Roots.Any(e => e.SceneRoot == r));
+                    root = alone != null ? AddRoot(plan, scene, alone, null) : null;
+                }
+                if (root == null)
+                {
+                    waiting.Add(row);
+                    continue;
+                }
+                Take(plan, scene, root, byRow[row]);
+            }
+            foreach (var row in waiting)
+            {
+                // The Planner's Root row for a root of its model with no folder (ModelRootIdStart), with nothing under it,
+                // that finds no root: the Planner writes one for a root whose root folder it renamed, until it reads an
+                // export with the new name. It makes no root: it is the root another Root row took, whose name it has now
+                // (its helper's or its Max layer's, any capitals), or the scene no longer has the model's root by that name
+                // (renamed, or removed, since that export). A Root row of a folder (an empty root folder made in the Planner)
+                // is a root the Planner asks for, whatever its name, and is made.
+                if (row.Children.Count == 0 && row.PlannerId.StartsWith(ModelRootIdStart, StringComparison.Ordinal))
+                {
+                    OldName(byRow[row], plan.Roots.FirstOrDefault(r => r.SceneRoot != null && r.Row != null
+                        && (NameIs(r.Helper.CurrentName, row.Layer) || NameIs(r.Layer.CurrentName, row.Layer))));
+                    continue;
+                }
+                // The one scene root the rows under it find their layers in, of those no other Root row has taken: a root
+                // renamed in the Planner before any list stamped its helper's Planner ID. A group moved into it in the
+                // Planner from another root, which that root's own Root row has taken, does not count.
+                var below = new HashSet<PlannerPhasingRoot>();
+                var pending = new Stack<PlannerLayerRow>(row.Children);
+                while (pending.Count > 0)
+                {
+                    var child = pending.Pop();
+                    PlannerRowPlan childPlan;
+                    if (byRow.TryGetValue(child, out childPlan) && childPlan.Unit != null && childPlan.Unit.Root != null)
+                    {
+                        below.Add(childPlan.Unit.Root);
+                    }
+                    foreach (var grandchild in child.Children)
+                    {
+                        pending.Push(grandchild);
+                    }
+                }
+                below.RemoveWhere(s => !plan.Roots.Any(r => unclaimed(r) && r.SceneRoot == s));
+                var root = below.Count == 1 ? plan.Roots.FirstOrDefault(r => unclaimed(r) && r.SceneRoot == below.First()) : null;
+                Take(plan, scene, root ?? AddRoot(plan, scene, null, row.Layer), byRow[row]);
+            }
+        }
+
+        // A row stands for a root: it is that root, with the row's name and Planner ID.
+        private static void Take(PlannerLayerPlan plan, PlannerSceneModel scene, PlannerBuildRoot root, PlannerRowPlan rowPlan)
+        {
+            var row = rowPlan.Row;
+            rowPlan.IsRoot = true;
+            rowPlan.Layer = root.Layer;
+            rowPlan.Helper = root.Helper;
+            root.Row = rowPlan;
+            root.Layer.Row = rowPlan;
+            root.Helper.Row = rowPlan;
+            rowPlan.MatchedBy = root.SceneRoot == null ? PlannerMatchKind.None
+                : root.SceneRoot.Node != null && string.Equals(root.SceneRoot.Node.PlannerId, row.PlannerId, StringComparison.Ordinal) ? PlannerMatchKind.PlannerId
+                : PlannerMatchKind.Name;
+            var renamed = false;
+            if (row.Kind == PlannerLayerKind.Root)
+            {
+                // The root takes the row's name, unless another Max layer the scene keeps has it (3ds Max layer names are unique).
+                PhasingMaxLayer other;
+                var taken = !NameIs(root.Layer.FinalName, row.Layer) && scene.LayerByName.TryGetValue(row.Layer, out other)
+                    && !NameIs(root.Layer.CurrentName, other.Name) && !plan.BuildLayers.Any(l => l.Rename && NameIs(l.CurrentName, other.Name));
+                if (taken)
+                {
+                    rowPlan.Notes.Add("the Max layer " + row.Layer + " already has this name and keeps it, so the root keeps its name " + root.Layer.FinalName);
+                }
+                else
+                {
+                    renamed = !string.Equals(root.Helper.FinalName, row.Layer, StringComparison.Ordinal);
+                    root.Layer.FinalName = row.Layer;
+                    root.Helper.FinalName = row.Layer;
+                }
+            }
+            var idNow = root.SceneRoot != null && root.SceneRoot.Node != null ? root.SceneRoot.Node.PlannerId : null;
+            if (!string.Equals(idNow, row.PlannerId, StringComparison.Ordinal))
+            {
+                root.Helper.StampId = row.PlannerId;
+            }
+            if (row.Kind != PlannerLayerKind.Root)
+            {
+                // A list with no Root rows: its row named like the root only gives it its Planner ID.
+                rowPlan.MatchedBy = PlannerMatchKind.Name;
+                rowPlan.State = PlannerRowState.UpToDate;
+                rowPlan.StatusText = "Up to date (the phasing root)";
+            }
+            else if (root.SceneRoot == null)
+            {
+                rowPlan.State = PlannerRowState.New;
+                rowPlan.StatusText = "New (a phasing root)";
+            }
+            else if (renamed || root.LayerTakenOver || root.Layer.Create || root.Helper.PutOnLayer)
+            {
+                rowPlan.State = PlannerRowState.Change;
+                rowPlan.StatusText = (renamed ? "Rename from " + (root.Helper.CurrentName ?? root.Layer.CurrentName) : root.Layer.Create ? "Layer added" : "Its layer renamed") + " (the phasing root)";
+            }
+            else
+            {
+                rowPlan.State = PlannerRowState.UpToDate;
+                rowPlan.StatusText = "Up to date (the phasing root)";
+            }
+        }
+
+        // A Root row that stands for a root by a name it had (TakeRoots), the root another Root row takes or null: up to date,
+        // with no layer or helper of its own, so no root is made for it and nothing builds, renames, stamps or lists it.
+        private static void OldName(PlannerRowPlan rowPlan, PlannerBuildRoot root)
+        {
+            rowPlan.IsRoot = true;
+            rowPlan.OldRootName = true;
+            rowPlan.OldNameOf = root;
+            rowPlan.MatchedBy = root != null ? PlannerMatchKind.Name : PlannerMatchKind.None;
+            rowPlan.State = PlannerRowState.UpToDate;
+            if (root != null)
+            {
+                rowPlan.StatusText = "Up to date (an old name of the phasing root " + root.Name + ")";
+                rowPlan.Notes.Add("the scene's phasing root of this name is " + root.Name + " in the list, so this row, with nothing under it, is its old name and makes no root");
+            }
+            else
+            {
+                rowPlan.StatusText = "Up to date (an old name of a phasing root)";
+                rowPlan.Notes.Add("a root of the Planner's model, which the scene no longer has by this name (renamed or removed since the export the Planner read); with nothing under it, it makes no root");
+            }
+        }
+
+        // Each top-level row's root: the one its layer and helper are in now; for a new row, or one found outside every root,
+        // the first root (in name order), as the list names no root for it.
+        private static void PlaceTopRows(PlannerLayerPlan plan, List<PlannerRowPlan> rows, Dictionary<PlannerLayerRow, PlannerRowPlan> byRow)
+        {
+            var first = plan.FirstRoot;
+            foreach (var row in rows.Where(r => !r.IsRoot && (r.Row.Parent == null || (byRow.ContainsKey(r.Row.Parent) && byRow[r.Row.Parent].IsRoot))))
+            {
+                if (row.Row.Parent != null)
+                {
+                    row.Root = byRow[row.Row.Parent].Layer != null ? plan.Roots.FirstOrDefault(r => r.Row == byRow[row.Row.Parent]) : null;
+                    continue;
+                }
+                var home = row.Unit != null && row.Unit.Root != null ? plan.Roots.FirstOrDefault(r => r.SceneRoot == row.Unit.Root) : null;
+                row.Root = home ?? first;
+                if (home == null && first != null && plan.Roots.Count > 1)
+                {
+                    row.Notes.Add("the list names no phasing root for it, so it goes under " + first.Name + ", the first root");
+                }
+            }
         }
 
         // Matching
@@ -527,7 +948,7 @@ namespace Utilities.Planner
             // (3) outside the phasing tree: a scene with no phasing root at all was built by hand, and anything of the
             // row's name in it is taken; with a root, a name that reads as a phasing name, or a layer with its helper of
             // the same name (a context or survey layer has no Dummy of its name on it). Never a Max group of objects.
-            bool noRoot = scene.RootNode == null && scene.RootLayer == null;
+            bool noRoot = scene.PhasingRoots.Count == 0;
             Func<PlannerSceneUnit, bool, bool> takeByName = (u, phasingName) => u.InPhasingTree
                 || ((noRoot || phasingName || (u.Layer != null && u.Helper != null && string.Equals(u.Layer.Name, u.Helper.Name, StringComparison.OrdinalIgnoreCase)))
                     && (u.Helper == null || !scene.IsObjectGroup(u.Helper)));
@@ -667,9 +1088,11 @@ namespace Utilities.Planner
         // with another row, so this runs until nothing changes.
         private static void ResolveProblems(PlannerLayerPlan plan, List<PlannerRowPlan> rows, Dictionary<PlannerLayerRow, PlannerRowPlan> byRow, PlannerSceneModel scene)
         {
-            var rootLayerName = plan.BuildLayers[0].FinalName;
-            var rootHelperKey = plan.BuildHelpers[0].Key;
-            var rootHelperName = plan.BuildHelpers[0].FinalName;
+            // The roots' names: a root the build makes, or renames, has its name from now on, and one it keeps has its own.
+            Func<string, bool> madeRootName = name => plan.Roots.Any(r => (r.Layer.Create || r.Layer.Rename) && NameIs(r.Layer.FinalName, name)
+                || (r.Helper.Create || r.Helper.Rename) && NameIs(r.Helper.FinalName, name));
+            Func<string, bool> rootLayerHas = name => plan.Roots.Any(r => r.Layer.CurrentName != null && NameIs(r.Layer.CurrentName, name));
+            var rootHelperKeys = new HashSet<long>(plan.Roots.Where(r => r.Helper.Key.HasValue).Select(r => r.Helper.Key.Value));
             Dictionary<string, List<PhasingMaxLayer>> finalLayer;
             Dictionary<string, List<PlannerSceneNode>> finalNode;
             for (int round = 0; round <= rows.Count; round++)
@@ -689,25 +1112,21 @@ namespace Utilities.Planner
                     var otherNode = NamesHelper(row) && finalNode.TryGetValue(target, out nodes)
                         ? nodes.FirstOrDefault(n => row.Unit == null || row.Unit.Helper == null || n.Key != row.Unit.Helper.Key)
                         : null;
-                    if (plan.RootLayerCreated && NameIs(rootLayerName, target))
+                    if (madeRootName(target))
                     {
                         problem = "the phasing root the build creates has this name";
                     }
                     else if (otherLayer != null)
                     {
-                        problem = NameIs(otherLayer.Name, rootLayerName) && plan.BuildLayers[0].CurrentName != null
+                        problem = rootLayerHas(otherLayer.Name)
                             ? "the phasing root layer already has this name"
                             : "the Max layer " + otherLayer.Name + (otherLayer.Name == target ? string.Empty : " (other capitals)") + " already has this name and keeps it";
                     }
                     else if (otherNode != null)
                     {
-                        problem = rootHelperKey.HasValue && otherNode.Key == rootHelperKey.Value
+                        problem = rootHelperKeys.Contains(otherNode.Key)
                             ? "the phasing root node already has this name"
                             : "the node " + otherNode.Name + " already has this name and keeps it";
-                    }
-                    else if (plan.RootHelperCreated && NameIs(rootHelperName, target))
-                    {
-                        problem = "the phasing root the build creates has this name";
                     }
                     else if (row.Row.Parent != null)
                     {
@@ -802,8 +1221,6 @@ namespace Utilities.Planner
         // The layers and helpers the build ends with, and each row's status.
         private static void BuildEntries(PlannerLayerPlan plan, List<PlannerRowPlan> rows, Dictionary<PlannerLayerRow, PlannerRowPlan> byRow, PlannerSceneModel scene)
         {
-            var rootLayer = plan.BuildLayers[0];
-            var rootHelper = plan.BuildHelpers[0];
             foreach (var row in rows.Where(r => !r.IsRoot))
             {
                 var unit = row.Unit;
@@ -812,9 +1229,11 @@ namespace Utilities.Planner
                 {
                     byRow.TryGetValue(row.Row.Parent, out parentPlan);
                 }
-                var parentLayer = parentPlan != null ? parentPlan.Layer : rootLayer;
-                var parentHelper = parentPlan != null ? parentPlan.Helper : rootHelper;
-                var parentName = parentPlan != null ? parentPlan.Row.Layer : plan.RootName;
+                // A top-level row goes under its root (PlaceTopRows).
+                var root = row.Root ?? plan.FirstRoot;
+                var parentLayer = parentPlan != null ? parentPlan.Layer : root != null ? root.Layer : null;
+                var parentHelper = parentPlan != null ? parentPlan.Helper : root != null ? root.Helper : null;
+                var parentName = parentPlan != null ? parentPlan.Row.Layer : root != null ? root.Name : PlannerSceneModel.DefaultRootName;
 
                 if (row.Problem != null)
                 {
@@ -975,28 +1394,46 @@ namespace Utilities.Planner
         // the problems.
         internal static void WriteReview(PlannerLayerPlan plan, List<PlannerReviewRow> review)
         {
-            if (plan.RootLayerCreated || plan.RootHelperCreated)
+            foreach (var root in plan.Roots)
             {
-                review.Add(new PlannerReviewRow
+                var layerMade = root.Layer.Create;
+                var helperMade = root.Helper.Create;
+                if (layerMade || helperMade)
                 {
-                    Status = "New",
-                    Item = "Phasing root",
-                    Name = plan.RootName,
-                    Change = "Create " + (plan.RootLayerCreated && plan.RootHelperCreated ? "layer and helper" : plan.RootLayerCreated ? "layer" : "helper"),
-                    From = string.Empty,
-                    To = "top of the scene",
-                    Why = plan.RootLayerCreated && plan.RootHelperCreated ? "the scene has no phasing root" : "the phasing root has no " + (plan.RootLayerCreated ? "layer" : "helper") + " of its name"
-                });
+                    review.Add(new PlannerReviewRow
+                    {
+                        Status = "New",
+                        Item = "Phasing root",
+                        Name = root.Name,
+                        Change = "Create " + (layerMade && helperMade ? "layer and helper" : layerMade ? "layer" : "helper"),
+                        From = string.Empty,
+                        To = "top of the scene",
+                        Why = layerMade && helperMade
+                            ? (root.Row != null && root.Row.Row.Kind == PlannerLayerKind.Root ? "new in the Planner's list (a phasing root)" : "the scene has no phasing root")
+                            : "the phasing root has no " + (layerMade ? "layer" : "helper") + " of its name" + (root.Helper.PutOnLayer ? "; its helper is put on it" : string.Empty)
+                    });
+                }
+                if (root.LayerTakenOver)
+                {
+                    review.Add(Line("Change", "Phasing root", root.Name, "Rename layer", root.Layer.CurrentName, root.Layer.FinalName,
+                        "the phasing root had no Max layer of its name: the one its helper sits on is named for it"));
+                }
+                if (!helperMade && root.Helper.Rename)
+                {
+                    review.Add(Line("Change", "Phasing root", root.Name, "Rename", root.Helper.CurrentName, root.Helper.FinalName,
+                        RenameReason(root.Helper.CurrentName, root.Helper.FinalName, root.Row != null ? root.Row.MatchedBy : PlannerMatchKind.Name)));
+                }
             }
             var adopted = new List<PlannerReviewRow>();
             foreach (var row in plan.Rows.Where(r => r.State != PlannerRowState.Problem))
             {
                 var name = row.Row.Layer;
-                var parentName = row.Row.Parent != null ? row.Row.Parent.Layer : plan.RootName;
+                var parentName = row.Row.Parent != null ? row.Row.Parent.Layer : row.Root != null ? row.Root.Name : plan.RootName;
                 if (row.IsRoot)
                 {
-                    // The root's own line (above) says what is created; an existing root only gets the row's Planner ID.
-                    if (row.Helper.StampId != null && !row.Helper.Create)
+                    // The root's own line (above) says what is created; an existing root only gets the row's Planner ID. A row
+                    // of a root's old name has nothing to do.
+                    if (!row.OldRootName && row.Helper.StampId != null && !row.Helper.Create)
                     {
                         adopted.Add(Line("Adopt", "Phasing root", name, "Stamp Planner ID", string.Empty, row.Helper.StampId, "the list's row for the phasing root"));
                     }

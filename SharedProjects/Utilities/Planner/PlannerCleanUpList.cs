@@ -101,8 +101,9 @@ namespace Utilities.Planner
             {
                 plan.Notes.Add(DatesTakenOutNote(list.DatesTakenOut));
             }
-            // The root's own note matters only when the root is made.
-            plan.Notes.AddRange(build.Notes.Where(n => !n.StartsWith(PlannerLayerPlanner.RootNoteStart, StringComparison.Ordinal) || build.RootLayerCreated || build.RootHelperCreated));
+            // A root's own note matters only when the build makes its layer or helper, or names a layer for it.
+            var rootChanged = build.Roots.Any(r => r.Layer.Create || r.Helper.Create || r.LayerTakenOver);
+            plan.Notes.AddRange(build.Notes.Where(n => !n.StartsWith(PlannerLayerPlanner.RootNoteStart, StringComparison.Ordinal) || rootChanged));
 
             var original = state.Original;
             var nodeByKey = original.Nodes.Where(n => n != null).GroupBy(n => n.Key).ToDictionary(g => g.Key, g => g.First());
@@ -252,11 +253,18 @@ namespace Utilities.Planner
                 }
             }
 
-            // A phasing root node with no Max layer of its name gets one.
-            if (build.RootLayerCreated && !build.RootHelperCreated && state.Top != null)
+            // A phasing root node with no Max layer of its name gets one: the layer it sits on, named for it, or a new one.
+            foreach (var root in build.Roots.Where(r => !r.Helper.Create && (r.Layer.Create || r.LayerTakenOver)))
             {
-                state.Top.ListChanged = true;
-                state.Top.Why.Add("its Max layer " + build.BuildLayers[0].FinalName + " is added (the phasing root had none of its name)");
+                NodeWork top;
+                if (!works.TryGetValue(root.Helper.Key.Value, out top))
+                {
+                    continue;
+                }
+                top.ListChanged = true;
+                top.Why.Add(root.LayerTakenOver
+                    ? "its Max layer " + root.Layer.CurrentName + " is named for it (the phasing root had none of its name)"
+                    : "its Max layer " + root.Layer.FinalName + " is added (the phasing root had none of its name)");
             }
 
             // The Max layers: renamed from their names now to the list's in one rename, moved under the list's parents, or made.
@@ -312,13 +320,14 @@ namespace Utilities.Planner
                 var where = h.ParentIndex.HasValue ? build.BuildHelpers[h.ParentIndex.Value].FinalName : null;
                 var why = h.Row == null
                     ? (layer.Create ? "the scene has no phasing root: its layer and helper are made at the top" : "the phasing root's layer " + layer.FinalName + " has no helper of its name: one is made at the top")
-                    : "new in the Planner's list (" + h.Row.Row.KindDisplay.ToLowerInvariant() + ")" + (layer.Create ? string.Empty : "; its Max layer is there already");
+                    : "new in the Planner's list (" + h.Row.Row.KindDisplay.ToLowerInvariant() + ")" + (layer.Create ? string.Empty : layer.Rename ? "; its Max layer " + current(layer.CurrentName) + " is renamed to it" : "; its Max layer is there already");
                 NodeWork work;
                 PlannerLayerNameV2 v2;
                 int phase;
                 if (h.Row == null || h.Row.IsRoot)
                 {
-                    work = state.Top = new NodeWork { Node = node, OldName = string.Empty, NewName = h.FinalName, Item = PhasingFixItem.TopLayer };
+                    work = new NodeWork { Node = node, OldName = string.Empty, NewName = h.FinalName, Item = PhasingFixItem.TopLayer };
+                    state.Tops.Add(work);
                 }
                 else if (h.Row.Row.Kind == PlannerLayerKind.Layer && (v2 = PlannerNaming.ParseLayerNameV2(h.FinalName)) != null)
                 {
@@ -352,9 +361,25 @@ namespace Utilities.Planner
                     state.ListOnly.Add(work);
                 }
                 work.Created = true;
-                work.MaxLayerRenamed = layer.Create;
+                work.MaxLayerRenamed = layer.Create || layer.Rename;
                 work.ListParentKey = parentKey;
                 work.Why.Add(why + (where != null ? "; made under " + where : string.Empty));
+            }
+
+            // The root each work the list made, or moved, ends in: the nearest root above it in the scene as step 1 leaves it.
+            var topKeys = new HashSet<long>(state.Tops.Select(w => w.Node.Key));
+            foreach (var work in state.Groups.Concat(state.Layers).Concat(state.ListOnly).Where(w => w.Root == null || w.ListParentKey.HasValue))
+            {
+                var seen = new HashSet<long>();
+                PlannerSceneNode at;
+                for (var key = work.Node.Key; afterNodes.TryGetValue(key, out at) && seen.Add(key) && at.ParentKey.HasValue; key = at.ParentKey.Value)
+                {
+                    if (topKeys.Contains(at.ParentKey.Value))
+                    {
+                        work.Root = state.Tops.First(w => w.Node.Key == at.ParentKey.Value);
+                        break;
+                    }
+                }
             }
 
             // Each layer work's Max layer, the list's ID, and whether it is still a layer.
@@ -379,7 +404,12 @@ namespace Utilities.Planner
                     NodeWork group;
                     layer.Group = groupsByKey.TryGetValue(layer.ListParentKey.Value, out group) ? group : null;
                     layer.ParentKey = layer.ListParentKey;
-                    layer.UnderRoot = state.Top != null && layer.ListParentKey.Value == state.Top.Node.Key;
+                    var top = state.Tops.FirstOrDefault(t => t.Node.Key == layer.ListParentKey.Value);
+                    layer.UnderRoot = top != null;
+                    if (top != null)
+                    {
+                        layer.Root = top;
+                    }
                 }
                 if (layer.Left || layer.NewName == layer.OldName && unit == null)
                 {
@@ -457,14 +487,20 @@ namespace Utilities.Planner
         // not have (listed: Clean up never deletes).
         private static void ListRows(State state, PlannerLayerPlan build, Dictionary<long, PlannerSceneNode> nodeByKey, Func<string, string> current)
         {
-            var rootName = state.Top != null ? state.Top.NewName : build.RootName;
+            var rootName = state.FirstTop != null ? state.FirstTop.NewName : build.RootName;
+            // The root a unit of the scene is in, by the name the build gives it.
+            Func<PlannerSceneUnit, string> rootOfUnit = u =>
+            {
+                var root = u != null && u.Root != null ? build.Roots.FirstOrDefault(r => r.SceneRoot == u.Root) : null;
+                return root != null ? root.Name : rootName;
+            };
             foreach (var row in build.Rows.Where(r => r.State == PlannerRowState.Problem))
             {
                 state.ListRows.Add(new PlannerCleanUpRow
                 {
                     Status = PlannerCleanUpStatus.Check,
                     Item = row.Row.KindDisplay.Length > 0 ? row.Row.KindDisplay : "Row",
-                    LayerItSitsIn = row.Row.Parent != null ? row.Row.Parent.Layer : rootName,
+                    LayerItSitsIn = row.Row.Parent != null ? row.Row.Parent.Layer : row.Row.Kind == PlannerLayerKind.Root ? string.Empty : row.Root != null ? row.Root.Name : rootOfUnit(row.Unit),
                     CurrentName = UnitName(row.Unit, nodeByKey, current),
                     NewName = PlannerLayerList.Display(row.Row),
                     Why = "the Planner's list has it, but it is not brought in line: " + row.Problem,
@@ -479,11 +515,31 @@ namespace Utilities.Planner
                 {
                     Status = PlannerCleanUpStatus.Check,
                     Item = Capital(unlisted.What),
-                    LayerItSitsIn = work != null ? PlaceOf(state, work) : rootName,
+                    LayerItSitsIn = work != null ? PlaceOf(state, work) : rootOfUnit(unit),
                     CurrentName = UnitName(unit, nodeByKey, current),
                     NewName = unit.Name,
                     Why = "not in the Planner's list: kept, as Clean up never deletes" + (string.IsNullOrEmpty(unlisted.Note) ? string.Empty : "; " + unlisted.Note),
                     NodeKey = unit.Helper != null ? unit.Helper.Key : (long?)null
+                });
+            }
+            // A root of the scene that no Root row of the list names: kept, as Clean up never deletes.
+            foreach (var root in build.UnlistedRoots)
+            {
+                PlannerSceneNode node = null;
+                if (root.Node != null)
+                {
+                    nodeByKey.TryGetValue(root.Node.Key, out node);
+                }
+                state.ListRows.Add(new PlannerCleanUpRow
+                {
+                    Status = PlannerCleanUpStatus.Check,
+                    Item = "Phasing root",
+                    LayerItSitsIn = string.Empty,
+                    CurrentName = node != null ? NameOf(node) : root.Name,
+                    NewName = root.Name,
+                    Why = "the Planner's list names its phasing roots, and not this one: kept, as Clean up never deletes; its groups and layers stay as they are"
+                        + " (a backup copy? delete it)",
+                    NodeKey = node != null ? node.Key : (long?)null
                 });
             }
         }

@@ -113,8 +113,8 @@ namespace Utilities.Tests
             Assert.Equal("Planner naming check (new names): 5 tagged objects in 3 layers; 0 error(s), 0 warning(s), 0 note(s). No naming problems found.", report.Summary());
             Assert.Equal("What the Planner reads: 3 layers by ID, 5 objects scheduled with 4 installs and 3 removals, 1 layer named by references to another layer.", report.Reads());
             Assert.Null(report.CleanUpPointer());
-            // The phasing counts, as the export log has always shown them.
-            Assert.Equal("Phasing counts: 5 layers in the Max layer Work_Phasing, 5 helper nodes under Work_Phasing.", report.Counts.Describe(false));
+            // The phasing counts, as the export log has always shown them: one root, one line, and no note on the roots.
+            Assert.Equal(new[] { "Phasing counts: 5 layers in the Max layer Work_Phasing, 5 helper nodes under Work_Phasing." }, report.CountsLines());
         }
 
         [Fact]
@@ -537,7 +537,7 @@ namespace Utilities.Tests
             Assert.Equal(NamingSeverity.Note, pairing.Severity);
             Assert.Equal("The phasing layers and helper nodes do not pair up: 1 layer has no helper node of the same name (01_03_Gates); 1 helper node has no layer of the same name (01_04_Posts).",
                 pairing.Message);
-            Assert.Equal("Phasing counts: 6 layers in the Max layer Work_Phasing, 6 helper nodes under Work_Phasing.", report.Counts.Describe(false));
+            Assert.Equal(new[] { "Phasing counts: 6 layers in the Max layer Work_Phasing, 6 helper nodes under Work_Phasing." }, report.CountsLines());
         }
 
         [Fact]
@@ -588,6 +588,299 @@ namespace Utilities.Tests
         }
 
         // ---------------------------------------------------------------------------------------------------------
+        // Several phasing roots
+
+        /// <summary>
+        /// Two areas of one schedule, each a phasing root with its own phase numbers (the multiple-roots spec's example):
+        /// North with phases 1 and 2, South with 7 and 8, every Max layer paired with its helper.
+        /// </summary>
+        private sealed class TwoRootScene
+        {
+            public readonly TestScene Scene = new TestScene();
+            public readonly PlannerSceneNode North;
+            public readonly PlannerSceneNode South;
+            public readonly PlannerSceneNode SouthRoads;
+
+            public TwoRootScene()
+            {
+                Scene.Layer("0");
+                North = Scene.Unit("Work_Phasing_North", null, null);
+                var enabling = Scene.Unit("_01_North_Enabling", "Work_Phasing_North", North);
+                Object("IN_Pipe", Scene.Unit("01_01_Drainage", "_01_North_Enabling", enabling));
+                var roads = Scene.Unit("_02_North_Roads", "Work_Phasing_North", North);
+                Object("IN_Binder", Scene.Unit("02_01_Binder", "_02_North_Roads", roads));
+                South = Scene.Unit("Work_Phasing_South", null, null);
+                var southEnabling = Scene.Unit("_07_South_Enabling", "Work_Phasing_South", South);
+                Object("IN_Hoarding_RM_02_01", Scene.Unit("07_01_Hoarding", "_07_South_Enabling", southEnabling));
+                SouthRoads = Scene.Unit("_08_South_Roads", "Work_Phasing_South", South);
+                Object("IN_Binder_02", Scene.Unit("08_01_Binder", "_08_South_Roads", SouthRoads));
+            }
+
+            public PlannerSceneNode Object(string name, PlannerSceneNode layer)
+            {
+                return Scene.Object(name, layer, layer.Name);
+            }
+
+            public NamingReport Check()
+            {
+                return PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(Scene.Snapshot), null);
+            }
+        }
+
+        [Fact]
+        public void TwoRootsAreNotedInNameOrderAndCountedOneLineEachWithATotal()
+        {
+            var report = new TwoRootScene().Check();
+            Clean(report);
+            var roots = report.Issues.Single();
+            Assert.Equal(NamingSeverity.Note, roots.Severity);
+            Assert.Null(roots.Code);
+            Assert.Equal("Phasing roots (2): Work_Phasing_North, Work_Phasing_South.", roots.Message);
+            Assert.Equal(new[] { "Work_Phasing_North", "Work_Phasing_South" }, roots.Names);
+            Assert.Equal(new[]
+            {
+                "Phasing counts: 4 layers in the Max layer Work_Phasing_North, 4 helper nodes under Work_Phasing_North.",
+                "Phasing counts: 4 layers in the Max layer Work_Phasing_South, 4 helper nodes under Work_Phasing_South.",
+                "Phasing counts, 2 roots together: 8 layers, 8 helper nodes."
+            }, report.CountsLines());
+            // What the Planner reads already covers both roots.
+            Assert.Equal("What the Planner reads: 4 layers by ID, 4 objects scheduled with 4 installs and 1 removal, 1 layer named by references to another layer.", report.Reads());
+
+            // A backup copy is a root too, and the first in name order, whatever 3ds Max's own order.
+            var backup = new TwoRootScene();
+            backup.Scene.Unit("Old_Phasing_copy", null, null);
+            Assert.Equal("Phasing roots (3): Old_Phasing_copy, Work_Phasing_North, Work_Phasing_South.", backup.Check().Issues.Single(i => i.Message.StartsWith("Phasing roots", StringComparison.Ordinal)).Message);
+        }
+
+        [Fact]
+        public void TheMaxOnlyRulesRunOnEveryRoot()
+        {
+            // Each slip in the second root in name order, which the check used to pass over.
+            var two = new TwoRootScene();
+            two.Scene.Layer("08_02_Kerbs_05-10-26", "_08_South_Roads");
+            two.Object("IN_Kerb", two.Scene.Helper("08_02_Kerbs", two.SouthRoads, "08_02_Kerbs_05-10-26"));
+            two.Scene.Unit("08_03_Gates", "_08_South_Roads", two.SouthRoads).Hidden = true;
+            two.Scene.Unit("09_Future_Works", "Work_Phasing_South", two.South);
+            two.Scene.Layer("08_04_Posts", "_08_South_Roads");
+            var report = two.Check();
+            Assert.Equal("1 Max layer name in the phasing tree still carries dates or TBC: 08_02_Kerbs_05-10-26. Clean up scene graph\u2026 on the Schedule tab takes them out, with their helpers'.",
+                report.Issues.Single(i => i.Subject == "08_02_Kerbs_05-10-26" && i.Severity == NamingSeverity.Warning).Message);
+            Assert.Equal(new[] { "08_03_Gates" }, report.Issues.Single(i => i.Message.Contains("will not reach the Planner")).Names);
+            Assert.Equal("Helper '09_Future_Works' is not a layer with the new names (its ID needs two or three numbers), so the Planner makes no folder for it.",
+                About(report, "09_Future_Works").Message);
+            Assert.Equal("1 Max layer and its helper are named differently: '08_02_Kerbs_05-10-26' and '08_02_Kerbs'. On the new names a layer and its helper share one name, <ID>_<Name>, "
+                + "and the Planner reads only the helper's.", report.Issues.Single(i => i.Message.Contains("named differently")).Message);
+            // The pairing note is the root's own, and says which root.
+            var pairing = report.Issues.Single(i => i.Message.Contains("do not pair up"));
+            Assert.Equal("Root 'Work_Phasing_South': The phasing layers and helper nodes do not pair up: 1 layer has no helper node of the same name (08_04_Posts).", pairing.Message);
+            Assert.Equal("Work_Phasing_South", pairing.Subject);
+            Assert.Equal(new[]
+            {
+                "Phasing counts: 4 layers in the Max layer Work_Phasing_North, 4 helper nodes under Work_Phasing_North.",
+                "Phasing counts: 8 layers in the Max layer Work_Phasing_South, 7 helper nodes under Work_Phasing_South.",
+                "Phasing counts, 2 roots together: 12 layers, 11 helper nodes."
+            }, report.CountsLines());
+        }
+
+        [Fact]
+        public void ALayerOrAPhaseGroupOfOneNameInTwoRootsIsAnErrorAndSharedIdsNameTheRoots()
+        {
+            // A backup root merged in from another file: the originals' names, its helpers on its own Max layer.
+            var v2 = new V2Scene();
+            var backup = v2.Scene.Unit("Old_Phasing_copy", null, null);
+            var zone = v2.Scene.Helper("_01_Zone", backup, "Old_Phasing_copy");
+            v2.Object("RM_Old_Fence_B", v2.Scene.Helper("01_01_Strip_Out", zone, "Old_Phasing_copy"));
+            v2.Object("IN_Kerb_D", v2.Scene.Helper("01_02_Kerb_Install", zone, "Old_Phasing_copy"));
+            // A copy inside one root is still the same layer.
+            v2.Object("IN_Copy_Kerb", v2.Scene.Helper("02_01_Reinstate", v2.Zone2, "02_01_Reinstate"));
+            var report = v2.Check();
+
+            var layer = report.Issues.Single(i => i.Subject == "01_01_Strip_Out");
+            Assert.Equal(NamingSeverity.Error, layer.Severity);
+            Assert.Null(layer.Code);
+            Assert.Equal(new[] { "01_01_Strip_Out", "01_01_Strip_Out (1)" }, layer.Names);
+            Assert.Equal("Helper '01_01_Strip_Out' is in 2 roots, Old_Phasing_copy and Work_Phasing, and the Planner reads it as one layer, with one folder. Give each root's layers IDs of their own. "
+                + "Clean up scene graph\u2026 on the Schedule tab asks which of Old_Phasing_copy and Work_Phasing keeps the ID, and renumbers the other root's.", layer.Message);
+            var group = report.Issues.Single(i => i.Subject == "_01_Zone");
+            Assert.Equal(NamingSeverity.Error, group.Severity);
+            Assert.Null(group.Code);
+            Assert.Equal(new[] { "_01_Zone", "_01_Zone (1)" }, group.Names);
+            Assert.Equal("Phase group '_01_Zone' is in 2 roots, Old_Phasing_copy and Work_Phasing, and the Planner makes one folder of it, holding the layers of each. "
+                + "Give each root phase groups of its own, with phase numbers no other root uses.", group.Message);
+            var shared = Single(report, PlannerNamingValidator.SharedIdCode, "01_02_Kerbs");
+            Assert.Equal(new[] { "01_02_Kerbs", "01_02_Kerb_Install" }, shared.Names);
+            Assert.Equal("Helpers '01_02_Kerbs' and '01_02_Kerb_Install' share the layer ID 01_02 but not the name after it: the Planner reads them as one layer, with one folder named after the first. "
+                + "They sit in 2 roots: give each layer its own ID. Clean up scene graph\u2026 on the Schedule tab asks which of Old_Phasing_copy and Work_Phasing keeps the ID, "
+                + "and renumbers the other root's.", shared.Message);
+            // One error for each: the shared ID is not told again as a layer in two roots, and the copy in one root, and the
+            // phase group in one root, are none.
+            Assert.Equal(3, report.Errors);
+            Assert.DoesNotContain(report.Issues, i => i.Names.Contains("02_01_Reinstate (1)") || i.Names.Contains("_02_Zone"));
+            Assert.Equal("Phasing roots (2): Old_Phasing_copy, Work_Phasing.", report.Issues.Single(i => i.Message.StartsWith("Phasing roots", StringComparison.Ordinal)).Message);
+            // Not Clean up's to convert: it renumbers only on an answer (R23), and never a phase group (R24).
+            Assert.Null(report.CleanUpPointer());
+        }
+
+        [Fact]
+        public void ARootWithNoMaxLayerOfItsNameIsWarnedAndTheChecksPassItOver()
+        {
+            // The root's helper on a Max layer of another name: no fallback any more, so the root has no Max layer.
+            var scene = new TestScene();
+            scene.Layer("0");
+            scene.Layer("Phasing_Layers");
+            var root = scene.Helper("Work_Phasing", null, "Phasing_Layers");
+            var zone = scene.Unit("_01_Zone", "Phasing_Layers", root);
+            var strip = scene.Unit("01_01_Strip_Out", "_01_Zone", zone);
+            scene.Object("IN_Fence", strip, strip.Name);
+            scene.Layer("01_02_Kerbs_05-10-26", "_01_Zone");
+            scene.Object("IN_Kerb", scene.Helper("01_02_Kerbs", zone, "01_02_Kerbs_05-10-26"), "01_02_Kerbs_05-10-26");
+            var report = PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(scene.Snapshot), null);
+            var warning = report.Issues.Single(i => i.Severity == NamingSeverity.Warning);
+            Assert.Null(warning.Code);
+            Assert.Equal(new[] { "Work_Phasing" }, warning.Names);
+            Assert.Equal("Phasing root 'Work_Phasing' has no Max layer of its name (its helper sits on 'Phasing_Layers'), so Link objects to their helpers and the export check's "
+                + "Max layer checks pass it over, and Add layer adds nothing in it. Clean up scene graph\u2026 on the Schedule tab gives it one; or rename the Max layer 'Phasing_Layers', "
+                + "which holds its groups, to 'Work_Phasing'.", warning.Message);
+            Assert.Equal("1 name can be converted by Clean up scene graph\u2026 on the Schedule tab.", report.CleanUpPointer());
+            // Its dated Max layer, and its layer and helper named apart, are passed over; the layer it sits on is no other root.
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("01_02_Kerbs_05-10-26") || i.Message.Contains("not a phasing root"));
+            Assert.Equal(new[] { "Phasing counts: no Max layer named Work_Phasing to count layers in, 3 helper nodes under Work_Phasing." }, report.CountsLines());
+
+            // Read from a GLB, with no Max layer known at all: nothing to warn.
+            var glb = new TestScene();
+            var top = glb.Helper("Work_Phasing", null);
+            glb.Object("IN_Fence", glb.Helper("01_01_Strip_Out", glb.Helper("_01_Zone", top)), null);
+            Clean(PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(glb.Snapshot), null));
+        }
+
+        [Fact]
+        public void ARootWithNoMaxLayerOnALayerThatMustKeepItsNameIsToldToMakeANewOne()
+        {
+            // A root helper made by hand lands on whichever layer is current. Renaming that layer would take it from another
+            // root, from the units on it, or from 3ds Max, which never renames layer 0: the root gets a new layer instead (R25).
+            Func<TestScene, string, string> fix = (built, name) =>
+                PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(built.Snapshot), null).Issues.Single(i => i.Subject == name && i.Message.Contains("has no Max layer")).Message;
+            const string Told = "so Link objects to their helpers and the export check's Max layer checks pass it over, and Add layer adds nothing in it. Clean up scene graph\u2026 on the "
+                + "Schedule tab gives it one; or make a top-level Max layer named '{0}', put the root's helper on it and its groups' Max layers under it.";
+
+            // On another root's Max layer.
+            var two = new TestScene();
+            two.Layer("0");
+            var north = two.Helper("Work_Phasing_North", null, "Work_Phasing_South");
+            var enabling = two.Unit("_01_North_Enabling", null, north);
+            two.Object("IN_Pipe", two.Unit("01_01_Drainage", "_01_North_Enabling", enabling), "01_01_Drainage");
+            var south = two.Unit("Work_Phasing_South", null, null);
+            var southEnabling = two.Unit("_07_South_Enabling", "Work_Phasing_South", south);
+            two.Object("IN_Hoarding", two.Unit("07_01_Hoarding", "_07_South_Enabling", southEnabling), "07_01_Hoarding");
+            Assert.Equal("Phasing root 'Work_Phasing_North' has no Max layer of its name (its helper sits on 'Work_Phasing_South'), " + string.Format(Told, "Work_Phasing_North"),
+                fix(two, "Work_Phasing_North"));
+
+            // On layer 0.
+            var zero = new TestScene();
+            zero.Layer("0");
+            var root = zero.Helper("Work_Phasing", null, "0");
+            var zone = zero.Unit("_01_Zone", null, root);
+            zero.Object("IN_Fence", zero.Unit("01_01_Strip_Out", "_01_Zone", zone), "01_01_Strip_Out");
+            Assert.Equal("Phasing root 'Work_Phasing' has no Max layer of its name (its helper sits on '0'), " + string.Format(Told, "Work_Phasing"), fix(zero, "Work_Phasing"));
+
+            // On its own phase group's Max layer.
+            var own = new TestScene();
+            own.Layer("0");
+            own.Layer("_01_Zone");
+            var ownRoot = own.Helper("Work_Phasing", null, "_01_Zone");
+            var ownZone = own.Helper("_01_Zone", ownRoot);
+            own.Object("IN_Fence", own.Unit("01_01_Strip_Out", "_01_Zone", ownZone), "01_01_Strip_Out");
+            Assert.Equal("Phasing root 'Work_Phasing' has no Max layer of its name (its helper sits on '_01_Zone'), " + string.Format(Told, "Work_Phasing"), fix(own, "Work_Phasing"));
+
+            // On a Max layer that holds another root's: renamed, it would hold that root inside this one's.
+            var above = new TestScene();
+            above.Layer("0");
+            above.Layer("Phasing_Layers");
+            var aboveNorth = above.Helper("Work_Phasing_North", null, "Phasing_Layers");
+            above.Unit("_01_North_Enabling", null, aboveNorth);
+            above.Layer("Work_Phasing_South", "Phasing_Layers");
+            var aboveSouth = above.Helper("Work_Phasing_South", null);
+            above.Unit("_07_South_Enabling", "Work_Phasing_South", aboveSouth);
+            var report = PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(above.Snapshot), null);
+            Assert.Equal("Phasing root 'Work_Phasing_North' has no Max layer of its name (its helper sits on 'Phasing_Layers'), " + string.Format(Told, "Work_Phasing_North"),
+                report.Issues.Single(i => i.Subject == "Work_Phasing_North" && i.Message.Contains("has no Max layer")).Message);
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("not a phasing root"));
+        }
+
+        [Fact]
+        public void TwoRootHelpersOfOneNameAreWarnedAndTheirMaxLayerIsCountedOnceInTheTotal()
+        {
+            // A backup merged in with File > Merge under the original's name: both roots pair with the one Max layer.
+            var v2 = new V2Scene();
+            var copy = v2.Scene.Helper("Work_Phasing", null, "Work_Phasing");
+            var zone = v2.Scene.Helper("_01_Zone", copy, "_01_Zone");
+            v2.Object("RM_Old_Fence_B", v2.Scene.Helper("01_01_Strip_Out", zone, "01_01_Strip_Out"));
+            var report = v2.Check();
+            var twins = report.Issues.Single(i => i.Message.Contains("have one name"));
+            Assert.Equal(NamingSeverity.Warning, twins.Severity);
+            Assert.Null(twins.Code);
+            Assert.Equal("Work_Phasing", twins.Subject);
+            Assert.Equal(new[] { "Work_Phasing", "Work_Phasing" }, twins.Names);
+            Assert.Equal("Phasing root helpers 'Work_Phasing' and 'Work_Phasing' have one name, so they pair with one Max layer and neither this check nor Clean up scene graph\u2026 "
+                + "on the Schedule tab can tell them apart. Rename one, for example to Old_Phasing_copy, before Clean up.", twins.Message);
+            Assert.Equal(new[]
+            {
+                "Phasing counts: 5 layers in the Max layer Work_Phasing, 5 helper nodes under Work_Phasing.",
+                "Phasing counts: 5 layers in the Max layer Work_Phasing, 2 helper nodes under Work_Phasing.",
+                "Phasing counts, 2 roots together: 5 layers, 7 helper nodes."
+            }, report.CountsLines());
+
+            // Roots of other names are no twins.
+            Assert.DoesNotContain(new TwoRootScene().Check().Issues, i => i.Message.Contains("have one name"));
+        }
+
+        [Fact]
+        public void ATopLevelPhasingMaxLayerWithNoRootHelperOfItsNameIsWarnedAsNoRoot()
+        {
+            var v2 = new V2Scene();
+            v2.Scene.Layer("Old_Phasing");
+            v2.Scene.Layer("01_09_Old_Works", "Old_Phasing");
+            // A layer's name is no root's, even with "phasing" in it.
+            v2.Scene.Layer("01_05_Phasing_Signs");
+            var report = v2.Check();
+            var warning = About(report, "Old_Phasing");
+            Assert.Equal(NamingSeverity.Warning, warning.Severity);
+            Assert.Null(warning.Code);
+            Assert.Equal("Max layer 'Old_Phasing' sits at the top with \"phasing\" in its name, but no phasing root helper has its name, so it is not a phasing root and the Max layers "
+                + "under it are outside the phasing tree. To make it a root, add a top-level Dummy of the same name; else rename the layer without \"phasing\".", warning.Message);
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("01_05_Phasing_Signs") || i.Message.StartsWith("Phasing roots", StringComparison.Ordinal));
+            Assert.Equal(new[] { "Phasing counts: 5 layers in the Max layer Work_Phasing, 5 helper nodes under Work_Phasing." }, report.CountsLines());
+
+            // A root's Max layer under another layer: the layers above it hold the phasing tree, and are not warned.
+            var nested = new TestScene();
+            nested.Layer("0");
+            nested.Layer("Phasing_Layers");
+            nested.Layer("Work_Phasing", "Phasing_Layers");
+            var top = nested.Helper("Work_Phasing", null);
+            var nestedZone = nested.Unit("_01_Zone", "Work_Phasing", top);
+            var nestedStrip = nested.Unit("01_01_Strip_Out", "_01_Zone", nestedZone);
+            nested.Object("IN_Fence", nestedStrip, nestedStrip.Name);
+            report = PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(nested.Snapshot), null);
+            Clean(report);
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("Phasing_Layers"));
+            Assert.Equal(new[] { "Phasing counts: 2 layers in the Max layer Work_Phasing, 2 helper nodes under Work_Phasing." }, report.CountsLines());
+
+            // With no root helper in the scene, today's rule: the one root is the first top-level phasing layer, and another
+            // such layer is not warned. Nothing is counted, as before.
+            var scene = new TestScene();
+            scene.Layer("0");
+            scene.Layer("Work_Phasing");
+            scene.Layer("Road_Phasing");
+            var zone = scene.Unit("_01_Zone", "Work_Phasing", null);
+            var strip = scene.Unit("01_01_Strip_Out", "_01_Zone", zone);
+            scene.Object("IN_Fence", strip, strip.Name);
+            report = PlannerNamingValidator.ValidateV2(new PlannerScheduleModel(scene.Snapshot), null);
+            Clean(report);
+            Assert.DoesNotContain(report.Issues, i => i.Message.Contains("Road_Phasing"));
+            Assert.Empty(report.CountsLines());
+        }
+
+        // ---------------------------------------------------------------------------------------------------------
         // Parity with the Planner
 
         private static List<string> Strings(JToken token)
@@ -631,6 +924,7 @@ namespace Utilities.Tests
             list("scheduled", read.Matched, Strings(planner["matched"]));
             // Untagged objects as a set: a GLB mesh of several materials reaches the Planner's index as a node of its pieces,
             // after the meshes, where the scene (one mesh per 3ds Max object) has it among them; only this list's order shows it.
+            // Neither side lists a phasing root: it is never an object (R19).
             list("untagged", read.Skipped.OrderBy(s => s, StringComparer.Ordinal), Strings(planner["skipped"]).OrderBy(s => s, StringComparer.Ordinal));
 
             // The report: each of the Planner's items once, as code, severity and name.
@@ -674,10 +968,7 @@ namespace Utilities.Tests
             }
             lines.Add(report.Summary());
             lines.Add(report.Reads());
-            if (report.Counts != null)
-            {
-                lines.Add(report.Counts.Describe(false));
-            }
+            lines.AddRange(report.CountsLines());
             return string.Join("\n", lines.ToArray());
         }
 

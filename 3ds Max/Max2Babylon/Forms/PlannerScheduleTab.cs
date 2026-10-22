@@ -225,8 +225,8 @@ namespace Max2Babylon
                 "Read every object as the Planner's Generate from model would: each row's IN and RM are the objects whose install or removal its layer holds, "
                 + "by their IN_ / RM_ tags and the layer IDs the tags name. The dates only time them. Waits for a scene on the old names to be cleaned up.");
             SetUpButton(addLayerButton, "Add layer\u2026", AddLayerButton_Click,
-                "Add a layer (its ID and name) or a phase group, with its helper, under the phasing root or a phase group, chosen in the dialog's Under: it "
-                + "starts on the chosen row's phase group, or on the phasing root with no row chosen (Ctrl+click the chosen row to choose none). No date: the "
+                "Add a layer (its ID and name) or a phase group, with its helper, under a phasing root or a phase group, chosen in the dialog's Under: it "
+                + "starts on the chosen row's phase group or root, or on the (first) phasing root with no row chosen (Ctrl+click the chosen row to choose none). No date: the "
                 + "Planner gives every date, and the layer shows TBC until its list has it. It reaches the Planner with the next GLB. Waits for a scene on the "
                 + "old names to be cleaned up.");
             buttons.Controls.Add(importButton);
@@ -1514,7 +1514,7 @@ namespace Max2Babylon
             ShowNotes(notes);
 
             treeRows = PlannerScheduleRows.Tree(list, plan, sceneModel, added, filled ? schedule : null, sceneNaming);
-            unlistedRows = PlannerScheduleRows.Unlisted(plan, added, filled ? schedule : null, sceneNaming);
+            unlistedRows = PlannerScheduleRows.Unlisted(plan, added, filled ? schedule : null, sceneNaming, sceneModel);
             var extra = filled ? PlannerScheduleRows.Extra(treeRows.Concat(unlistedRows), schedule) : new List<PlannerScheduleRow>();
             // The Gantt charts the same rows, in the same order; a row under a collapsed group is hidden in both. A scene
             // layer the list does not have whose work the Planner reads gets a row after the list's too (it stays in the list
@@ -1532,7 +1532,8 @@ namespace Max2Babylon
                 line.CreateCells(grid, row.Name, row.Kind, row.Start, row.Finish, tbc != null ? "Yes" : string.Empty, Count(row, true), Count(row, false), row.Status);
                 // The tree: each level indented, room for a fold triangle before every name.
                 line.Cells[0].Style.Padding = new Padding(TextIndent(row.Depth), 0, 0, 0);
-                if (row.Kind == "Group")
+                // Groups and phasing roots in bold.
+                if (row.IsGroup)
                 {
                     line.Cells[0].Style.Font = boldFont;
                 }
@@ -1562,7 +1563,7 @@ namespace Max2Babylon
             else
             {
                 // The layers added in Max that the list does not have yet show in the tree, not here; the summary above counts them.
-                unlistedLabel.Text = PlannerScheduleRows.UnlistedText(unlistedRows.Count, Math.Max(0, plan.NotInList.Count - unlistedRows.Count));
+                unlistedLabel.Text = PlannerScheduleRows.UnlistedText(unlistedRows.Count, Math.Max(0, plan.NotInList.Count - (unlistedRows.Count - plan.UnlistedRoots.Count)));
                 unlistedGrid.Rows.AddRange(unlistedRows.Select(r =>
                 {
                     var line = new DataGridViewRow { Tag = r };
@@ -2626,16 +2627,16 @@ namespace Max2Babylon
 
         // Add layer
 
-        // A layer (its ID and name, no date: D20) or a phase group under the phasing root or a phase group, chosen in the
-        // dialog's Under, which starts on the chosen row's phase group (the phasing root with no row chosen), after a review,
-        // in one undo record. On a scene on the old names it waits for Clean up (D23).
+        // A layer (its ID and name, no date: D20) or a phase group under a phasing root or a phase group, chosen in the
+        // dialog's Under, which starts on the chosen row's phase group or root (the first root with no row chosen), after a
+        // review, in one undo record. On a scene on the old names it waits for Clean up (D23).
         private void AddLayerButton_Click(object sender, EventArgs e)
         {
             if (!MayChange())
             {
                 return;
             }
-            // The row chosen (none: the phasing root), by its layer's name: the reading below rebuilds both lists and chooses
+            // The row chosen (none: the first phasing root), by its layer's name: the reading below rebuilds both lists and chooses
             // it again (FillLists).
             var chosenName = currentRow != null ? currentRow.LayerName ?? currentRow.Name : null;
             // The scene as it is now (an Edit > Undo since the last reading may have put it back on the old names), as Fill does.
@@ -2649,7 +2650,7 @@ namespace Max2Babylon
             if (chosenName != null && (row == null || !string.Equals(row.LayerName ?? row.Name, chosenName, StringComparison.Ordinal)))
             {
                 MessageBox.Show(this, chosenName + " is not there any more (the scene has changed), so no row is chosen now: press Add layer again to add under "
-                    + "the phasing root or a phase group, or choose a row first.", "Add layer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    + "a phasing root or a phase group, or choose a row first.", "Add layer", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             string chosenLayer = null;
@@ -2658,6 +2659,12 @@ namespace Max2Babylon
                 if (row.Source == PlannerScheduleRowSource.Outside)
                 {
                     chosenLayer = row.LayerName;
+                }
+                else if (row.Root != null)
+                {
+                    // A phasing root's row stands for the root's Max layer, or, while the root has no Max layer of its name, for
+                    // the root by its name: Add layer makes the root's missing Max layer, as it does for the first root.
+                    chosenLayer = row.Root.Layer != null ? row.Root.Layer.Name : row.Root.Name;
                 }
                 else if (row.LayerName == null || row.Unit == null || row.Unit.Layer == null)
                 {
@@ -2670,7 +2677,7 @@ namespace Max2Babylon
                     chosenLayer = row.Unit.Layer.Name;
                 }
             }
-            // Under: the phasing root and the phase groups that can take a layer (the Planner files a layer only in the phase
+            // Under: the phasing roots and the phase groups that can take a layer (the Planner files a layer only in the phase
             // group above it, or at the top), starting on the chosen row's, with a note when that is not the row itself.
             var parents = PlannerAddLayer.Parents(sceneModel);
             string note;

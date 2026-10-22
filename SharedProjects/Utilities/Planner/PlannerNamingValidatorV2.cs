@@ -43,19 +43,25 @@ namespace Utilities.Planner
         ///
         /// and what only 3ds Max shows, as the old names' check has it where the rule is the same:
         ///
-        ///   Error   - text after a space that makes two own names one;
+        ///   Error   - text after a space that makes two own names one, a layer's helpers of one name in two phasing roots
+        ///             and phase groups of one name in two roots (the Planner reads one layer, or makes one folder, R16);
         ///   Warning - a layer helper that does not reach the Planner (hidden, or not exported, with nothing exported under it),
         ///             dates or TBC in a Max layer's name, a helper in the phasing tree led by a number that is no layer ID,
-        ///             a space in a tagged object's name (as today), two exported groups with one name (as today);
-        ///   Note    - a reference to a layer only the imported list has (planned in the Planner, not built yet), an install
-        ///             at the end only (Kerb_IN), an untagged object in a layer (as today), a layer that holds no object (the
-        ///             Planner makes a folder for it all the same), a layer ID written another way than the current one, a Max
-        ///             layer and its helper named differently, layers and helpers that do not pair (as today).
+        ///             a space in a tagged object's name (as today), two exported groups with one name (as today), two root
+        ///             helpers of one name, a root with no Max layer of its name (R1, R25), a top-level Max layer with
+        ///             "phasing" in its name that no root helper is named like and that holds no root's Max layer, in a scene
+        ///             with root helpers (it is not a root, R9);
+        ///   Note    - the roots, in a scene with two or more (R1), a reference to a layer only the imported list has (planned
+        ///             in the Planner, not built yet), an install at the end only (Kerb_IN), an untagged object in a layer (as
+        ///             today), a layer that holds no object (the Planner makes a folder for it all the same), a layer ID written
+        ///             another way than the current one, a Max layer and its helper named differently, layers and helpers
+        ///             that do not pair (as today, for each root).
         ///
-        /// Layer checks of 3ds Max's own (Max layers, helpers left out of the export, pairing) run only in the phasing tree, so
-        /// Max's layer 0 is never checked. The report also counts what the Planner reads (<see cref="NamingReport.Reads"/>) and
-        /// the names Clean up scene graph converts (<see cref="NamingReport.CleanUpPointer"/>). Errors first, then warnings,
-        /// then notes, each in the order found.
+        /// Layer checks of 3ds Max's own (Max layers, helpers left out of the export, pairing) run in every root's tree and
+        /// only there, so Max's layer 0 is never checked. The report also counts what the Planner reads
+        /// (<see cref="NamingReport.Reads"/>), the phasing layers and helpers of each root (<see cref="NamingReport.CountsLines"/>)
+        /// and the names Clean up scene graph converts (<see cref="NamingReport.CleanUpPointer"/>). Errors first, then
+        /// warnings, then notes, each in the order found.
         /// </summary>
         /// <param name="model">The scene as the export hands it to the Planner.</param>
         /// <param name="listLayers">
@@ -69,6 +75,7 @@ namespace Utilities.Planner
             var read = PlannerSchedule.ReadNamesV2(model, listIds);
             var report = new NamingReport { Naming = PlannerNamingKind.New, V2 = read };
             var scene = model.Scene;
+            CheckRootsV2(scene, report);
 
             report.TaggedObjects = read.Matched.Count + read.Unfiled.Count;
             report.UnfiledObjects = read.Unfiled.Count;
@@ -96,6 +103,7 @@ namespace Utilities.Planner
             CheckLayersLeftOutV2(read, model, report);
             CheckUnfiledV2(read, model, report);
             CheckDuplicatesV2(read, model, report);
+            CheckAcrossRootsV2(read, model, report);
             NoteReferencesAndEndsV2(read, listIds, report);
             NoteUntaggedV2(read, report, told);
             CheckPairingV2(scene, report);
@@ -123,6 +131,97 @@ namespace Utilities.Planner
         private static string AllQuoted(IList<string> names)
         {
             return Joined(names.Select(n => "'" + n + "'").ToList());
+        }
+
+        /// <summary>
+        /// The phasing roots (R1, R9): in a scene with two or more, a note naming them in name order, so a backup copy, which
+        /// is a root too, is easy to spot, and a warning where two root helpers have one name (a copy merged in under the
+        /// original's name), as both pair with the one Max layer of that name and nothing can tell them apart. A root helper
+        /// with no Max layer of exactly its name is warned: Link objects to their helpers, Add layer and the Max layer checks
+        /// here pass it over until Clean up scene graph gives it one (R25). The warning offers to rename the Max layer the
+        /// helper sits on only where that is safe, else to make a new one. In a scene with root helpers, a top-level Max layer
+        /// with "phasing" in its name that no root helper is named like, and that holds no root's Max layer, is not a root,
+        /// and is warned (the layer a root helper with no layer of its own sits on is in that root's warning instead). With no
+        /// Max layer known at all, as for a scene read from a GLB, no Max layer case is checked.
+        /// </summary>
+        private static void CheckRootsV2(PlannerSceneModel scene, NamingReport report)
+        {
+            var roots = scene.PhasingRoots;
+            if (roots.Count > 1)
+            {
+                var names = roots.Select(r => r.Name).ToList();
+                AddV2(report, NamingSeverity.Note, names[0], string.Format(CultureInfo.InvariantCulture, "Phasing roots ({0}): {1}.", roots.Count, string.Join(", ", names.ToArray())),
+                    null, names);
+            }
+            foreach (var twins in roots.Where(r => r.Node != null).GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            {
+                var names = twins.Select(r => r.Name).ToList();
+                AddV2(report, NamingSeverity.Warning, names[0], string.Format(CultureInfo.InvariantCulture,
+                    "Phasing root helpers {0} have one name, so they pair with one Max layer and neither this check nor Clean up scene graph\u2026 on the Schedule tab can tell them apart. "
+                    + "Rename one, for example to Old_Phasing_copy, before Clean up.", AllQuoted(names)), null, names);
+            }
+            if (scene.Layers.Count == 0)
+            {
+                return;
+            }
+            // The Max layers above a root's own hold that root's tree: none is a root, nor a Max layer to give another root.
+            var aboveRoots = new HashSet<string>(roots.Where(r => r.Layer != null).SelectMany(r => scene.LayerAncestors(r.Layer)).Select(l => l.Name),
+                StringComparer.OrdinalIgnoreCase);
+            var sitOn = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // The Max layers Clean up would name for a root that has none of its name: no other root.
+            var homes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in roots.Where(r => r.Node != null && r.Layer == null))
+            {
+                var on = root.Node.LayerName;
+                if (on != null)
+                {
+                    sitOn.Add(on);
+                }
+                // The Max layer Clean up would name for the root, as it does (R25): the one its groups sit in, holding nothing
+                // else (PlannerLayerPlanner.TakeableLayer); else Clean up makes a new one.
+                var home = PlannerLayerPlanner.TakeableLayer(scene, root);
+                if (home != null)
+                {
+                    homes.Add(home.Name);
+                }
+                var fix = home != null
+                    ? "or rename the Max layer '" + home.Name + "', which holds its groups, to '" + root.Name + "'."
+                    : "or make a top-level Max layer named '" + root.Name + "', put the root's helper on it and its groups' Max layers under it.";
+                AddV2(report, NamingSeverity.Warning, root.Name, string.Format(CultureInfo.InvariantCulture,
+                    "Phasing root '{0}' has no Max layer of its name{1}, so Link objects to their helpers and the export check's Max layer checks pass it over, and Add layer adds nothing in it. "
+                    + "Clean up scene graph\u2026 on the Schedule tab gives it one; {2}",
+                    root.Name, on != null ? " (its helper sits on '" + on + "')" : string.Empty, fix), null, new[] { root.Name });
+                report.CleanUp.Add(root.Name);
+            }
+            if (!roots.Any(r => r.Node != null))
+            {
+                return;
+            }
+            foreach (var layer in scene.Layers.Where(l => l.ParentName == null && l.Name.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0
+                && !PlannerSceneModel.ReadsAsPhasingName(l.Name) && !sitOn.Contains(l.Name) && !homes.Contains(l.Name) && !aboveRoots.Contains(l.Name)
+                && !roots.Any(r => r.Node != null && string.Equals(r.Node.Name, l.Name, StringComparison.OrdinalIgnoreCase))))
+            {
+                AddV2(report, NamingSeverity.Warning, layer.Name, string.Format(CultureInfo.InvariantCulture,
+                    "Max layer '{0}' sits at the top with \"phasing\" in its name, but no phasing root helper has its name, so it is not a phasing root and the Max layers under it "
+                    + "are outside the phasing tree. To make it a root, add a top-level Dummy of the same name; else rename the layer without \"phasing\".", layer.Name),
+                    null, new[] { layer.Name });
+            }
+        }
+
+        // The roots, in name order, that the nodes of these names (as the Planner reads them) sit in; a node outside every
+        // root counts for none.
+        private static List<PlannerPhasingRoot> RootsOf(PlannerSceneNamesV2 read, PlannerScheduleModel model, IEnumerable<string> names)
+        {
+            var scene = model.Scene;
+            var found = new HashSet<PlannerPhasingRoot>(names.Select(n => scene.RootOfNode(SceneNodeOf(read, model, n))).Where(r => r != null));
+            return scene.PhasingRoots.Where(found.Contains).ToList();
+        }
+
+        // Where two or more roots share a layer ID (R23): the roots, and what Clean up scene graph does about it.
+        private static string SharedAcrossRootsText(List<PlannerPhasingRoot> roots)
+        {
+            return string.Format(CultureInfo.InvariantCulture, "Clean up scene graph\u2026 on the Schedule tab asks which of {0} keeps the ID, and renumbers {1}.",
+                Joined(roots.Select(r => r.Name).ToList()), roots.Count == 2 ? "the other root's" : "the other roots'");
         }
 
         /// <summary>
@@ -311,8 +410,8 @@ namespace Utilities.Planner
         /// <summary>
         /// The layer names, as the Planner lists them (its layer issues): dates or TBC in a helper's name (gathered), a space in
         /// it, nothing after its ID, and a number-led node that is no layer ID holding tagged objects, whose objects are not
-        /// scheduled. Then what only 3ds Max shows, in the phasing tree: dates or TBC in a Max layer's name, a helper led by a
-        /// number that is no layer ID where layers go (directly under the phasing root or a phase group), holding no tagged
+        /// scheduled. Then what only 3ds Max shows, in every root's tree: dates or TBC in a Max layer's name, a helper led by a
+        /// number that is no layer ID where layers go (directly under a phasing root or a phase group), holding no tagged
         /// object, so the Planner makes no folder for it, and a layer ID written another way than the current one.
         /// </summary>
         private static void CheckLayerNamesV2(PlannerSceneNamesV2 read, PlannerScheduleModel model, NamingReport report)
@@ -346,7 +445,7 @@ namespace Utilities.Planner
                     pair.Key, PlannerSchedule.NotALayerText(pair.Key), PhasingFixScript.Count(pair.Value, "tagged object is", "tagged objects are")), NotALayerCode, new[] { pair.Key });
             }
 
-            // 3ds Max's own: the layers' Max layers in the phasing tree, whose names Clean up keeps equal to their helpers' and
+            // 3ds Max's own: the layers' Max layers in every root's tree, whose names Clean up keeps equal to their helpers' and
             // takes the dates out of. A phase group's or another group's name is the Planner's folder name, kept as written
             // (Clean up never takes dates out of it), so it is not pointed to Clean up.
             var helperNames = new HashSet<string>(dated, StringComparer.OrdinalIgnoreCase);
@@ -367,7 +466,7 @@ namespace Utilities.Planner
                 var node = SceneNodeOf(read, model, name);
                 var parent = node != null ? scene.ParentOf(node) : null;
                 if (node == null || !scene.TreeNodes.Contains(node.Key) || !node.IsHelper || scene.IsObjectGroup(node) || parent == null
-                    || !(parent.Key == scene.RootNode.Key || PlannerSchedule.ParsePhaseGroup(parent.Name) != null))
+                    || !(scene.IsPhasingRootNode(parent) || PlannerSchedule.ParsePhaseGroup(parent.Name) != null))
                 {
                     continue;
                 }
@@ -470,7 +569,7 @@ namespace Utilities.Planner
                 {
                     text += " It sits under '" + under + "', which is not a layer with the new names: " + PlannerSchedule.NotALayerWhy(under) + ".";
                 }
-                else if (unit != null && unit.InPhasingTree && PlannerNaming.ParseLayerNameV2(unit.Name) != null)
+                else if (PlannerLinkPlanner.Links(model.Scene, unit) && PlannerNaming.ParseLayerNameV2(unit.Name) != null)
                 {
                     text += " It sits on the Max layer '" + node.LayerName + "': Link objects to their helpers on the Schedule tab puts it under the layer's helper.";
                 }
@@ -481,17 +580,22 @@ namespace Utilities.Planner
         /// <summary>
         /// Layer nodes sharing an ID with different names (spec 3.1): the Planner reads them as one layer, with one folder,
         /// and lists them; one error each. A helper copied in 3ds Max ("X (1)" in the GLB) is the same layer, not a clash.
-        /// Then, as today, two exported objects with one name that the Planner does not list (untagged ones: tagged ones are
-        /// its duplicate-export issue), an error each, and two exported groups with one name, a warning each (layer nodes,
-        /// phase groups and objects left out).
+        /// Where the helpers sit in two or more roots, the error names the roots and says that Clean up scene graph asks which
+        /// keeps the ID and renumbers the other's (R23). Then, as today, two exported objects with one name that the Planner
+        /// does not list (untagged ones: tagged ones are its duplicate-export issue), an error each, and two exported groups
+        /// with one name, a warning each (layer nodes, phase groups and objects left out).
         /// </summary>
         private static void CheckDuplicatesV2(PlannerSceneNamesV2 read, PlannerScheduleModel model, NamingReport report)
         {
             foreach (var shared in read.SharedIds)
             {
+                var roots = RootsOf(read, model, shared.Names);
+                var fix = roots.Count > 1
+                    ? "They sit in " + PhasingFixScript.Count(roots.Count, "root", "roots") + ": give each layer its own ID. " + SharedAcrossRootsText(roots)
+                    : "Give each layer its own ID, or one name.";
                 AddV2(report, NamingSeverity.Error, shared.Names[0], string.Format(CultureInfo.InvariantCulture,
-                    "Helpers {0} share the layer ID {1} but not the name after it: the Planner reads them as one layer, with one folder named after the first. Give each layer its own ID, or one name.",
-                    AllQuoted(shared.Names), shared.Id), SharedIdCode, shared.Names);
+                    "Helpers {0} share the layer ID {1} but not the name after it: the Planner reads them as one layer, with one folder named after the first. {2}",
+                    AllQuoted(shared.Names), shared.Id, fix), SharedIdCode, shared.Names);
             }
             var listed = new HashSet<string>(read.NamingIssues.Where(i => i.Code == PlannerNamingCode.DuplicateExport).SelectMany(i => i.Names), StringComparer.Ordinal);
             foreach (var duplicate in model.Nodes.Where(n => n.Mesh).GroupBy(n => n.MaxName, StringComparer.Ordinal).Where(g => g.Count() > 1))
@@ -514,6 +618,49 @@ namespace Utilities.Planner
                 }
                 AddV2(report, NamingSeverity.Warning, duplicate.Key, string.Format(CultureInfo.InvariantCulture,
                     "'{0}' is the name of {1} groups; give each group its own name.", duplicate.Key, duplicate.Count()), null, duplicate.Select(n => n.Name));
+            }
+        }
+
+        /// <summary>
+        /// What two roots hold under one name, which the Planner merges without a word (R16), an error each: a layer whose
+        /// helpers of one name sit in two or more roots, which it reads as one layer (Clean up scene graph asks which root
+        /// keeps the ID, R23; helpers of one ID whose names differ are the shared-ID errors, which name the roots), and a
+        /// phase group of one name in two or more roots, which it makes one folder (not Clean up's: R24). Inside one root a
+        /// copied helper is still the same layer, and a copied group the same group.
+        /// </summary>
+        private static void CheckAcrossRootsV2(PlannerSceneNamesV2 read, PlannerScheduleModel model, NamingReport report)
+        {
+            if (model.Scene.PhasingRoots.Count < 2)
+            {
+                return;
+            }
+            var shared = new HashSet<string>(read.SharedIds.Select(s => s.Id), StringComparer.Ordinal);
+            foreach (var layer in read.Layers.Where(l => !shared.Contains(PlannerNaming.LayerIdText(l.Id))))
+            {
+                var roots = RootsOf(read, model, layer.Nodes);
+                if (roots.Count < 2)
+                {
+                    continue;
+                }
+                var name = MaxNameOf(read, layer.Nodes[0]);
+                AddV2(report, NamingSeverity.Error, name, string.Format(CultureInfo.InvariantCulture,
+                    "Helper '{0}' is in {1}, {2}, and the Planner reads it as one layer, with one folder. Give each root's layers IDs of their own. {3}",
+                    name, PhasingFixScript.Count(roots.Count, "root", "roots"), Joined(roots.Select(r => r.Name).ToList()), SharedAcrossRootsText(roots)), null, layer.Nodes);
+            }
+            // The phase groups the Planner makes folders of (those above a layer), in the GLB's order, by the folder's name.
+            var groups = new HashSet<string>(read.Nodes.Groups.Values, StringComparer.Ordinal);
+            var byLabel = model.Nodes.Where(n => !n.Mesh && groups.Contains(n.Name)).GroupBy(n => PlannerSchedule.ParsePhaseGroup(n.Name), StringComparer.Ordinal);
+            foreach (var group in byLabel)
+            {
+                var names = group.Select(n => n.Name).ToList();
+                var roots = RootsOf(read, model, names);
+                if (roots.Count < 2)
+                {
+                    continue;
+                }
+                AddV2(report, NamingSeverity.Error, group.First().MaxName, string.Format(CultureInfo.InvariantCulture,
+                    "Phase group '{0}' is in {1}, {2}, and the Planner makes one folder of it, holding the layers of each. Give each root phase groups of its own, with phase numbers no other root uses.",
+                    group.First().MaxName, PhasingFixScript.Count(roots.Count, "root", "roots"), Joined(roots.Select(r => r.Name).ToList())), null, names);
             }
         }
 
@@ -589,22 +736,57 @@ namespace Utilities.Planner
         }
 
         /// <summary>
-        /// The phasing tree's Max layers and helpers: counted as the export log has always counted them (the Max layers in the
-        /// phasing root layer's tree, the helpers under the phasing root node), with a note on those that do not pair up by
-        /// name, as today; a layer and its helper paired by the scene's units (by ID, or the helper sitting on the layer)
-        /// whose names differ get a note of their own, as on the new names the two share one name and the Planner reads only
-        /// the helper's.
+        /// The phasing tree's Max layers and helpers, root by root in name order: counted as the export log has always counted
+        /// them for the one root (the Max layers in the root layer's tree, the helpers under the root node), with a note on
+        /// those that do not pair up by name, as today, which in a scene with two or more roots names its root; a layer and
+        /// its helper paired by the scene's units (by ID, or the helper sitting on the layer) whose names differ get one note
+        /// of their own, as on the new names the two share one name and the Planner reads only the helper's. A root with no
+        /// Max layer of its name has its helpers counted and nothing paired; a root that is a Max layer alone (a scene with no
+        /// root helper) is not counted, as before. The roots' Max layers together count each layer once, as two roots of one
+        /// name share their Max layer.
         /// </summary>
         private static void CheckPairingV2(PlannerSceneModel scene, NamingReport report)
         {
-            if (scene.RootNode == null)
+            var differ = scene.Units.Where(u => u.InPhasingTree && u.Root != null && u.Root.Node != null && u.Root.Layer != null && u.Layer != null && u.Helper != null
+                && !string.Equals(u.Layer.Name, u.Helper.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+            var differLayers = new HashSet<string>(differ.Select(u => u.Layer.Name), StringComparer.OrdinalIgnoreCase);
+            var differHelpers = new HashSet<string>(differ.Select(u => u.Helper.Name), StringComparer.OrdinalIgnoreCase);
+            var counted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var root in scene.PhasingRoots.Where(r => r.Node != null))
             {
-                return;
+                report.RootCounts.Add(CountRootV2(scene, root, differLayers, differHelpers, counted));
             }
-            var counts = new PhasingCounts { TopName = scene.RootNode.Name, TopLayerName = scene.RootLayer != null ? scene.RootLayer.Name : null };
+            report.LayersTogether = counted.Count;
+            if (differ.Count > 0)
+            {
+                var pairs = differ.Select(u => "'" + u.Layer.Name + "' and '" + u.Helper.Name + "'").ToList();
+                AddV2(report, NamingSeverity.Note, differ[0].Layer.Name, string.Format(CultureInfo.InvariantCulture,
+                    "{0} named differently: {1}. On the new names a layer and its helper share one name, <ID>_<Name>, and the Planner reads only the helper's.",
+                    PhasingFixScript.Count(differ.Count, "Max layer and its helper are", "Max layers and their helpers are"), PhasingFixScript.FirstNames(pairs, NamesShown)),
+                    null, differ.SelectMany(u => new[] { u.Layer.Name, u.Helper.Name }));
+            }
+            bool several = scene.PhasingRoots.Count > 1;
+            foreach (var counts in report.RootCounts)
+            {
+                var pairing = counts.PairingNote();
+                if (pairing != null)
+                {
+                    AddV2(report, NamingSeverity.Note, counts.TopName, several ? "Root '" + counts.TopName + "': " + pairing : pairing, null,
+                        counts.LayersWithoutHelper.Concat(counts.HelpersWithoutLayer));
+                }
+            }
+        }
+
+        // One root's counts: its helpers (and shapes something exported is linked under) at any depth under its node, and, when
+        // it has a Max layer of its name, the Max layers in that layer's tree, with those of each that the other has no name
+        // for (a layer and helper paired under different names left out). The Max layers counted are added to counted.
+        private static PhasingCounts CountRootV2(PlannerSceneModel scene, PlannerPhasingRoot root, HashSet<string> differLayers, HashSet<string> differHelpers,
+            HashSet<string> counted)
+        {
+            var counts = new PhasingCounts { TopName = root.Node.Name, TopLayerName = root.Layer != null ? root.Layer.Name : null };
             var helpers = new List<string>();
-            var seen = new HashSet<long> { scene.RootNode.Key };
-            var pending = new Stack<PlannerSceneNode>(Enumerable.Reverse(scene.ChildrenOf(scene.RootNode)));
+            var seen = new HashSet<long> { root.Node.Key };
+            var pending = new Stack<PlannerSceneNode>(Enumerable.Reverse(scene.ChildrenOf(root.Node)));
             while (pending.Count > 0)
             {
                 var node = pending.Pop();
@@ -622,14 +804,13 @@ namespace Utilities.Planner
                 }
             }
             counts.Helpers = helpers.Count;
-            report.Counts = counts;
-            if (scene.RootLayer == null)
+            if (root.Layer == null)
             {
-                return;
+                return counts;
             }
             var layers = new List<string>();
-            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { scene.RootLayer.Name };
-            var waiting = new Stack<PhasingMaxLayer>(Enumerable.Reverse(scene.ChildLayersOf(scene.RootLayer.Name).ToList()));
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { root.Layer.Name };
+            var waiting = new Stack<PhasingMaxLayer>(Enumerable.Reverse(scene.ChildLayersOf(root.Layer.Name).ToList()));
             while (waiting.Count > 0)
             {
                 var layer = waiting.Pop();
@@ -644,27 +825,12 @@ namespace Utilities.Planner
                 }
             }
             counts.Layers = layers.Count;
-
-            var differ = scene.Units.Where(u => u.InPhasingTree && u.Layer != null && u.Helper != null && !string.Equals(u.Layer.Name, u.Helper.Name, StringComparison.OrdinalIgnoreCase)).ToList();
-            var differLayers = new HashSet<string>(differ.Select(u => u.Layer.Name), StringComparer.OrdinalIgnoreCase);
-            var differHelpers = new HashSet<string>(differ.Select(u => u.Helper.Name), StringComparer.OrdinalIgnoreCase);
+            counted.UnionWith(layers);
             var helperNames = new HashSet<string>(helpers, StringComparer.OrdinalIgnoreCase);
             var layerNames = new HashSet<string>(layers, StringComparer.OrdinalIgnoreCase);
             counts.LayersWithoutHelper.AddRange(layers.Where(n => !helperNames.Contains(n) && !differLayers.Contains(n)));
             counts.HelpersWithoutLayer.AddRange(helpers.Where(n => !layerNames.Contains(n) && !differHelpers.Contains(n)).Distinct(StringComparer.Ordinal));
-            if (differ.Count > 0)
-            {
-                var pairs = differ.Select(u => "'" + u.Layer.Name + "' and '" + u.Helper.Name + "'").ToList();
-                AddV2(report, NamingSeverity.Note, differ[0].Layer.Name, string.Format(CultureInfo.InvariantCulture,
-                    "{0} named differently: {1}. On the new names a layer and its helper share one name, <ID>_<Name>, and the Planner reads only the helper's.",
-                    PhasingFixScript.Count(differ.Count, "Max layer and its helper are", "Max layers and their helpers are"), PhasingFixScript.FirstNames(pairs, NamesShown)),
-                    null, differ.SelectMany(u => new[] { u.Layer.Name, u.Helper.Name }));
-            }
-            var pairing = counts.PairingNote();
-            if (pairing != null)
-            {
-                AddV2(report, NamingSeverity.Note, counts.TopName, pairing, null, counts.LayersWithoutHelper.Concat(counts.HelpersWithoutLayer));
-            }
+            return counts;
         }
     }
 }

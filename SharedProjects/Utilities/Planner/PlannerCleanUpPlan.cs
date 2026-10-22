@@ -23,7 +23,13 @@ namespace Utilities.Planner
         /// </summary>
         NoLayer,
         /// <summary>The trailing Ph/St tag names a stage that several layers have (sub-stages of it): which one is meant.</summary>
-        SeveralLayers
+        SeveralLayers,
+        /// <summary>
+        /// Two phasing roots share layer IDs (a backup copy, or IDs given again in another area), which the Planner reads as
+        /// one layer each: which root keeps them. The other root's layers take the next free numbers in their phases, and its
+        /// own tags that name them follow. Asked of the pair of roots, not of an object.
+        /// </summary>
+        SharedIds
     }
 
     /// <summary>One answer to a listed object's question, and the name it gives.</summary>
@@ -33,6 +39,8 @@ namespace Utilities.Planner
         public const string Leave = "leave";
         /// <summary>The prefix of a choice naming a layer, for an option that <see cref="NeedsLayer"/>: "layer:06_05_2".</summary>
         public const string LayerPrefix = "layer:";
+        /// <summary>The prefix of the choice of the root that keeps two roots' shared layer IDs: "keep:&lt;its helper's handle&gt;".</summary>
+        public const string KeepPrefix = "keep:";
 
         /// <summary>
         /// The choice to pass to <see cref="PlannerCleanUpPlan.Resolve"/>: "end", "drop", "own", "undouble", "as-written",
@@ -69,6 +77,10 @@ namespace Utilities.Planner
         public string DefaultChoice;
         /// <summary>The scene's layer IDs, in layer order, for an option that needs a layer.</summary>
         public readonly List<string> LayerIds = new List<string>();
+        /// <summary>For <see cref="PlannerCleanUpCase.SharedIds"/>: the two roots' helpers' handles, in name order.</summary>
+        public long[] RootKeys = new long[0];
+        /// <summary>For <see cref="PlannerCleanUpCase.SharedIds"/>: the layer IDs the two roots share, in layer order.</summary>
+        public readonly List<string> SharedLayerIds = new List<string>();
 
         /// <summary>The option a choice picks (a "layer:" choice no option names exactly picks the option that needs a layer), or null.</summary>
         public PlannerCleanUpOption OptionFor(string choice)

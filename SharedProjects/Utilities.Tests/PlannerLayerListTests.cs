@@ -128,7 +128,7 @@ namespace Utilities.Tests
             Assert.Contains("also on line 2", problems(1));
             Assert.Contains("Parent ID nope is not in the list", problems(2));
             Assert.Contains("Layer is empty", problems(3));
-            Assert.Contains("\"Folder\", not Group or Layer", problems(4));
+            Assert.Contains("\"Folder\", not Group, Layer or Root", problems(4));
             Assert.Contains("no Planner ID", problems(5));
             Assert.Contains("same layer name in other capitals", problems(6));
             Assert.Contains("circle", problems(7));
@@ -138,6 +138,26 @@ namespace Utilities.Tests
             Assert.Equal(10, list.RowsWithProblems);
             // Rows that hang under nothing still show, at the end of the outline.
             Assert.Equal(list.Rows.Count, list.Outline().Count);
+        }
+
+        [Fact]
+        public void RootRowsAreReadAndARootWithAParentOrWithoutPhasingIsAProblem()
+        {
+            var list = TestCsv.List(
+                TestCsv.Row("r1", null, "Work_Phasing_North", "Root"),
+                TestCsv.Row("g1", "r1", "_01_Enabling"),
+                TestCsv.Row("r2", "r1", "Work_Phasing_South", "Root"),           // a root under another
+                TestCsv.Row("r3", null, "South_Area", "Root"));                   // no "phasing" in its name
+            Assert.True(list.Usable);
+            Func<int, string> problems = i => string.Join(" | ", list.Rows[i].Problems);
+            Assert.Equal(PlannerLayerKind.Root, list.Rows[0].Kind);
+            Assert.Equal("Root", list.Rows[0].KindDisplay);
+            Assert.Empty(list.Rows[0].Problems);
+            Assert.Empty(list.Rows[1].Problems);
+            Assert.Contains("its Parent ID must be empty", problems(2));
+            Assert.Contains("must contain \"phasing\"", problems(3));
+            Assert.Equal(3, list.RootRows);
+            Assert.StartsWith("4 rows: 3 roots, 1 group and 0 layers", list.Describe());
         }
 
         [Fact]

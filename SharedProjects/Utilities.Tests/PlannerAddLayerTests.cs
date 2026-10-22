@@ -109,11 +109,12 @@ namespace Utilities.Tests
             var naming = PlannerSchedule.NamingOfScene(new PlannerScheduleModel(after));
             Assert.Equal(PlannerNamingKind.New, naming.Naming);
 
-            // Under the root itself, and with no root at all (the root is made too).
+            // Under the root itself (the record names the root's Max layer as its parent), and with no root at all (the root
+            // is made too).
             var top = PlannerAddLayer.Plan(scene.Snapshot, null, Group(4, "Night works"), null, null);
             Assert.True(top.CanApply, top.Problem);
             Assert.Equal("Work_Phasing", top.ParentName);
-            Assert.Equal(string.Empty, top.Added.ParentLayer);
+            Assert.Equal("Work_Phasing", top.Added.ParentLayer);
             Assert.Equal("Night_works", top.Added.Name);
             var bare = new TestScene();
             bare.Layer("0");
@@ -123,6 +124,7 @@ namespace Utilities.Tests
             Assert.Equal("Phasing root", fresh.Review[0].Item);
             var built = TestSimulator.Apply(bare.Snapshot, fresh.Build);
             Assert.Equal(PlannerSceneModel.DefaultRootName, built.Layers.Single(l => l.Name == "01_01_Setup").ParentName);
+            Assert.Equal(PlannerSceneModel.DefaultRootName, fresh.Added.ParentLayer);
         }
 
         [Fact]
@@ -376,7 +378,7 @@ namespace Utilities.Tests
             Assert.Equal("Every phasing layer in the scene is in the Planner's list, apart from 1 layer added in Max, which the tree shows.",
                 PlannerScheduleRows.UnlistedText(0, without.NotInList.Count));
             Assert.Equal("Every phasing layer in the scene is in the Planner's list.", PlannerScheduleRows.UnlistedText(0, 0));
-            Assert.Equal("In the scene but not in the Planner's list — left as they are (3), apart from 2 layers added in Max, which the tree shows:", PlannerScheduleRows.UnlistedText(3, 2));
+            Assert.Equal("In the scene but not in the Planner's list \u2014 left as they are (3), apart from 2 layers added in Max, which the tree shows:", PlannerScheduleRows.UnlistedText(3, 2));
             var tree = PlannerScheduleRows.Tree(withoutList, without, new PlannerSceneModel(after), added, null, PlannerNamingKind.New);
             var addedRow = tree.Single(r => r.Source == PlannerScheduleRowSource.Added);
             Assert.Equal(PlannerScheduleRows.AddedStatus, addedRow.Status);
@@ -482,6 +484,314 @@ namespace Utilities.Tests
             // whatever a row reads as, D23; the new names' rows are in PlannerTagEditTests).
             Assert.False(tree.Single(r => r.Name == "_01_Zone").Editable);
             Assert.All(tree, r => Assert.Equal(0, r.InCount + r.RmCount));
+        }
+
+        // Several phasing roots (R15)
+
+        // Two roots, each an area of one schedule with its own phase numbers (R21), South made first: Add layer goes by the
+        // roots' names, never the scene's order. North: _01_North_Enabling (01_01_Drainage), _02_North_Roads (02_01_Binder).
+        // South: _07_South_Enabling (07_01_Hoarding, and the group _09_South_Inner in it), _08_South_Roads (08_01_Binder),
+        // and 07_09_Loose straight under the root. Outside both: the Max layer Context with 05_01_Context_Works.
+        private static TestScene TwoRoots()
+        {
+            var scene = new TestScene();
+            scene.Layer("0");
+            var south = scene.Unit("Work_Phasing_South", null, null);
+            var southEnabling = scene.Unit("_07_South_Enabling", "Work_Phasing_South", south);
+            var hoarding = scene.Unit("07_01_Hoarding", "_07_South_Enabling", southEnabling);
+            scene.Object("IN_Hoarding_RM_02_01", hoarding, "07_01_Hoarding");
+            var inner = scene.Unit("_09_South_Inner", "_07_South_Enabling", southEnabling);
+            scene.Unit("09_01_Inner_Works", "_09_South_Inner", inner);
+            var southRoads = scene.Unit("_08_South_Roads", "Work_Phasing_South", south);
+            var southBinder = scene.Unit("08_01_Binder", "_08_South_Roads", southRoads);
+            scene.Object("IN_Binder_02", southBinder, "08_01_Binder");
+            scene.Unit("07_09_Loose", "Work_Phasing_South", south);
+            var north = scene.Unit("Work_Phasing_North", null, null);
+            var northEnabling = scene.Unit("_01_North_Enabling", "Work_Phasing_North", north);
+            var drainage = scene.Unit("01_01_Drainage", "_01_North_Enabling", northEnabling);
+            scene.Object("IN_Pipe", drainage, "01_01_Drainage");
+            var northRoads = scene.Unit("_02_North_Roads", "Work_Phasing_North", north);
+            var northBinder = scene.Unit("02_01_Binder", "_02_North_Roads", northRoads);
+            scene.Object("IN_Binder", northBinder, "02_01_Binder");
+            scene.Layer("Context");
+            scene.Unit("05_01_Context_Works", "Context", null);
+            return scene;
+        }
+
+        // The new layer sits under the Max layer of the parent, its helper on it and linked under the parent's helper.
+        private static void AssertPlaced(PlannerSceneSnapshot after, string name, string parent)
+        {
+            Assert.Equal(parent, after.Layers.Single(l => l.Name == name).ParentName);
+            var helper = after.Nodes.Single(n => n.Name == name);
+            Assert.Equal(name, helper.LayerName);
+            Assert.Equal(parent, after.Nodes.Single(n => n.Key == helper.ParentKey).Name);
+        }
+
+        [Fact]
+        public void UnderListsEachRootWithItsPhaseGroupsBeneathItWhenTheSceneHasSeveral()
+        {
+            var scene = TwoRoots();
+            var parents = PlannerAddLayer.Parents(new PlannerSceneModel(scene.Snapshot));
+            Assert.Equal(new[]
+                {
+                    "Work_Phasing_North 0 root", "_01_North_Enabling 1", "_02_North_Roads 1",
+                    "Work_Phasing_South 0 root", "_07_South_Enabling 1", "_09_South_Inner 2", "_08_South_Roads 1"
+                },
+                parents.Select(p => p.Layer + " " + p.Depth + (p.IsRoot ? " root" : string.Empty)).ToArray());
+            // Plan takes every entry: a group or a layer straight under a root, a layer or a group in a group.
+            int number = 20;
+            foreach (var parent in parents)
+            {
+                var layer = PlannerAddLayer.Plan(scene.Snapshot, parent.Layer, Layer(number, 1, null, "Probe"), null, null);
+                Assert.True(layer.CanApply, parent.Layer + ": " + layer.Problem);
+                var group = PlannerAddLayer.Plan(scene.Snapshot, parent.Layer, Group(number + 40, "Probe"), null, null);
+                Assert.True(group.CanApply, parent.Layer + ": " + group.Problem);
+                number++;
+            }
+            // With one root, as before: the phase groups alone (the dialog offers the root as the phasing root).
+            Assert.DoesNotContain(PlannerAddLayer.Parents(new PlannerSceneModel(PlannerScheduleV2Tests.Scene().Snapshot)), p => p.IsRoot);
+
+            // A root's Max layer that sits in another root's tree holds that root's groups: listed under it alone.
+            scene.Snapshot.Layers.Single(l => l.Name == "Work_Phasing_South").ParentName = "Work_Phasing_North";
+            Assert.Equal(new[]
+                {
+                    "Work_Phasing_North 0 root", "_01_North_Enabling 1", "_02_North_Roads 1",
+                    "Work_Phasing_South 0 root", "_07_South_Enabling 1", "_09_South_Inner 2", "_08_South_Roads 1"
+                },
+                PlannerAddLayer.Parents(new PlannerSceneModel(scene.Snapshot)).Select(p => p.Layer + " " + p.Depth + (p.IsRoot ? " root" : string.Empty)).ToArray());
+        }
+
+        [Fact]
+        public void UnderStartsOnTheChosenRowsGroupOrRootElseOnTheFirstRoot()
+        {
+            var model = new PlannerSceneModel(TwoRoots().Snapshot);
+            var parents = PlannerAddLayer.Parents(model);
+            Func<string, string> start = chosen =>
+            {
+                string note;
+                var under = PlannerAddLayer.StartUnder(model, parents, chosen, out note);
+                return (under ?? "first") + (note != null ? " | " + note : string.Empty);
+            };
+            // None chosen: the dialog's first entry, the first root by name.
+            Assert.Equal("first", start(null));
+            Assert.Equal("Work_Phasing_North", parents[0].Layer);
+            // A root or a phase group: itself (any capitals).
+            Assert.Equal("Work_Phasing_South", start("work_phasing_south"));
+            Assert.Equal("_09_South_Inner", start("_09_South_Inner"));
+            // A layer: the group above it, or its root when it sits straight under the root.
+            Assert.Equal("_07_South_Enabling | 07_01_Hoarding is not a phase group, and the Planner files a layer in the phase group above it (or at the top), so Under starts on _07_South_Enabling.",
+                start("07_01_Hoarding"));
+            Assert.Equal("Work_Phasing_South | 07_09_Loose is not a phase group, and the Planner files a layer in the phase group above it (or at the top), so Under starts on Work_Phasing_South.",
+                start("07_09_Loose"));
+            // Outside every root: the first root, said by name.
+            Assert.Equal("first | 05_01_Context_Works is outside every phasing root, so Under starts on Work_Phasing_North.", start("05_01_Context_Works"));
+        }
+
+        [Fact]
+        public void ANewLayerGoesUnderItsParentsLayerAndHelperInWhicheverRootItIs()
+        {
+            var scene = TwoRoots();
+            // A group straight under South: its Max layer under South's layer, its helper under South's helper, nothing made
+            // for the root, and the record names South's Max layer as its parent (the tab shows it under that root).
+            var group = PlannerAddLayer.Plan(scene.Snapshot, "Work_Phasing_South", Group(10, "South Night"), null, null);
+            Assert.True(group.CanApply, group.Problem);
+            Assert.Equal("Work_Phasing_South", group.ParentName);
+            Assert.Equal("under Work_Phasing_South", Assert.Single(group.Review).To);
+            Assert.Contains(PlannerLayerPlanner.RootNoteStart + "Work_Phasing_South (layer and helper).", group.Build.Notes);
+            Assert.Equal("Work_Phasing_South", group.Added.ParentLayer);
+            var after = TestSimulator.Apply(scene.Snapshot, group.Build);
+            AssertPlaced(after, "_10_South_Night", "Work_Phasing_South");
+            var batch = PlannerLayerScript.Build(group.Build, "__t_");
+            Assert.Equal(1, batch.LayerCreates);
+            Assert.Equal(1, batch.HelperCreates);
+            Assert.Equal(0, batch.LayerRenames + batch.LayerMoves + batch.HelperRenames + batch.HelperMoves + batch.HelperPuts + batch.Stamps);
+            Assert.Single(PlannerAddedLayerStore.Present(new[] { group.Added }, new PlannerSceneModel(after)));
+
+            // A layer straight under South (any capitals), and one in South's nested group.
+            var loose = PlannerAddLayer.Plan(scene.Snapshot, "work_phasing_south", Layer(7, 10, null, "Gates"), null, null);
+            Assert.True(loose.CanApply, loose.Problem);
+            Assert.Equal("Work_Phasing_South", loose.Added.ParentLayer);
+            AssertPlaced(TestSimulator.Apply(scene.Snapshot, loose.Build), "07_10_Gates", "Work_Phasing_South");
+            var nested = PlannerAddLayer.Plan(scene.Snapshot, "_09_South_Inner", Layer(9, 2, null, "Inner Fence"), null, null);
+            Assert.True(nested.CanApply, nested.Problem);
+            Assert.Equal("_09_South_Inner", nested.Added.ParentLayer);
+            AssertPlaced(TestSimulator.Apply(scene.Snapshot, nested.Build), "09_02_Inner_Fence", "_09_South_Inner");
+
+            // None named: the first root by name, North, although South was made first.
+            var first = PlannerAddLayer.Plan(scene.Snapshot, null, Layer(3, 1, null, "Top"), null, null);
+            Assert.True(first.CanApply, first.Problem);
+            Assert.Equal("Work_Phasing_North", first.ParentName);
+            Assert.Equal("Work_Phasing_North", first.Added.ParentLayer);
+            Assert.Single(first.Review);
+            AssertPlaced(TestSimulator.Apply(scene.Snapshot, first.Build), "03_01_Top", "Work_Phasing_North");
+
+            // Only under a root or a phase group: a layer of South is no parent, and the root to add under instead is named.
+            Assert.Equal("the Planner files a layer in the phase group above it (or at the top), not under 07_01_Hoarding, so the next layer list from the Planner "
+                + "would move it out from under 07_01_Hoarding: add it under _07_South_Enabling or Work_Phasing_South instead",
+                PlannerAddLayer.Plan(scene.Snapshot, "07_01_Hoarding", Layer(7, 11, null, "Under"), null, null).Problem);
+            Assert.Contains("add it under a phase group or Work_Phasing_South instead", PlannerAddLayer.Plan(scene.Snapshot, "07_09_Loose", Layer(7, 11, null, "Under"), null, null).Problem);
+            Assert.Equal("its parent 05_01_Context_Works is outside every phasing root: run Clean up scene graph with the Planner's list imported first",
+                PlannerAddLayer.Plan(scene.Snapshot, "05_01_Context_Works", Layer(7, 11, null, "Under"), null, null).Problem);
+        }
+
+        [Fact]
+        public void TheIdNameAndPhaseChecksCoverEveryRootTheListAndTheLayersAddedInMax()
+        {
+            var scene = TwoRoots();
+            Func<string, PlannerNewLayer, PlannerLayerList, IEnumerable<PlannerAddedLayer>, string> problem = (parent, spec, rowsList, before) =>
+                PlannerAddLayer.Plan(scene.Snapshot, parent, spec, rowsList, before).Problem;
+            // An ID of the other root, wherever it is added.
+            Assert.Equal("the layer 07_01_Hoarding in Work_Phasing_South has the ID 07_01 already", problem("_01_North_Enabling", Layer(7, 1, null, "Fence"), null, null));
+            Assert.Equal("the layer 01_01_Drainage in Work_Phasing_North has the ID 01_01 already", problem("Work_Phasing_South", Layer(1, 1, null, "Other"), null, null));
+            // One phase group per phase number in the whole scene (R21): South cannot have a group of North's phase 1, nor
+            // North one of the phase of South's nested group.
+            Assert.Equal("the phasing tree has a group of phase 1 already (_01_North_Enabling, in Work_Phasing_North): a phase number belongs to one phase group across "
+                + "every root, so give the group a phase no root has yet, or add the layers under _01_North_Enabling",
+                problem("Work_Phasing_South", Group(1, "South Enabling"), null, null));
+            Assert.Contains("a group of phase 9 already (_09_South_Inner, in Work_Phasing_South)", problem("Work_Phasing_North", Group(9, "North Inner"), null, null));
+            // A group's name in the other root, any capitals (here a helper with no Max layer yet).
+            scene.Helper("_11_north_late", scene.Find("Work_Phasing_North"), "Work_Phasing_North");
+            Assert.Equal("the phasing tree has a group called _11_north_late already (in Work_Phasing_North)", problem("Work_Phasing_South", Group(11, "North Late"), null, null));
+
+            // The Planner's list, Root rows and all: its IDs and phase numbers, whichever root its rows are under.
+            var southRow = TestCsv.Row("r2", null, "Work_Phasing_South");
+            southRow[3] = "Root";
+            var list = TestCsv.List(southRow, TestCsv.Row("g12", "r2", "_12_South_Late"), TestCsv.Row("l12", "g12", "12_01_Late"));
+            Assert.True(list.Usable);
+            Assert.Equal(1, list.RootRows);
+            Assert.Equal("the Planner's list has the ID 12_01 already (12_01_Late)", problem("_01_North_Enabling", Layer(12, 1, null, "Sooner"), list, null));
+            Assert.Contains("the Planner's list has a group of phase 12 already (_12_South_Late)", problem("Work_Phasing_North", Group(12, "North Late"), list, null));
+
+            // A layer added in Max before that the scene still has (here moved out of the roots) keeps its ID, in every root.
+            var added = new[] { new PlannerAddedLayer { Layer = "07_20_Ramp", ParentLayer = "Work_Phasing_South", Kind = "Layer" } };
+            Assert.Null(problem("Work_Phasing_North", Layer(7, 20, null, "Ramp 2"), null, added));
+            scene.Layer("07_20_Ramp");
+            Assert.Equal("the layer 07_20_Ramp, added in Max before, has the ID 07_20 already", problem("Work_Phasing_North", Layer(7, 20, null, "Ramp 2"), null, added));
+        }
+
+        [Fact]
+        public void AddLayerMakesNoNewRootAndWaitsForARootsMaxLayer()
+        {
+            // A third root, East, whose helper has no Max layer of its name (R1: no other layer stands in for it). It sorts
+            // first by name, so it is the first root; Under lists it with none of its groups (their layers are not in its tree).
+            var scene = TwoRoots();
+            scene.Layer("East_Old");
+            var east = scene.Helper("Work_Phasing_East", null, "East_Old");
+            var eastWorks = scene.Helper("_15_East_Works", east);
+            scene.Layer("_15_East_Works", "East_Old");
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var parents = PlannerAddLayer.Parents(model);
+            Assert.Equal("Work_Phasing_East", parents[0].Layer);
+            Assert.True(parents[0].IsRoot);
+            Assert.True(parents[1].IsRoot);
+            Assert.NotNull(eastWorks);
+
+            // Straight under East (or none named, East being first): refused until Clean up gives East its Max layer, which also
+            // brings its groups' layers under it (R25). Made here, the layer would hold the new layer but none of East's groups.
+            foreach (var parent in new[] { "Work_Phasing_East", null })
+            {
+                var plan = PlannerAddLayer.Plan(scene.Snapshot, parent, Layer(16, 1, null, "East Works"), null, null);
+                Assert.False(plan.CanApply);
+                Assert.Equal("the phasing root Work_Phasing_East has no Max layer of its name: run Clean up scene graph first, which gives it one", plan.Problem);
+            }
+            // Under one of East's groups, the same.
+            Assert.Equal("the phasing root Work_Phasing_East has no Max layer of its name: run Clean up scene graph first, which gives it one",
+                PlannerAddLayer.Plan(scene.Snapshot, "_15_East_Works", Layer(15, 1, null, "East Fence"), null, null).Problem);
+
+            // A root that is not in the scene is never made: only Work_Phasing in a scene with no root at all.
+            Assert.Equal("its parent Work_Phasing_West is not a Max layer of the scene: run Clean up scene graph with the Planner's list imported first",
+                PlannerAddLayer.Plan(scene.Snapshot, "Work_Phasing_West", Group(17, "West"), null, null).Problem);
+            var north = PlannerAddLayer.Plan(TwoRoots().Snapshot, "Work_Phasing_North", Group(17, "North Later"), null, null);
+            Assert.True(north.CanApply, north.Problem);
+            Assert.DoesNotContain(north.Build.BuildLayers, l => l.Create && l.FinalName != north.LayerName);
+            Assert.DoesNotContain(north.Build.BuildHelpers, h => h.Create && h.FinalName != north.LayerName);
+        }
+
+        [Fact]
+        public void ARootThatIsAMaxLayerAloneGetsItsHelperAsBefore()
+        {
+            // R9: a scene with no root helper has one root, its first top-level Max layer with "phasing" in its name. Add layer
+            // makes the root's helper at the top on that layer, whether the new layer goes straight under the root or in a group.
+            var scene = new TestScene();
+            scene.Layer("0");
+            scene.Layer("Site_Phasing");
+            var enabling = scene.Unit("_01_Site_Enabling", "Site_Phasing", null);
+            scene.Unit("01_01_Clear", "_01_Site_Enabling", enabling);
+            var model = new PlannerSceneModel(scene.Snapshot);
+            Assert.Null(Assert.Single(model.PhasingRoots).Node);
+            Assert.Equal(new[] { "_01_Site_Enabling 0" }, PlannerAddLayer.Parents(model).Select(p => p.Layer + " " + p.Depth + (p.IsRoot ? " root" : string.Empty)).ToArray());
+
+            var top = PlannerAddLayer.Plan(scene.Snapshot, null, Layer(1, 5, null, "Gates"), null, null);
+            var inGroup = PlannerAddLayer.Plan(scene.Snapshot, "_01_Site_Enabling", Layer(1, 6, null, "Fence"), null, null);
+            foreach (var plan in new[] { top, inGroup })
+            {
+                Assert.True(plan.CanApply, plan.Problem);
+                Assert.Equal(2, plan.Review.Count);
+                Assert.Equal("Phasing root", plan.Review[0].Item);
+                Assert.Equal("Site_Phasing", plan.Review[0].Name);
+                Assert.Equal("Create helper", plan.Review[0].Change);
+                Assert.Equal("top of the scene", plan.Review[0].To);
+                Assert.Equal("the phasing root has no helper of its name", plan.Review[0].Why);
+                Assert.Contains(PlannerLayerPlanner.RootNoteStart + "the layer Site_Phasing. It has no helper node of its name, so one is created at the top.", plan.Build.Notes);
+                var after = TestSimulator.Apply(scene.Snapshot, plan.Build);
+                var rootHelper = after.Nodes.Single(n => n.Name == "Site_Phasing");
+                Assert.Null(rootHelper.ParentKey);
+                Assert.Equal("Site_Phasing", rootHelper.LayerName);
+                Assert.Equal(scene.Snapshot.Layers.Count + 1, after.Layers.Count);
+                Assert.Equal(scene.Snapshot.Nodes.Count + 2, after.Nodes.Count);
+            }
+
+            // Straight under the root: the new helper is linked under the root's new helper, the record names the root's Max
+            // layer, and the scene then reads with the root's helper and its layer.
+            Assert.Equal("Site_Phasing", top.ParentName);
+            Assert.Equal("Site_Phasing", top.Added.ParentLayer);
+            var batch = PlannerLayerScript.Build(top.Build, "__t_");
+            Assert.Equal(1, batch.LayerCreates);
+            Assert.Equal(2, batch.HelperCreates);
+            Assert.Equal(0, batch.LayerRenames + batch.LayerMoves + batch.HelperRenames + batch.HelperMoves + batch.HelperPuts + batch.Stamps);
+            var afterTop = TestSimulator.Apply(scene.Snapshot, top.Build);
+            AssertPlaced(afterTop, "01_05_Gates", "Site_Phasing");
+            var rootAfter = Assert.Single(new PlannerSceneModel(afterTop).PhasingRoots);
+            Assert.Equal("Site_Phasing", rootAfter.Node.Name);
+            Assert.Equal("Site_Phasing", rootAfter.Layer.Name);
+            Assert.Single(PlannerAddedLayerStore.Present(new[] { top.Added }, new PlannerSceneModel(afterTop)));
+
+            // In the group: under the group's layer and helper, as before.
+            Assert.Equal("_01_Site_Enabling", inGroup.ParentName);
+            Assert.Equal("_01_Site_Enabling", inGroup.Added.ParentLayer);
+            AssertPlaced(TestSimulator.Apply(scene.Snapshot, inGroup.Build), "01_06_Fence", "_01_Site_Enabling");
+        }
+
+        [Fact]
+        public void AddLayerPlansTheOneRootAsTheLayerBuilderDoes()
+        {
+            // Add layer plans the root it adds in with the layer builder's PlanOneRoot: in a one-root scene the two give the same
+            // entries and notes, so Add layer and Clean up say the same. A root helper with no Max layer of its name waits for
+            // Clean up, as in a scene of several roots.
+            var bare = new TestScene();
+            bare.Layer("0");
+            var layerAlone = new TestScene();
+            layerAlone.Layer("0");
+            layerAlone.Layer("Site_Phasing");
+            var helperAlone = new TestScene();
+            helperAlone.Layer("0");
+            helperAlone.Helper("Work_Phasing", null, "0");
+            Assert.Equal("the phasing root Work_Phasing has no Max layer of its name: run Clean up scene graph first, which gives it one",
+                PlannerAddLayer.Plan(helperAlone.Snapshot, null, Layer(40, 1, null, "Probe"), null, null).Problem);
+            Func<PlannerLayerPlan, string> root = build => build.RootName + " " + build.RootLayerCreated + " " + build.RootHelperCreated
+                + " | " + build.BuildLayers[0].CurrentName + " " + build.BuildLayers[0].FinalName + " " + build.BuildLayers[0].Create + " " + build.BuildLayers[0].ParentNameNow
+                + " | " + build.BuildHelpers[0].Key + " " + build.BuildHelpers[0].CurrentName + " " + build.BuildHelpers[0].FinalName + " " + build.BuildHelpers[0].Create
+                + " " + build.BuildHelpers[0].LayerIndex + " " + build.BuildHelpers[0].LayerNow;
+            foreach (var scene in new[] { bare, layerAlone, PlannerScheduleV2Tests.Scene() })
+            {
+                var plan = PlannerAddLayer.Plan(scene.Snapshot, null, Layer(40, 1, null, "Probe"), null, null);
+                Assert.True(plan.CanApply, plan.Problem);
+                var shared = new PlannerLayerPlan();
+                var model = new PlannerSceneModel(scene.Snapshot);
+                PlannerLayerPlanner.PlanOneRoot(shared, model, model.FirstRoot);
+                Assert.Equal(root(shared), root(plan.Build));
+                Assert.Equal(shared.Notes, plan.Build.Notes);
+            }
         }
     }
 }

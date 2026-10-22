@@ -276,8 +276,7 @@
    "Gate_IN"
   ],
   "skipped": [
-   "Lamp",
-   "Work_Phasing"
+   "Lamp"
   ],
   "unfiled": [],
   "layerIssues": [],
@@ -634,9 +633,7 @@
    "IN_Own",
    "IN_Path"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -993,9 +990,7 @@
    "RM_A_Kerb",
    "IN_Pile_1"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -1513,9 +1508,7 @@
    "IN_D_RM_03_09",
    "RM_Own"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -1733,9 +1726,7 @@
    "Y_IN",
    "X_RM"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -1889,9 +1880,7 @@
    "Y_RM",
    "W_IN"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -2180,9 +2169,7 @@
    "RM_C2",
    "RM_D_IN"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -2583,9 +2570,7 @@
   "matched": [
    "IN_RC_HF_Outer_Full_Closure_RM"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -2972,9 +2957,7 @@
    "IN_A7",
    "Z_RM"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -3247,9 +3230,7 @@
    "IN_c",
    "IN_d"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -3551,9 +3532,7 @@
    "IN_c",
    "IN_d"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -3873,9 +3852,7 @@
    "IN_C",
    "IN_D"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -4122,9 +4099,7 @@
    "IN_C",
    "IN_D"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -4378,9 +4353,7 @@
    "IN_Barrier_RM_02_02_2",
    "IN_Barrier2_RM_02_02_2"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -4529,9 +4502,7 @@
   "matched": [
    "IN_Barrier_RM_02_02_2"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -4866,9 +4837,7 @@
    "IN_Post",
    "IN_Gate3"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -5008,9 +4977,7 @@
    "IN_C",
    "IN_E"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [
    "IN_A",
    "IN_B",
@@ -5186,9 +5153,7 @@
    "IN_B",
    "IN_C"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -5697,8 +5662,7 @@
   ],
   "skipped": [
    "01_01_IN_Kerb3",
-   "IN__",
-   "Work_Phasing"
+   "IN__"
   ],
   "unfiled": [],
   "layerIssues": [],
@@ -6402,8 +6366,7 @@
   ],
   "skipped": [
    "in_Lower",
-   "Lower2_rm",
-   "Work_Phasing"
+   "Lower2_rm"
   ],
   "unfiled": [],
   "layerIssues": [],
@@ -6676,9 +6639,7 @@
    "IN_Sheet_Pile_5",
    "IN_Sheet_Pile_5 (1)"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -6993,9 +6954,7 @@
    "IN_Road_Plates_RM_03_09",
    "IN_Other"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -7172,9 +7131,7 @@
    "IN_B",
    "IN_C"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -7317,9 +7274,7 @@
    "IN_A",
    "IN_B"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -7579,9 +7534,7 @@
    "IN_C",
    "IN_D"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -7809,9 +7762,7 @@
    "IN_RB22_Barrier01_RM_02_02_2",
    "IN_RB22_Barrier02_RM_02_02_2"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -7923,7 +7874,6 @@
    "Lamp_Post",
    "Building",
    "Kerb_Existing",
-   "Work_Phasing",
    "Context"
   ],
   "unfiled": [
@@ -8131,9 +8081,7 @@
    "IN_C",
    "IN_D"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [
    "IN_B"
   ],
@@ -9981,9 +9929,7 @@
    "IN_B2",
    "IN_B3"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -11101,9 +11047,7 @@
    "RM_B4",
    "C_IN"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -11618,9 +11562,7 @@
    "IN_d2",
    "IN_e"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -12012,9 +11954,7 @@
    "IN_c",
    "C_RM"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -12151,9 +12091,7 @@
   "matched": [
    "Kerb_RM"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -12298,9 +12236,7 @@
    "IN_A",
    "IN_B"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [
    "01_01_Works_TBC: Dates and TBC in a layer name are not read: the Planner holds the dates."
@@ -12618,9 +12554,7 @@
    "IN_Barrier_RM_01_02",
    "IN_Path"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -12907,9 +12841,7 @@
    "IN_Marking_RM_04_02_3",
    "IN_Binder"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -13091,9 +13023,7 @@
    "IN_B",
    "IN_C"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -13339,9 +13269,7 @@
    "IN_A2",
    "IN_B"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [
@@ -13557,9 +13485,7 @@
    "IN_X_RM_01_01",
    "IN_B"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [],
@@ -13713,9 +13639,7 @@
    "IN_A",
    "IN_B"
   ],
-  "skipped": [
-   "Work_Phasing"
-  ],
+  "skipped": [],
   "unfiled": [],
   "layerIssues": [],
   "tbcActivities": [

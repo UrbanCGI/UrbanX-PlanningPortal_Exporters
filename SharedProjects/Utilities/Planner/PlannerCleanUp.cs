@@ -110,8 +110,15 @@ namespace Utilities.Planner
         /// </summary>
         public static PlannerCleanUpPlan Plan(PlannerSceneSnapshot snapshot, IEnumerable<PhasingWordFix> wordFixes, PlannerLayerList list)
         {
+            return Plan(snapshot, wordFixes, list, null);
+        }
+
+        // The plan, with the layers of a root that gives up layer IDs it shares with another renumbered (renumber: the giving
+        // root's helper's handle, to the IDs and the root that keeps them), as the answers to SharedIds ask (R23, R24).
+        private static PlannerCleanUpPlan Plan(PlannerSceneSnapshot snapshot, IEnumerable<PhasingWordFix> wordFixes, PlannerLayerList list, Dictionary<long, Renumbering> renumber)
+        {
             var plan = new PlannerCleanUpPlan();
-            var state = new State { Original = snapshot ?? new PlannerSceneSnapshot() };
+            var state = new State { Original = snapshot ?? new PlannerSceneSnapshot(), WordFixesIn = wordFixes, ListIn = list, Renumber = renumber };
             plan.State = state;
             foreach (var fix in wordFixes ?? Enumerable.Empty<PhasingWordFix>())
             {
@@ -127,16 +134,26 @@ namespace Utilities.Planner
             }
             var scene = new PlannerSceneModel(state.Original);
             var buildList = list != null && list.Usable ? WithoutDates(list) : null;
-            if (scene.RootNode == null && buildList == null)
+            var roots = scene.PhasingRoots.Where(r => r.Node != null).ToList();
+            if (roots.Count == 0 && buildList == null)
             {
                 plan.Message = NothingToDo;
                 return plan;
             }
             var notes = new PhasingNameFixer.TextFixNotes();
-            if (scene.RootNode != null)
+            if (buildList != null)
             {
-                plan.RootKey = scene.RootNode.Key;
-                plan.RootName = scene.RootNode.Name;
+                state.ListIds.AddRange(buildList.Rows.Where(r => r.IdKey != null && r.IdKey.Phase.HasValue).Select(r => r.IdKey));
+            }
+            if (roots.Count > 1)
+            {
+                plan.Notes.Add("Phasing roots (" + roots.Count.ToString(CultureInfo.InvariantCulture) + "): " + string.Join(", ", roots.Select(r => r.Name).ToArray())
+                    + ". Each is cleaned up as its own area of the schedule: a layer moves only into a phase group of its own root.");
+            }
+            if (roots.Count > 0)
+            {
+                plan.RootKey = roots[0].Node.Key;
+                plan.RootName = roots[0].Node.Name;
                 var naming = PlannerSchedule.NamingOfScene(new PlannerScheduleModel(state.Original));
                 plan.Naming = naming != null ? naming.Naming : (PlannerNamingKind?)null;
                 state.OldScene = plan.Naming == PlannerNamingKind.Old;
@@ -144,19 +161,21 @@ namespace Utilities.Planner
                 // Step 1: layers and helpers, and their Max layers.
                 PlanLayers(state, scene, notes);
             }
-            var step1 = Apply(state.Original, state.StepOneRenames(), state.NodeMoves, null, null, state.MaxLayerRenames, state.MaxLayerMoves);
+            // (Without the list, a root's new Max layer and its helper put on it are step 1's too: PlanMaxLayers.)
+            var step1 = Apply(state.Original, state.StepOneRenames(), state.NodeMoves, null, state.HelperPuts, state.MaxLayerRenames, state.MaxLayerMoves, state.NewLayers);
             foreach (var layer in state.Layers)
             {
-                layer.SceneId = layer.Id;
+                // A layer renumbered as answered keeps the ID the scene names it by: the tags written for it follow it.
+                layer.SceneId = layer.RenumberedFrom ?? layer.Id;
             }
             if (buildList != null)
             {
                 // Step 1, with the Planner's list: the layers and helpers brought in line with it.
                 plan.List = buildList;
                 step1 = PlanList(state, plan, buildList, step1);
-                if (plan.RootName == null)
+                if (plan.RootName == null && state.FirstTop != null)
                 {
-                    plan.RootName = state.Top.NewName;
+                    plan.RootName = state.FirstTop.NewName;
                 }
             }
             state.Step1 = step1;
@@ -171,6 +190,8 @@ namespace Utilities.Planner
             // Step 3: the objects, on the hierarchy step 2 leaves.
             state.Step2Model = new PlannerSceneModel(state.Step2);
             PlanObjects(state, plan, state.Step2Model, notes);
+            // The roots that share layer IDs are asked first: their answers renumber layers, which the objects then follow.
+            plan.Questions.InsertRange(0, state.RootQuestions);
             PhasingNameFixer.AddTextNotes(plan.Notes, notes, state.Fixes);
 
             foreach (var layer in state.Layers.OrderBy(l => l, LayerOrder.Instance))
@@ -195,29 +216,34 @@ namespace Utilities.Planner
 
         private static void PlanLayers(State state, PlannerSceneModel scene, PhasingNameFixer.TextFixNotes notes)
         {
-            var root = scene.RootNode;
-            var top = new NodeWork { Node = root, OldName = NameOf(root), Item = PhasingFixItem.TopLayer };
-            var topFix = PhasingNameFixer.FixText(top.OldName, state.Fixes, top.Why, t => t.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0, notes, top.OldName);
-            top.NewName = topFix.Text;
-            Unreadable(top, topFix);
-            state.Top = top;
-
-            foreach (var child in scene.ChildrenOf(root))
+            // Every root (in name order), each with the phase groups directly under it.
+            foreach (var phasingRoot in scene.PhasingRoots.Where(r => r.Node != null))
             {
-                var match = GroupPattern.Match(NameOf(child));
-                int phase;
-                if (scene.LeftOut(child) || !match.Success || !PhasingNameFixer.TryReadPhaseGroup(NameOf(child), out phase))
+                var node = phasingRoot.Node;
+                var work = new NodeWork { Node = node, OldName = NameOf(node), Item = PhasingFixItem.TopLayer };
+                var topFix = PhasingNameFixer.FixText(work.OldName, state.Fixes, work.Why, t => t.IndexOf("phasing", StringComparison.OrdinalIgnoreCase) >= 0, notes, work.OldName);
+                work.NewName = topFix.Text;
+                Unreadable(work, topFix);
+                state.Tops.Add(work);
+
+                foreach (var child in scene.ChildrenOf(node))
                 {
-                    continue;
+                    var match = GroupPattern.Match(NameOf(child));
+                    int phase;
+                    if (scene.LeftOut(child) || !match.Success || !PhasingNameFixer.TryReadPhaseGroup(NameOf(child), out phase))
+                    {
+                        continue;
+                    }
+                    var digits = match.Groups[1].Value;
+                    var group = new NodeWork { Node = child, OldName = NameOf(child), Item = PhasingFixItem.Group, Phase = phase, Root = work };
+                    var fix = PhasingNameFixer.FixText(match.Groups[2].Value, state.Fixes, group.Why, d => ReadsAsGroup(digits, d), notes, group.OldName);
+                    group.NewName = "_" + digits + "_" + fix.Text;
+                    Unreadable(group, fix);
+                    state.Groups.Add(group);
                 }
-                var digits = match.Groups[1].Value;
-                var group = new NodeWork { Node = child, OldName = NameOf(child), Item = PhasingFixItem.Group, Phase = phase };
-                var fix = PhasingNameFixer.FixText(match.Groups[2].Value, state.Fixes, group.Why, d => ReadsAsGroup(digits, d), notes, group.OldName);
-                group.NewName = "_" + digits + "_" + fix.Text;
-                Unreadable(group, fix);
-                state.Groups.Add(group);
             }
             var groupKeys = new HashSet<long>(state.Groups.Select(g => g.Node.Key));
+            var rootKeys = new HashSet<long>(state.Tops.Select(t => t.Node.Key));
 
             // The layer nodes: every helper under the root (and a spline something exported is linked under, an empty node in
             // the export) whose name reads as a layer, depth first in the scene's order, as the Planner's layer node index
@@ -227,37 +253,45 @@ namespace Utilities.Planner
             // "02_04-2_Roads" under "02_04_Roads", is one), but a 3ds Max group led by one number or a dimension
             // ("3 Bay Gate", "2.4_High_Hoarding") is passed over, as the Planner passes it over, and its objects belong to the
             // layer above.
-            foreach (var node in DepthFirst(scene, root))
+            foreach (var top in state.Tops)
             {
-                if (node.Key == root.Key || groupKeys.Contains(node.Key) || scene.LeftOut(node) || !(node.IsHelper || node.IsShape))
+                var root = top.Node;
+                foreach (var node in DepthFirst(scene, root))
                 {
-                    continue;
+                    if (node.Key == root.Key || groupKeys.Contains(node.Key) || scene.LeftOut(node) || !(node.IsHelper || node.IsShape))
+                    {
+                        continue;
+                    }
+                    var parent = scene.ParentOf(node);
+                    var unit = scene.Units.FirstOrDefault(u => u.Helper != null && u.Helper.Key == node.Key);
+                    var inPlace = (unit != null && unit.Layer != null) || (parent != null && (parent.Key == root.Key || groupKeys.Contains(parent.Key)));
+                    if (!inPlace && !NestedLayer(node, scene))
+                    {
+                        continue;
+                    }
+                    var layer = ReadLayer(node, NameOf(node), OldObjectsOf(node, scene), state, notes);
+                    if (layer == null)
+                    {
+                        continue;
+                    }
+                    layer.Order = state.Layers.Count;
+                    layer.ParentKey = parent != null ? parent.Key : (long?)null;
+                    layer.Group = parent != null ? state.Groups.FirstOrDefault(g => g.Node.Key == parent.Key) : null;
+                    layer.UnderRoot = parent != null && parent.Key == root.Key;
+                    layer.Root = top;
+                    layer.Unit = unit;
+                    layer.MaxLayer = layer.Unit != null ? layer.Unit.Layer : null;
+                    state.Layers.Add(layer);
                 }
-                var parent = scene.ParentOf(node);
-                var unit = scene.Units.FirstOrDefault(u => u.Helper != null && u.Helper.Key == node.Key);
-                var inPlace = (unit != null && unit.Layer != null) || (parent != null && (parent.Key == root.Key || groupKeys.Contains(parent.Key)));
-                if (!inPlace && !NestedLayer(node, scene))
-                {
-                    continue;
-                }
-                var layer = ReadLayer(node, NameOf(node), OldObjectsOf(node, scene), state, notes);
-                if (layer == null)
-                {
-                    continue;
-                }
-                layer.Order = state.Layers.Count;
-                layer.ParentKey = parent != null ? parent.Key : (long?)null;
-                layer.Group = parent != null ? state.Groups.FirstOrDefault(g => g.Node.Key == parent.Key) : null;
-                layer.UnderRoot = parent != null && parent.Key == root.Key;
-                layer.Unit = unit;
-                layer.MaxLayer = layer.Unit != null ? layer.Unit.Layer : null;
-                state.Layers.Add(layer);
             }
+
+            // A root that gives up the layer IDs it shares with another, as answered, has those layers renumbered (R23, R24).
+            Renumber(state, scene);
 
             // A cleaned name another node has (the cleaned name of a layer node named otherwise today, or the name of any other
             // node) is not used: that layer is left as it is, and listed. Layer nodes named alike today stay alike.
             var layerKeys = new HashSet<long>(state.Layers.Select(l => l.Node.Key));
-            var others = new HashSet<string>(scene.Nodes.Where(n => !layerKeys.Contains(n.Key) && n.Key != root.Key && !groupKeys.Contains(n.Key)).Select(NameOf), StringComparer.Ordinal);
+            var others = new HashSet<string>(scene.Nodes.Where(n => !layerKeys.Contains(n.Key) && !rootKeys.Contains(n.Key) && !groupKeys.Contains(n.Key)).Select(NameOf), StringComparer.Ordinal);
             var byNewName = new Dictionary<string, LayerWork>(StringComparer.Ordinal);
             // The layers that keep their names first: a cleaned name never takes one of theirs.
             foreach (var layer in state.Layers.Where(l => !l.Left).OrderBy(l => l.NewName == l.OldName ? 0 : 1))
@@ -281,17 +315,19 @@ namespace Utilities.Planner
             // The Max layers go with their nodes; a layer whose Max layer cannot take its new name is left as it is.
             PlanMaxLayers(state, scene, notes);
 
-            // A layer directly under the root goes into the group of its phase, as Fix phasing names did, its Max layer too.
+            // A layer directly under a root goes into the group of its phase in that root, as Fix phasing names did, its Max
+            // layer too. It never moves to another root.
             foreach (var layer in state.Layers.Where(l => !l.Left && l.UnderRoot))
             {
-                var homes = state.Groups.Where(g => g.Phase == layer.Id.Phase.Value).ToList();
+                var root = layer.Root.Node;
+                var homes = state.Groups.Where(g => g.Root == layer.Root && g.Phase == layer.Id.Phase.Value).ToList();
                 if (homes.Count != 1)
                 {
                     var phase = layer.Id.Phase.Value;
                     layer.Checks.Add(homes.Count == 0
-                        ? "a layer of phase " + phase.ToString(CultureInfo.InvariantCulture) + ", but there is no group _" + Pad2(phase) + "_<name> to move it into; it stays under " + top.NewName
+                        ? "a layer of phase " + phase.ToString(CultureInfo.InvariantCulture) + ", but there is no group _" + Pad2(phase) + "_<name> to move it into; it stays under " + layer.Root.NewName
                         : "a layer of phase " + phase.ToString(CultureInfo.InvariantCulture) + ", and " + homes.Count.ToString(CultureInfo.InvariantCulture) + " groups have that phase ("
-                          + string.Join(", ", homes.Select(g => g.NewName).ToArray()) + "); it stays under " + top.NewName + " - move it by hand");
+                          + string.Join(", ", homes.Select(g => g.NewName).ToArray()) + "); it stays under " + layer.Root.NewName + " - move it by hand");
                     continue;
                 }
                 layer.Group = homes[0];
@@ -311,6 +347,7 @@ namespace Utilities.Planner
                 if (layer.MaxLayer != null && scene.LayerByName.TryGetValue(homes[0].OldName, out parent)
                     && !string.Equals(layer.MaxLayer.ParentName, parent.Name, StringComparison.OrdinalIgnoreCase))
                 {
+                    state.MaxLayerMoves.RemoveAll(x => string.Equals(x.Name, layer.MaxLayer.Name, StringComparison.OrdinalIgnoreCase));
                     state.MaxLayerMoves.Add(new PhasingMaxLayerMove { Name = layer.MaxLayer.Name, NewParentName = parent.Name });
                 }
             }
@@ -322,15 +359,16 @@ namespace Utilities.Planner
                 foreach (var layer in state.Layers.Where(l => !l.Left && !l.UnderRoot && l.Group != null && l.Id != null && l.Id.Phase.HasValue && l.Group.Phase != l.Id.Phase.Value))
                 {
                     var phase = layer.Id.Phase.Value;
-                    var homes = state.Groups.Where(g => g.Phase == phase).ToList();
+                    var homes = state.Groups.Where(g => g.Root == layer.Root && g.Phase == phase).ToList();
                     layer.Checks.Add("a layer of phase " + phase.ToString(CultureInfo.InvariantCulture) + " in " + layer.Group.NewName + ", a group of phase "
                         + layer.Group.Phase.ToString(CultureInfo.InvariantCulture) + ", where the Planner files it too; if it belongs to phase " + phase.ToString(CultureInfo.InvariantCulture)
                         + ", move it " + (homes.Count == 1 ? "into " + homes[0].NewName + " " : string.Empty) + "by hand");
                 }
             }
 
-            // Layer nodes sharing an ID are one layer to the Planner (D2): listed, not renumbered.
-            foreach (var shared in state.Layers.Where(l => !l.Left).GroupBy(l => PlannerNaming.LayerIdKey(l.Id)).Where(g => g.Select(l => l.NewName).Distinct(StringComparer.Ordinal).Count() > 1))
+            // Layer nodes of one root sharing an ID are one layer to the Planner (D2): listed, not renumbered.
+            foreach (var shared in state.Layers.Where(l => !l.Left).GroupBy(l => (l.Root != null ? l.Root.Node.Key.ToString(CultureInfo.InvariantCulture) : "-") + "|" + PlannerNaming.LayerIdKey(l.Id))
+                .Where(g => g.Select(l => l.NewName).Distinct(StringComparer.Ordinal).Count() > 1))
             {
                 var all = shared.ToList();
                 foreach (var layer in all)
@@ -338,6 +376,102 @@ namespace Utilities.Planner
                     var rest = all.Where(l => l != layer).Select(l => l.NewName).ToArray();
                     layer.Checks.Add("shares its layer ID " + PlannerNaming.LayerIdText(layer.Id) + " with " + string.Join(", ", rest)
                         + ": the Planner reads them as one layer - give one of them another ID by hand");
+                }
+            }
+
+            // Layer IDs that two roots share, copies of one name included (a backup root): one question per pair of roots,
+            // which keeps them (R23); until it is answered, each such layer is listed.
+            AskSharedIds(state);
+        }
+
+        // The layers of each root that gives up shared layer IDs, as answered: each takes the next free stage in its phase
+        // (past every stage a layer of any root, or a row of the Planner's list, has), in layer order; layers that share a
+        // stage (its sub-stages) take one new stage together. Its Max layer follows its name, and the root's own tags that
+        // name it follow its new ID (FinalId).
+        private static void Renumber(State state, PlannerSceneModel scene)
+        {
+            if (state.Renumber == null)
+            {
+                return;
+            }
+            foreach (var top in state.Tops)
+            {
+                Renumbering giving;
+                if (!state.Renumber.TryGetValue(top.Node.Key, out giving))
+                {
+                    continue;
+                }
+                // Every layer of the root on a stage a shared ID is on, its sub-stages too: they take one new stage together.
+                Func<LayerWork, string> stageOf = l => l.Id.Phase.Value.ToString(CultureInfo.InvariantCulture) + "_" + l.Id.Stage.ToString(CultureInfo.InvariantCulture);
+                var mine = state.Layers.Where(l => !l.Left && l.Root == top && l.Id != null && l.Id.Phase.HasValue).ToList();
+                var stages = new HashSet<string>(mine.Where(l => giving.Ids.Contains(PlannerNaming.LayerIdKey(l.Id))).Select(stageOf), StringComparer.Ordinal);
+                var layers = mine.Where(l => stages.Contains(stageOf(l))).OrderBy(l => l, LayerOrder.Instance).ToList();
+                foreach (var stage in layers.GroupBy(stageOf))
+                {
+                    var phase = stage.First().Id.Phase.Value;
+                    // Past every stage in use: any root's layers, those left as they are, Max layers with no helper, the list's rows.
+                    var next = state.Layers.Where(l => l.Id != null && l.Id.Phase == phase).Select(l => l.Id.Stage)
+                        .Concat(scene.Units.Where(u => u.InPhasingTree && u.IdKey != null && u.IdKey.Phase == phase).Select(u => u.IdKey.Stage))
+                        .Concat(state.ListIds.Where(id => id.Phase == phase).Select(id => id.Stage)).DefaultIfEmpty(0).Max() + 1;
+                    foreach (var layer in stage)
+                    {
+                        var was = layer.Id;
+                        if (next > 99)
+                        {
+                            layer.Checks.Add("shares its layer ID " + PlannerNaming.LayerIdText(was) + " with " + giving.KeptBy + ", which keeps it, but phase "
+                                + phase.ToString(CultureInfo.InvariantCulture) + " has no free stage left to renumber it to; left as it is - give it another ID by hand");
+                            continue;
+                        }
+                        layer.Id = new PlannerLayerIdKey(phase, next, was.SubStage);
+                        layer.RenumberedFrom = was;
+                        var text = PlannerNaming.LayerIdText(layer.Id);
+                        layer.NewName = string.IsNullOrEmpty(layer.Part) ? text : text + "_" + layer.Part;
+                        layer.Why.Add("renumbered from " + PlannerNaming.LayerIdText(was) + ": " + giving.KeptBy + " keeps that layer ID, as answered");
+                    }
+                }
+            }
+        }
+
+        // One question per pair of roots that share layer IDs (in root order), and a note on each layer that shares one.
+        private static void AskSharedIds(State state)
+        {
+            var byId = state.Layers.Where(l => !l.Left && l.Root != null && l.Id != null && l.Id.Phase.HasValue)
+                .OrderBy(l => l, LayerOrder.Instance).GroupBy(l => PlannerNaming.LayerIdKey(l.Id)).Where(g => g.Select(l => l.Root).Distinct().Count() > 1).ToList();
+            for (int i = 0; i < state.Tops.Count; i++)
+            {
+                for (int j = i + 1; j < state.Tops.Count; j++)
+                {
+                    var a = state.Tops[i];
+                    var b = state.Tops[j];
+                    var ids = byId.Where(g => g.Any(l => l.Root == a) && g.Any(l => l.Root == b)).Select(g => PlannerNaming.LayerIdText(g.First().Id)).ToList();
+                    if (ids.Count == 0)
+                    {
+                        continue;
+                    }
+                    var question = new PlannerCleanUpQuestion
+                    {
+                        Id = "roots:" + a.Node.Key.ToString(CultureInfo.InvariantCulture) + ":" + b.Node.Key.ToString(CultureInfo.InvariantCulture) + ":" + PlannerCleanUpCase.SharedIds,
+                        Key = b.Node.Key,
+                        Case = PlannerCleanUpCase.SharedIds,
+                        CurrentName = a.NewName + " and " + b.NewName,
+                        LayerName = string.Empty,
+                        Why = a.NewName + " and " + b.NewName + " share " + PhasingFixScript.Count(ids.Count, "layer ID", "layer IDs") + " (" + string.Join(", ", ids.ToArray())
+                            + "), which the Planner reads as one layer each: which root keeps them? The other root's layers take the next free numbers in their phases, and its own tags that name them follow",
+                        RootKeys = new[] { a.Node.Key, b.Node.Key }
+                    };
+                    question.SharedLayerIds.AddRange(ids);
+                    question.Options.Add(new PlannerCleanUpOption { Id = PlannerCleanUpOption.KeepPrefix + a.Node.Key.ToString(CultureInfo.InvariantCulture), Text = "Keep them in " + a.NewName + "; renumber " + b.NewName + "'s", Name = a.NewName + " keeps them" });
+                    question.Options.Add(new PlannerCleanUpOption { Id = PlannerCleanUpOption.KeepPrefix + b.Node.Key.ToString(CultureInfo.InvariantCulture), Text = "Keep them in " + b.NewName + "; renumber " + a.NewName + "'s", Name = b.NewName + " keeps them" });
+                    state.RootQuestions.Add(question);
+                }
+            }
+            foreach (var shared in byId)
+            {
+                foreach (var layer in shared)
+                {
+                    var others = shared.Where(l => l.Root != layer.Root).Select(l => l.NewName + " in " + l.Root.NewName).Distinct(StringComparer.Ordinal).ToArray();
+                    layer.Checks.Add("shares its layer ID " + PlannerNaming.LayerIdText(layer.Id) + " with " + string.Join(", ", others)
+                        + ": the Planner reads them as one layer - answer which root keeps it (the question at the top), or give one of them another ID by hand");
                 }
             }
         }
@@ -540,15 +674,64 @@ namespace Utilities.Planner
         private static void PlanMaxLayers(State state, PlannerSceneModel scene, PhasingNameFixer.TextFixNotes notes)
         {
             var wanted = new List<MaxRename>();
-            var top = state.Top;
-            if (top.NewName != top.OldName && scene.RootLayer != null && string.Equals(scene.RootLayer.Name, top.OldName, StringComparison.OrdinalIgnoreCase))
+            // The phasing tree's Max layers, with those a root with no Max layer of its name brings in as it is paired with one.
+            var tree = new HashSet<string>(scene.TreeLayers, StringComparer.OrdinalIgnoreCase);
+            foreach (var top in state.Tops)
             {
-                wanted.Add(new MaxRename { Layer = scene.RootLayer, NewName = top.NewName, Item = PhasingFixItem.TopLayer, Work = top });
+                var root = scene.RootOfNode(top.Node);
+                if (root == null)
+                {
+                    continue;
+                }
+                if (root.Layer != null)
+                {
+                    if (top.NewName != top.OldName && string.Equals(root.Layer.Name, top.OldName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        wanted.Add(new MaxRename { Layer = root.Layer, NewName = top.NewName, Item = PhasingFixItem.TopLayer, Work = top });
+                    }
+                    continue;
+                }
+                if (state.WithList)
+                {
+                    // The Planner's list pairs it with a Max layer of its name (PlannerLayerPlanner.AddRoot).
+                    continue;
+                }
+                // A root with no Max layer of its name is paired with one: the Max layer its own groups and layers sit in, named
+                // for it, when that layer holds nothing else (PlannerLayerPlanner.TakeableLayer); else a new one at the top, with
+                // the helper put on it and its groups' and layers' Max layers moved under it. Either way they are the root's tree.
+                var takeable = PlannerLayerPlanner.TakeableLayer(scene, root);
+                top.ListChanged = true;
+                if (takeable != null)
+                {
+                    top.Why.Add("its Max layer " + takeable.Name + " is named for it: the phasing root had no Max layer of its name");
+                    wanted.Add(new MaxRename { Layer = takeable, NewName = top.NewName, Item = PhasingFixItem.TopLayer, Work = top });
+                    tree.UnionWith(LayerSubtree(scene, takeable));
+                    if (!string.Equals(top.Node.LayerName, takeable.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        state.HelperPuts.Add(new PlannerNodeLayerMove { Key = top.Node.Key, Name = top.OldName, FromLayer = top.Node.LayerName, ToLayer = takeable.Name, ToNewLayer = false });
+                    }
+                }
+                else
+                {
+                    state.NewLayers.Add(new PlannerCleanUpNewLayer { Name = top.NewName, ParentName = null, ParentIsNew = false });
+                    state.HelperPuts.Add(new PlannerNodeLayerMove { Key = top.Node.Key, Name = top.OldName, FromLayer = top.Node.LayerName, ToLayer = top.NewName, ToNewLayer = true });
+                    // Not one already nested in the Max layer of another of the root's own groups or layers.
+                    var ownLayers = new HashSet<string>(scene.Units.Where(u => u.Layer != null && u.Helper != null && root.TreeNodes.Contains(u.Helper.Key)).Select(u => u.Layer.Name), StringComparer.OrdinalIgnoreCase);
+                    var moved = PlannerLayerPlanner.RootChildLayers(scene, root).Where(l => !scene.TreeLayers.Contains(l.Name) && (l.ParentName == null || !ownLayers.Contains(l.ParentName))).ToList();
+                    foreach (var layer in moved)
+                    {
+                        state.MaxLayerMoves.Add(new PhasingMaxLayerMove { Name = layer.Name, NewParentName = top.NewName, NewParentIsNew = true });
+                        tree.Add(layer.Name);
+                        tree.UnionWith(LayerSubtree(scene, layer));
+                    }
+                    top.Why.Add("its Max layer " + top.NewName + " is added, and it is put on it" + (moved.Count > 0 ? ", with its groups' and layers' Max layers under it" : string.Empty)
+                        + ": the phasing root had no Max layer of its name");
+                }
             }
             foreach (var group in state.Groups.Where(g => g.NewName != g.OldName))
             {
                 PhasingMaxLayer maxLayer;
-                if (scene.LayerByName.TryGetValue(group.OldName, out maxLayer) && scene.TreeLayers.Contains(maxLayer.Name))
+                if (scene.LayerByName.TryGetValue(group.OldName, out maxLayer) && tree.Contains(maxLayer.Name))
                 {
                     wanted.Add(new MaxRename { Layer = maxLayer, NewName = group.NewName, Item = PhasingFixItem.Group, Work = group });
                 }
@@ -562,7 +745,7 @@ namespace Utilities.Planner
             }
             // A Max layer in the phasing tree whose helper is missing: its own name is cleaned the same way.
             var helperLayers = new HashSet<string>(state.Layers.Where(l => l.MaxLayer != null).Select(l => l.MaxLayer.Name), StringComparer.OrdinalIgnoreCase);
-            foreach (var unit in scene.Units.Where(u => u.Layer != null && u.Helper == null && scene.TreeLayers.Contains(u.Layer.Name) && !helperLayers.Contains(u.Layer.Name)))
+            foreach (var unit in scene.Units.Where(u => u.Layer != null && u.Helper == null && tree.Contains(u.Layer.Name) && !helperLayers.Contains(u.Layer.Name)))
             {
                 var onLayer = scene.Nodes.Where(n => string.Equals(n.LayerName, unit.Layer.Name, StringComparison.OrdinalIgnoreCase) && !n.IsHelper)
                     .Select(n => PlannerNaming.ParseMeshName(NameOf(n))).Where(p => p != null).ToList();
@@ -617,6 +800,28 @@ namespace Utilities.Planner
             }
         }
 
+        // Every Max layer below a layer, at any depth.
+        private static List<string> LayerSubtree(PlannerSceneModel scene, PhasingMaxLayer layer)
+        {
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { layer.Name };
+            var waiting = new Stack<PhasingMaxLayer>(scene.ChildLayersOf(layer.Name));
+            while (waiting.Count > 0)
+            {
+                var below = waiting.Pop();
+                if (!seen.Add(below.Name))
+                {
+                    continue;
+                }
+                names.Add(below.Name);
+                foreach (var child in scene.ChildLayersOf(below.Name))
+                {
+                    waiting.Push(child);
+                }
+            }
+            return names;
+        }
+
         // A word fix that would stop a root or group name reading is not used on it, and the name is listed.
         private static void Unreadable(NodeWork work, PhasingNameFixer.TextFix fix)
         {
@@ -638,18 +843,28 @@ namespace Utilities.Planner
 
         private static void PlanObjects(State state, PlannerCleanUpPlan plan, PlannerSceneModel scene, PhasingNameFixer.TextFixNotes notes)
         {
-            PlannerSceneNode root;
-            if (!scene.NodeByKey.TryGetValue(state.Top.Node.Key, out root))
+            // Every root's objects, root by root in name order.
+            var roots = new List<PlannerSceneNode>();
+            foreach (var top in state.Tops)
+            {
+                PlannerSceneNode found;
+                if (scene.NodeByKey.TryGetValue(top.Node.Key, out found))
+                {
+                    roots.Add(found);
+                }
+            }
+            if (roots.Count == 0)
             {
                 return;
             }
+            var rootKeys = new HashSet<long>(roots.Select(r => r.Key));
             var layers = state.Layers.ToDictionary(l => l.Node.Key);
             var groupKeys = new HashSet<long>(state.Groups.Select(g => g.Node.Key));
             state.LayerIds.AddRange(state.Layers.Where(l => !l.Left && l.NotALayerWhy == null).OrderBy(l => l, LayerOrder.Instance).Select(l => PlannerNaming.LayerIdText(l.Id)).Distinct(StringComparer.Ordinal));
             var byKey = new Dictionary<long, ObjectWork>();
-            foreach (var node in DepthFirst(scene, root))
+            foreach (var node in roots.SelectMany(r => DepthFirst(scene, r)))
             {
-                if (node.Key == root.Key || groupKeys.Contains(node.Key) || layers.ContainsKey(node.Key) || scene.LeftOut(node))
+                if (rootKeys.Contains(node.Key) || groupKeys.Contains(node.Key) || layers.ContainsKey(node.Key) || scene.LeftOut(node))
                 {
                     continue;
                 }
@@ -671,7 +886,7 @@ namespace Utilities.Planner
                     continue;
                 }
                 var work = new ObjectWork { Node = node, OldName = name, Order = state.Objects.Count };
-                for (var p = scene.ParentOf(node); p != null && p.Key != root.Key; p = scene.ParentOf(p))
+                for (var p = scene.ParentOf(node); p != null && !rootKeys.Contains(p.Key); p = scene.ParentOf(p))
                 {
                     LayerWork layer;
                     if (layers.TryGetValue(p.Key, out layer))
@@ -685,7 +900,7 @@ namespace Utilities.Planner
                 Classify(work, state, notes);
                 if (work.Kind != ObjectKind.Untagged && work.Kind != ObjectKind.Check)
                 {
-                    var hidden = HiddenBy(node, scene, root, layers, groupKeys);
+                    var hidden = HiddenBy(node, scene, rootKeys, layers, groupKeys);
                     if (hidden != null)
                     {
                         NotALayer blocking;
@@ -711,9 +926,9 @@ namespace Utilities.Planner
         // the nearest node above the object that the old names read as a layer ("3 Bay Gate", "2.4_High_Hoarding"), when it
         // is no layer on the new names. The Planner's Generate leaves such an object in no layer rather than file it in the
         // layer above (readModelV2), so the group is listed for the modeller to rename.
-        private static PlannerSceneNode HiddenBy(PlannerSceneNode node, PlannerSceneModel scene, PlannerSceneNode root, Dictionary<long, LayerWork> layers, HashSet<long> groupKeys)
+        private static PlannerSceneNode HiddenBy(PlannerSceneNode node, PlannerSceneModel scene, HashSet<long> rootKeys, Dictionary<long, LayerWork> layers, HashSet<long> groupKeys)
         {
-            for (var p = scene.ParentOf(node); p != null && p.Key != root.Key && !layers.ContainsKey(p.Key) && !groupKeys.Contains(p.Key); p = scene.ParentOf(p))
+            for (var p = scene.ParentOf(node); p != null && !rootKeys.Contains(p.Key) && !layers.ContainsKey(p.Key) && !groupKeys.Contains(p.Key); p = scene.ParentOf(p))
             {
                 var name = NameOf(p);
                 if (PlannerNaming.ParseLayerName(name) != null)
@@ -894,7 +1109,7 @@ namespace Utilities.Planner
                 }
                 else
                 {
-                    var target = ResolveTag(state, trailTag);
+                    var target = ResolveTag(state, trailTag, layer.Root);
                     if (target.Layer != null)
                     {
                         parts.TrailLayer = target.Layer.Id;
@@ -990,7 +1205,7 @@ namespace Utilities.Planner
                 Trail = p.Trail,
                 // A plain trailing tag (or one naming its own layer) is the end of its own layer; a reference names the layer
                 // by the ID it ends with.
-                TrailLayer = p.Trail.HasValue ? state.FinalId(p.Ref) : null,
+                TrailLayer = p.Trail.HasValue ? state.FinalId(p.Ref, layer != null ? layer.Root : null) : null,
                 Note = space < 0 ? string.Empty : name.Substring(space),
                 Home = layer
             };
@@ -1164,7 +1379,7 @@ namespace Utilities.Planner
         {
             var type = lead.Type;
             var own = PlannerNaming.LayerIdText(work.Layer.Id);
-            var target = ResolveTag(state, lead);
+            var target = ResolveTag(state, lead, work.Layer != null ? work.Layer.Root : null);
             var candidates = target.Layer != null ? new List<LayerWork> { target.Layer } : target.Several;
             var names = target.Layer != null ? "layer " + PlannerNaming.LayerIdText(target.Layer.Id)
                 : target.Several.Count > 0 ? "a stage several layers have (" + string.Join(", ", target.Several.Select(l => PlannerNaming.LayerIdText(l.Id)).ToArray()) + ")"
@@ -1317,7 +1532,7 @@ namespace Utilities.Planner
                             return true;
                         case "as-written":
                             parts.Trail = q.Type;
-                            parts.TrailLayer = q.RefId;
+                            parts.TrailLayer = state.FinalId(q.RefId, q.Work.Layer != null ? q.Work.Layer.Root : null);
                             return q.RefId != null;
                         case "layer":
                             parts.Trail = q.Type;
@@ -1343,7 +1558,7 @@ namespace Utilities.Planner
                         }
                         parts.Lead = null;
                         parts.Trail = q.Type;
-                        parts.TrailLayer = q.RefId;
+                        parts.TrailLayer = state.FinalId(q.RefId, q.Work.Layer != null ? q.Work.Layer.Root : null);
                         return true;
                     }
                     long key;
@@ -1383,7 +1598,7 @@ namespace Utilities.Planner
                     switch (choice)
                     {
                         case "as-written":
-                            parts.TrailLayer = q.RefId;
+                            parts.TrailLayer = state.FinalId(q.RefId, q.Work.Layer != null ? q.Work.Layer.Root : null);
                             return q.RefId != null;
                         case "end":
                             parts.TrailLayer = q.Work.Layer.Id;
@@ -1409,13 +1624,20 @@ namespace Utilities.Planner
         {
             var result = new PlannerCleanUpResult();
             var state = plan.State;
-            if (plan.Message != null || state == null || state.Top == null)
+            if (plan.Message != null || state == null || state.Tops.Count == 0)
             {
                 if (plan.Message != null)
                 {
                     result.Notes.Add(plan.Message);
                 }
                 return result;
+            }
+            // An answer to a pair of roots that share layer IDs renumbers the other root's: planned again with it, so the objects,
+            // the numbering and the review all follow the new IDs (R23, R24).
+            var renumber = RenumberFor(plan, choices);
+            if (renumber != null)
+            {
+                return Resolve(Plan(state.Original, state.WordFixesIn, state.ListIn, renumber), choices);
             }
             result.Notes.AddRange(plan.Notes);
             choices = choices ?? new Dictionary<string, string>();
@@ -1445,6 +1667,31 @@ namespace Utilities.Planner
             result.Links.AddRange(state.LinkPlan != null ? state.LinkPlan.Links : new List<PlannerObjectLink>());
             AddLayerRows(state, result);
             result.Rows.AddRange(state.ListRows);
+            // A pair of roots sharing layer IDs, not answered yet or left for now: nothing is renumbered.
+            foreach (var q in state.RootQuestions)
+            {
+                string given;
+                var left = choices.TryGetValue(q.Id, out given) && given == PlannerCleanUpOption.Leave;
+                result.Rows.Add(new PlannerCleanUpRow
+                {
+                    Status = PlannerCleanUpStatus.Choose,
+                    Item = "Phasing roots",
+                    LayerItSitsIn = string.Empty,
+                    CurrentName = q.CurrentName,
+                    NewName = q.CurrentName,
+                    Why = q.Why + (left ? "; left for now: they still share them, and the export check reports it" : "; nothing is renumbered until answered"),
+                    QuestionId = q.Id,
+                    NodeKey = q.Key
+                });
+                if (left)
+                {
+                    result.Left++;
+                }
+                else
+                {
+                    result.Open++;
+                }
+            }
             // A node led by a number inside a layer is no layer, and Clean up does not rename it: it is listed, because the
             // Planner does not schedule the tagged objects under it until it is renamed.
             foreach (var blocking in state.NotLayers.Values)
@@ -1454,7 +1701,7 @@ namespace Utilities.Planner
                 {
                     Status = PlannerCleanUpStatus.Check,
                     Item = blocking.Node.IsGroupHead ? "Group" : "Helper",
-                    LayerItSitsIn = blocking.Layer != null ? blocking.Layer.NewName : state.Top.NewName,
+                    LayerItSitsIn = blocking.Layer != null ? blocking.Layer.NewName : state.TopOf(blocking.Node).NewName,
                     CurrentName = NameOf(blocking.Node),
                     NewName = NameOf(blocking.Node),
                     Why = "led by a number, so it is no layer on the new names, and the Planner does not schedule the "
@@ -1853,14 +2100,53 @@ namespace Utilities.Planner
             }
         }
 
+        // The roots that give up shared layer IDs for these answers (each to the root kept), or null for none: a plan made
+        // with a root renumbered already answers nothing more.
+        private static Dictionary<long, Renumbering> RenumberFor(PlannerCleanUpPlan plan, IDictionary<string, string> choices)
+        {
+            var state = plan.State;
+            if (choices == null || state == null || state.Renumber != null)
+            {
+                return null;
+            }
+            var renumber = new Dictionary<long, Renumbering>();
+            foreach (var q in state.RootQuestions.Where(q => q.RootKeys.Length == 2))
+            {
+                string choice;
+                long keep;
+                if (!choices.TryGetValue(q.Id, out choice) || choice == null || !choice.StartsWith(PlannerCleanUpOption.KeepPrefix, StringComparison.Ordinal)
+                    || !long.TryParse(choice.Substring(PlannerCleanUpOption.KeepPrefix.Length), NumberStyles.Integer, CultureInfo.InvariantCulture, out keep) || !q.RootKeys.Contains(keep))
+                {
+                    continue;
+                }
+                var give = q.RootKeys[0] == keep ? q.RootKeys[1] : q.RootKeys[0];
+                var kept = state.Tops.FirstOrDefault(t => t.Node.Key == keep);
+                Renumbering giving;
+                if (!renumber.TryGetValue(give, out giving))
+                {
+                    giving = new Renumbering { KeptBy = kept != null ? kept.NewName : string.Empty };
+                    renumber[give] = giving;
+                }
+                foreach (var id in q.SharedLayerIds)
+                {
+                    var key = PlannerLayerIdKey.FromText(id);
+                    if (key != null)
+                    {
+                        giving.Ids.Add(PlannerNaming.LayerIdKey(key));
+                    }
+                }
+            }
+            return renumber.Count > 0 ? renumber : null;
+        }
+
         private static void AddLayerRows(State state, PlannerCleanUpResult result)
         {
-            var top = state.Top;
-            foreach (var work in new[] { top }.Concat(state.Groups).Concat(state.ListOnly))
+            foreach (var work in state.Tops.Concat(state.Groups).Concat(state.ListOnly))
             {
+                var isTop = state.Tops.Contains(work);
                 // Where it sits now; its Why says where the list moves it. One Clean up creates sits where it will be made.
-                var place = work == top ? string.Empty : !work.Created && work.Node != null ? PlaceNow(state, work.Node) : PlaceOf(state, work.ListParentKey, top.NewName);
-                var item = work == top ? "Phasing root" : work.Item == PhasingFixItem.Group ? (state.Groups.Contains(work) ? "Phase group" : "Group") : "Helper";
+                var place = isTop ? string.Empty : !work.Created && work.Node != null ? PlaceNow(state, work.Node) : PlaceOf(state, work.ListParentKey, (work.Root ?? state.FirstTop).NewName);
+                var item = isTop ? "Phasing root" : work.Item == PhasingFixItem.Group ? (state.Groups.Contains(work) ? "Phase group" : "Group") : "Helper";
                 if (work.Created || work.NewName != work.OldName || work.ListChanged)
                 {
                     result.Rows.Add(new PlannerCleanUpRow
@@ -1967,11 +2253,12 @@ namespace Utilities.Planner
             {
                 return layer.Group.NewName;
             }
+            var top = layer.Root ?? state.FirstTop;
             if (!layer.ParentKey.HasValue || layer.UnderRoot)
             {
-                return state.Top.NewName;
+                return top.NewName;
             }
-            return PlaceOf(state, layer.ParentKey, state.Top.NewName);
+            return PlaceOf(state, layer.ParentKey, top.NewName);
         }
 
         // What a node sits in now: the new name of the node it is linked under in the scene as it is, or nothing at the
@@ -2190,11 +2477,17 @@ namespace Utilities.Planner
         /// for a sub-stage with no layer, the whole stage's layer; for a whole stage with no layer, its only sub-stage layer, or
         /// the several it has; else none.
         /// </summary>
-        private static Target ResolveTag(State state, Tag tag)
+        private static Target ResolveTag(State state, Tag tag, NodeWork root = null)
         {
             // By the IDs the layers' names give now, which the old tags were written against; a layer the Planner's list adds
-            // has its own.
+            // has its own. Where two roots share the stage (a backup root), the object's own root's layers.
             var same = state.Layers.Where(l => !l.Left && l.NotALayerWhy == null && l.SceneId.Phase == tag.Phase && l.SceneId.Stage == tag.Stage).ToList();
+            if (root != null && same.Any(l => l.Root == root))
+            {
+                same = same.Where(l => l.Root == root || l.Root == null).ToList();
+            }
+            // A layer renumbered as answered gives way to one that kept the ID.
+            same = same.OrderBy(l => l.RenumberedFrom != null ? 1 : 0).ToList();
             var exact = same.FirstOrDefault(l => l.SceneId.SubStage == tag.SubStage);
             if (exact != null)
             {
@@ -2459,10 +2752,27 @@ namespace Utilities.Planner
         // -------------------------------------------------------------------------------------------------------------
         // Work items
 
+        /// <summary>A root's layer IDs that another root keeps, as answered (R23): its layers that have them are renumbered.</summary>
+        internal sealed class Renumbering
+        {
+            public readonly HashSet<string> Ids = new HashSet<string>(StringComparer.Ordinal);
+            /// <summary>The name of the root that keeps them, for the review.</summary>
+            public string KeptBy;
+        }
+
         /// <summary>What the plan keeps for <see cref="Resolve"/>: the scene, step 1's and step 2's operations, and the objects.</summary>
         internal sealed class State
         {
             public PlannerSceneSnapshot Original;
+            /// <summary>The word fixes and the list the plan was made with, to plan again with a root's IDs renumbered.</summary>
+            public IEnumerable<PhasingWordFix> WordFixesIn;
+            public PlannerLayerList ListIn;
+            /// <summary>The roots that give up shared layer IDs (by helper handle), as answered; null when nothing is renumbered.</summary>
+            public Dictionary<long, Renumbering> Renumber;
+            /// <summary>The layer IDs of the Planner's list's rows: a renumbered layer takes a stage none of them has.</summary>
+            public readonly List<PlannerLayerIdKey> ListIds = new List<PlannerLayerIdKey>();
+            /// <summary>The questions to pairs of roots that share layer IDs (SharedIds).</summary>
+            public readonly List<PlannerCleanUpQuestion> RootQuestions = new List<PlannerCleanUpQuestion>();
             /// <summary>The Planner's layer list is imported: its nesting decides where layers go.</summary>
             public bool WithList;
             /// <summary>The scene as step 1 leaves it (with the Planner's list, its new layers and helpers in it): Link plans on it.</summary>
@@ -2474,7 +2784,8 @@ namespace Utilities.Planner
             public readonly List<PhasingWordFix> Fixes = new List<PhasingWordFix>();
             /// <summary>The scene reads as the old names.</summary>
             public bool OldScene;
-            public NodeWork Top;
+            /// <summary>The phasing roots, in name order (one the Planner's list adds comes after the scene's).</summary>
+            public readonly List<NodeWork> Tops = new List<NodeWork>();
             public readonly List<NodeWork> Groups = new List<NodeWork>();
             public readonly List<LayerWork> Layers = new List<LayerWork>();
             /// <summary>Max layers in the phasing tree without a helper, cleaned by their own names.</summary>
@@ -2502,10 +2813,37 @@ namespace Utilities.Planner
             /// <summary>The list's rows Clean up cannot bring in line, and the scene's phasing layers the list does not have.</summary>
             public readonly List<PlannerCleanUpRow> ListRows = new List<PlannerCleanUpRow>();
 
-            /// <summary>The root, the groups, the layer nodes and the helpers only the list names.</summary>
+            /// <summary>The roots, the groups, the layer nodes and the helpers only the list names.</summary>
             public IEnumerable<NodeWork> Works()
             {
-                return new[] { Top }.Where(w => w != null).Concat(Groups).Concat(Layers).Concat(ListOnly);
+                return Tops.Concat(Groups).Concat(Layers).Concat(ListOnly);
+            }
+
+            /// <summary>The first phasing root (in name order), or null.</summary>
+            public NodeWork FirstTop
+            {
+                get { return Tops.Count > 0 ? Tops[0] : null; }
+            }
+
+            /// <summary>
+            /// The root a node sits under in the scene as it is (its own work's root, else the nearest root above it), else
+            /// the first root; null with none.
+            /// </summary>
+            public NodeWork TopOf(PlannerSceneNode node)
+            {
+                var byKey = Original.Nodes.Where(n => n != null).GroupBy(n => n.Key).ToDictionary(g => g.Key, g => g.First());
+                var seen = new HashSet<long>();
+                for (var current = node; current != null && seen.Add(current.Key);)
+                {
+                    var top = Tops.FirstOrDefault(t => t.Node.Key == current.Key);
+                    if (top != null)
+                    {
+                        return top;
+                    }
+                    PlannerSceneNode parent;
+                    current = current.ParentKey.HasValue && byKey.TryGetValue(current.ParentKey.Value, out parent) ? parent : null;
+                }
+                return FirstTop;
             }
 
             /// <summary>Step 1's node renames: the root, the groups, the layer nodes and the helpers the list renames.</summary>
@@ -2519,14 +2857,17 @@ namespace Utilities.Planner
             /// The ID a layer ID of the scene ends with: the ID of the layer that has it now (the list may give it another,
             /// spec 5.3), else the ID as it is (no layer has it). References to it are written with this one.
             /// </summary>
-            public PlannerLayerIdKey FinalId(PlannerLayerIdKey sceneId)
+            public PlannerLayerIdKey FinalId(PlannerLayerIdKey sceneId, NodeWork root = null)
             {
                 if (sceneId == null)
                 {
                     return null;
                 }
+                // Two roots may share an ID (a backup root): a tag names its own root's layer of the ID first, then one not
+                // renumbered, so a renumbered root's own tags follow its layers, and every other root's stay.
                 var key = PlannerNaming.LayerIdKey(sceneId);
-                var layer = Layers.FirstOrDefault(l => !l.Left && l.SceneId != null && l.Id != null && PlannerNaming.LayerIdKey(l.SceneId) == key);
+                var layer = Layers.Where(l => !l.Left && l.SceneId != null && l.Id != null && PlannerNaming.LayerIdKey(l.SceneId) == key)
+                    .OrderBy(l => root != null && l.Root == root ? 0 : 1).ThenBy(l => l.RenumberedFrom != null ? 1 : 0).FirstOrDefault();
                 return layer != null ? layer.Id : sceneId;
             }
 
@@ -2571,6 +2912,8 @@ namespace Utilities.Planner
             public bool ListChanged;
             /// <summary>The node it ends up linked under, when the Planner's list nests it elsewhere; else null.</summary>
             public long? ListParentKey;
+            /// <summary>The phasing root it sits under (a phase group's, a layer's); null for a root, and for a helper the list adds.</summary>
+            public NodeWork Root;
         }
 
         internal sealed class LayerWork : NodeWork
@@ -2603,6 +2946,8 @@ namespace Utilities.Planner
             /// <summary>Left as it is, with its objects, and listed.</summary>
             public bool Left;
             public string LeftWhy;
+            /// <summary>The ID it had before it was renumbered, as answered (another root keeps that ID), or null.</summary>
+            public PlannerLayerIdKey RenumberedFrom;
         }
 
         internal enum ObjectKind

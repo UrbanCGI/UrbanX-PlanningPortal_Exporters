@@ -338,7 +338,7 @@ namespace Utilities.Planner
         /// <summary>The activities, in the Planner's (name) order.</summary>
         public readonly List<PlannerScheduleActivity> Activities = new List<PlannerScheduleActivity>();
         public readonly Dictionary<string, PlannerScheduleObject> Objects = new Dictionary<string, PlannerScheduleObject>(StringComparer.Ordinal);
-        /// <summary>Objects the Planner does not schedule (under the phasing root, or tagged anywhere), with why.</summary>
+        /// <summary>Objects the Planner does not schedule (under a phasing root, any of them, or tagged anywhere), with why.</summary>
         public readonly List<PlannerNotScheduled> NotScheduled = new List<PlannerNotScheduled>();
         /// <summary>Problems with layer names, as the Planner lists them ("layer: issue").</summary>
         public readonly List<string> LayerIssues = new List<string>();

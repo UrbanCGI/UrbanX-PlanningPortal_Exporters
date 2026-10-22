@@ -78,7 +78,7 @@ namespace Utilities.Tests
     {
         public const string Header = "Planner ID,Parent ID,Layer,Kind,ID,Phase,Stage,Sub-stage,Name,Start,Finish,TBC,Order";
 
-        /// <summary>A row: Planner ID, Parent ID, Layer, Kind; the rest worked out from the name.</summary>
+        /// <summary>A row: Planner ID, Parent ID, Layer, Kind (Layer, Root, else Group); the rest worked out from the name.</summary>
         public static string[] Row(string id, string parent, string layer, string kind = null)
         {
             var parsed = PlannerNaming.ParseLayerName(layer);
@@ -86,7 +86,7 @@ namespace Utilities.Tests
             var isLayer = kind != null ? kind == "Layer" : key != null;
             return new[]
             {
-                id, parent ?? string.Empty, layer, isLayer ? "Layer" : "Group",
+                id, parent ?? string.Empty, layer, kind == "Root" ? "Root" : isLayer ? "Layer" : "Group",
                 key != null ? key.ToString() : string.Empty,
                 key != null && key.Phase.HasValue ? key.Phase.Value.ToString() : string.Empty,
                 key != null ? key.Stage.ToString() : string.Empty,

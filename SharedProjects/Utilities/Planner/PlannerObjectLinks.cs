@@ -29,7 +29,7 @@ namespace Utilities.Planner
     /// <summary>What Link objects to their helpers would do.</summary>
     public sealed class PlannerLinkPlan
     {
-        /// <summary>Set when there is nothing to link at all (no phasing root).</summary>
+        /// <summary>Set when there is nothing to link at all (no phasing root, or no root with a Max layer of its name).</summary>
         public string Message;
         public readonly List<PlannerObjectLink> Links = new List<PlannerObjectLink>();
         /// <summary>Objects on the phasing layers already under their layer's helper.</summary>
@@ -81,16 +81,26 @@ namespace Utilities.Planner
     }
 
     /// <summary>
-    /// Plans Link objects to their helpers: every object on a phasing layer (a layer inside the root layer's tree with its
-    /// helper of the same name) goes under that helper. What is linked is the object's top-most ancestor that is not a
-    /// phasing helper (the object itself when it has none), so a hierarchy moves whole and a 3ds Max group by its group
-    /// head; world positions are kept. Helpers and shapes the export leaves out (splines such as RailClone paths) are not
-    /// objects. An object whose top ancestor sits on another layer is listed as a Problem and not moved, and so are the
-    /// objects of a phasing layer that has no helper yet. Pure logic, no 3ds Max.
+    /// Plans Link objects to their helpers: every object on a phasing layer (a layer inside a root layer's tree with its
+    /// helper of the same name, in any of the scene's phasing roots) goes under that helper. What is linked is the
+    /// object's top-most ancestor that is not a phasing helper (the object itself when it has none), so a hierarchy moves
+    /// whole and a 3ds Max group by its group head; world positions are kept. Helpers and shapes the export leaves out
+    /// (splines such as RailClone paths) are not objects. An object whose top ancestor sits on another layer is listed as a
+    /// Problem and not moved, and so are the objects of a phasing layer that has no helper yet. A root with no Max layer of
+    /// its name has no phasing layers, so it is passed over and listed as a Problem. Pure logic, no 3ds Max.
     /// </summary>
     public static class PlannerLinkPlanner
     {
-        public const string NoRoot = "The scene has no phasing root (a top-level node or layer with \"phasing\" in its name): import the Planner's layer list and run Clean up scene graph first.";
+        public const string NoRoot = "The scene has no phasing root (a top-level Dummy or other helper, or a top-level layer, with \"phasing\" in its name): import the Planner's layer list and run Clean up scene graph first.";
+
+        /// <summary>
+        /// Link puts the objects on this unit's Max layer under its helper: a layer in a root layer's tree, in a root that has
+        /// its Max layer. The Schedule tab's and the export check's hints say Link would place an object only then.
+        /// </summary>
+        public static bool Links(PlannerSceneModel scene, PlannerSceneUnit unit)
+        {
+            return unit != null && unit.InPhasingTree && unit.Layer != null && scene.TreeLayers.Contains(unit.Layer.Name) && unit.Root != null && unit.Root.Layer != null;
+        }
 
         public static PlannerLinkPlan Plan(PlannerSceneSnapshot snapshot)
         {
@@ -100,15 +110,38 @@ namespace Utilities.Planner
         public static PlannerLinkPlan Plan(PlannerSceneModel scene)
         {
             var plan = new PlannerLinkPlan();
-            if (scene.RootLayer == null)
+            // Every root's layers are linked. A root without a Max layer of its name has none, so it is passed over: the
+            // whole Link when no root has one, else a Problem row for it.
+            var withLayer = scene.PhasingRoots.Where(r => r.Layer != null).ToList();
+            var withoutLayer = scene.PhasingRoots.Where(r => r.Layer == null).ToList();
+            if (withLayer.Count == 0)
             {
-                plan.Message = scene.RootNode == null ? NoRoot : "The phasing root " + scene.RootNode.Name + " has no layer of its name, so the scene has no phasing layers yet: import the Planner's layer list and run Clean up scene graph first.";
+                plan.Message = withoutLayer.Count == 0 ? NoRoot
+                    : withoutLayer.Count == 1 ? "The phasing root " + withoutLayer[0].Name + " has no layer of its name, so the scene has no phasing layers yet: run Clean up scene graph first, which gives it one."
+                    : "The phasing roots " + PlannerScriptText.JoinWithAnd(withoutLayer.Select(r => r.Name).ToList()) + " have no layers of their names, so the scene has no phasing layers yet: run Clean up scene graph first, which gives each one.";
                 return plan;
             }
             var byLayer = scene.Nodes.Where(n => n.LayerName != null).ToLookup(n => n.LayerName, StringComparer.OrdinalIgnoreCase);
             var links = new Dictionary<long, PlannerObjectLink>();
             var problems = new List<PlannerReviewRow>();
-            foreach (var unit in scene.Units.Where(u => u.InPhasingTree && u.Layer != null && scene.TreeLayers.Contains(u.Layer.Name)))
+            foreach (var root in withoutLayer)
+            {
+                problems.Add(new PlannerReviewRow
+                {
+                    Status = "Problem",
+                    Item = "Phasing root",
+                    Name = root.Name,
+                    Change = "Skipped",
+                    From = root.Node.LayerName != null ? "layer " + root.Node.LayerName : string.Empty,
+                    To = string.Empty,
+                    Why = "it has no Max layer of its name, so Link passes over its layers: run Clean up scene graph, which gives it one"
+                        + (PlannerLayerPlanner.TakeableLayer(scene, root) != null ? " (it renames " + PlannerLayerPlanner.TakeableLayer(scene, root).Name + ", which holds its groups, to " + root.Name + ")" : string.Empty)
+                });
+            }
+            // The units of the roots that have their Max layer: the unit's layer in a root layer's tree (TreeLayers holds
+            // only those), and the unit's own root, which the node tree decides, one with its Max layer. So a passed-over
+            // root's layers made under another root's Max layer are passed over too.
+            foreach (var unit in scene.Units.Where(u => u.InPhasingTree && u.Layer != null && scene.TreeLayers.Contains(u.Layer.Name) && u.Root != null && u.Root.Layer != null))
             {
                 var layerName = unit.Layer.Name;
                 var objects = byLayer[layerName].Where(n => IsObject(n, scene)).ToList();
@@ -137,6 +170,13 @@ namespace Utilities.Planner
                     {
                         problems.Add(Problem(node.Name, layerName, "it is linked under " + top.Name + ", which sits on "
                             + (top.LayerName != null ? "the layer " + top.LayerName : "another layer") + "; left as it is"));
+                        continue;
+                    }
+                    // Never across roots: a node under another root (a backup on the same Max layers) stays in its own.
+                    var topRoot = scene.RootOfNode(top);
+                    if (topRoot != null && unit.Root != null && topRoot != unit.Root)
+                    {
+                        problems.Add(Problem(node.Name, layerName, "it is under the phasing root " + topRoot.Name + ", and its Max layer is a layer of " + unit.Root.Name + "; left as it is"));
                         continue;
                     }
                     if (scene.IsUnder(helper, top))
@@ -184,7 +224,7 @@ namespace Utilities.Planner
             plan.Review.AddRange(problems);
             plan.ProblemCount = problems.Count;
 
-            // A Max group, a Point or another helper, or a spline with objects under it, linked in under the phasing root:
+            // A Max group, a Point or another helper, or a spline with objects under it, linked in under a phasing root:
             // the export carries it as an empty node, which the export log counts as a helper node without a layer of
             // its name. Expected, and said so here, as the export log's counts are left as they were.
             var counted = plan.Links
@@ -201,18 +241,22 @@ namespace Utilities.Planner
             {
                 plan.Notes.Add(PhasingFixScript.Count(counted.Count, "node linked is a Max group, a Point or another helper, or a spline with objects under it",
                     "nodes linked are Max groups, Points or other helpers, or splines with objects under them")
-                    + " (" + string.Join(", ", counted.Take(5).ToArray()) + (counted.Count > 5 ? ", ..." : string.Empty) + "). Under the phasing root the export"
-                    + " carries " + (counted.Count == 1
+                    + " (" + string.Join(", ", counted.Take(5).ToArray()) + (counted.Count > 5 ? ", ..." : string.Empty) + "). Under "
+                    + (scene.PhasingRoots.Count > 1 ? "a" : "the") + " phasing root the export carries " + (counted.Count == 1
                         ? "it as an empty node, so the export log's pairing note will name it as a helper node without a layer of its name"
                         : "them as empty nodes, so the export log's pairing note will name them as helper nodes without a layer of their name")
                     + ". That is expected: the export and the Planner's Generate from model are not affected.");
             }
 
-            var onRoot = byLayer[scene.RootLayer.Name].Count(n => IsObject(n, scene));
-            if (onRoot > 0)
+            // One note for each root whose own layer holds objects, in root order.
+            foreach (var root in withLayer)
             {
-                plan.Notes.Add(PhasingFixScript.Count(onRoot, "object sits", "objects sit") + " on the phasing root layer " + scene.RootLayer.Name
-                    + " itself, which holds no work; " + (onRoot == 1 ? "it is" : "they are") + " left as " + (onRoot == 1 ? "it is" : "they are") + ".");
+                var onRoot = byLayer[root.Layer.Name].Count(n => IsObject(n, scene));
+                if (onRoot > 0)
+                {
+                    plan.Notes.Add(PhasingFixScript.Count(onRoot, "object sits", "objects sit") + " on the phasing root layer " + root.Layer.Name
+                        + " itself, which holds no work; " + (onRoot == 1 ? "it is" : "they are") + " left as " + (onRoot == 1 ? "it is" : "they are") + ".");
+                }
             }
             return plan;
         }

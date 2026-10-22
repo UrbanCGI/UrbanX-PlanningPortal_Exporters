@@ -622,7 +622,7 @@ namespace Utilities.Tests
             var sceneModel = new PlannerSceneModel(scene.Snapshot);
             var plan = list != null ? PlannerLayerPlanner.Plan(list, sceneModel) : null;
             var tree = PlannerScheduleRows.Tree(list, plan, sceneModel, null, schedule, PlannerNamingKind.New);
-            var unlisted = PlannerScheduleRows.Unlisted(plan, null, schedule, PlannerNamingKind.New);
+            var unlisted = PlannerScheduleRows.Unlisted(plan, null, schedule, PlannerNamingKind.New, sceneModel);
             rows = tree.Concat(PlannerScheduleRows.UnlistedAtWork(unlisted)).ToList();
             return PlannerGanttModel.Build(rows, schedule, new DateTime(2026, 10, 15));
         }
@@ -898,6 +898,334 @@ namespace Utilities.Tests
                 schedule.NotScheduled.Single(n => n.Name == "IN_Loose" && n.Key != second.Key).Reason);
             Assert.EndsWith("; the export calls it IN_Loose (1), as a node it writes before it is called IN_Loose too, so the Planner reads it as an object of its own: give it a unique name",
                 schedule.NotScheduled.Single(n => n.Key == second.Key).Reason);
+        }
+
+        // ---------------------------------------------------------------------------------------------------------
+        // Several phasing roots (naming v2, several roots: spec 4.6, 4.7, R19)
+
+        /// <summary>
+        /// Two areas of one schedule (spec section 1): Work_Phasing_South made first, so 3ds Max's order is not the name order,
+        /// then Work_Phasing_North; each root a helper on the Max layer of its name, its phase groups and layers under it, the
+        /// objects linked under their layers' helpers. South's hoarding comes down in North's 02_01.
+        /// </summary>
+        internal static TestScene TwoRoots()
+        {
+            var scene = new TestScene();
+            scene.Layer("0");
+            var south = scene.Unit("Work_Phasing_South", null, null);
+            var southEnabling = scene.Unit("_07_South_Enabling", "Work_Phasing_South", south, "g7");
+            var hoarding = scene.Unit("07_01_Hoarding", "_07_South_Enabling", southEnabling, "l7");
+            scene.Object("IN_Hoarding_RM_02_01", hoarding, "07_01_Hoarding");
+            var southRoads = scene.Unit("_08_South_Roads", "Work_Phasing_South", south, "g8");
+            var southBinder = scene.Unit("08_01_Binder", "_08_South_Roads", southRoads, "l8");
+            scene.Object("IN_Binder_02", southBinder, "08_01_Binder");
+            var north = scene.Unit("Work_Phasing_North", null, null);
+            var enabling = scene.Unit("_01_North_Enabling", "Work_Phasing_North", north, "g1");
+            var drainage = scene.Unit("01_01_Drainage", "_01_North_Enabling", enabling, "l1");
+            scene.Object("IN_Pipe", drainage, "01_01_Drainage");
+            var roads = scene.Unit("_02_North_Roads", "Work_Phasing_North", north, "g2");
+            var binder = scene.Unit("02_01_Binder", "_02_North_Roads", roads, "l2");
+            scene.Object("IN_Binder", binder, "02_01_Binder");
+            return scene;
+        }
+
+        // The list a Planner project of the two areas writes: a Root row for each root folder, its groups under it.
+        private static PlannerLayerList TwoRootsList()
+        {
+            return List(
+                "f1,,Work_Phasing_North,Root,,,,,Work_Phasing_North,,,,1,2026-08-31",
+                "g1,f1,_01_North_Enabling,Group,,,,,North_Enabling,,,,1,2026-08-31",
+                "l1,g1,01_01_Drainage,Layer,01_01,1,1,,Drainage,2026-09-01,2026-09-02,,1,2026-08-31",
+                "g2,f1,_02_North_Roads,Group,,,,,North_Roads,,,,2,2026-08-31",
+                "l2,g2,02_01_Binder,Layer,02_01,2,1,,Binder,2026-09-10,2026-09-11,,1,2026-08-31",
+                "f8,,Work_Phasing_South,Root,,,,,Work_Phasing_South,,,,2,2026-08-31",
+                "g7,f8,_07_South_Enabling,Group,,,,,South_Enabling,,,,1,2026-08-31",
+                "l7,g7,07_01_Hoarding,Layer,07_01,7,1,,Hoarding,2026-09-03,2026-09-04,,1,2026-08-31",
+                "g8,f8,_08_South_Roads,Group,,,,,South_Roads,,,,2,2026-08-31",
+                "l8,g8,08_01_Binder,Layer,08_01,8,1,,Binder,,,Yes,1,2026-08-31");
+        }
+
+        private static string Outline(IEnumerable<PlannerScheduleRow> rows)
+        {
+            return string.Join(" | ", rows.Select(r => new string('.', r.Depth) + r.Name + " " + r.Kind).ToArray());
+        }
+
+        [Fact]
+        public void WithNoListEachRootHasARowWithItsUnitsUnderIt()
+        {
+            var scene = TwoRoots();
+            var far = scene.Unit("09_01_Elsewhere", null, null);
+            scene.Object("IN_Far", far, "09_01_Elsewhere");
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var tree = PlannerScheduleRows.Tree(null, null, model, null, null, PlannerNamingKind.New);
+            // Roots in name order, each at the top; the units nested as their Max layers nest.
+            Assert.Equal("Work_Phasing_North Root | ._01_North_Enabling Group | ..01_01_Drainage Layer | ._02_North_Roads Group | ..02_01_Binder Layer"
+                + " | Work_Phasing_South Root | ._07_South_Enabling Group | ..07_01_Hoarding Layer | ._08_South_Roads Group | ..08_01_Binder Layer", Outline(tree));
+            var south = tree.Single(r => r.Name == "Work_Phasing_South");
+            Assert.Equal(PlannerScheduleRowSource.Scene, south.Source);
+            Assert.Equal("Work_Phasing_South", south.LayerName);
+            Assert.Same(model.PhasingRoots[1], south.Root);
+            Assert.Null(south.Unit);
+            // A root is a group to the tab: never TBC, and not an editable layer; its layers are TBC as every layer is with no list.
+            Assert.True(south.IsGroup);
+            Assert.Equal(PlannerRowTbc.None, south.TbcMark);
+            Assert.False(south.Editable);
+            Assert.Equal(PlannerRowTbc.NoList, tree.Single(r => r.Name == "08_01_Binder").TbcMark);
+
+            // Filled: South's layers are the tree's, so only the layer outside every root gets a flat row of its own.
+            var schedule = FillWithNoList(scene);
+            tree = PlannerScheduleRows.Tree(null, null, model, null, schedule, PlannerNamingKind.New);
+            Assert.False(tree.Single(r => r.Name == "Work_Phasing_South").Tbc);
+            Assert.Equal(1, tree.Single(r => r.Name == "08_01_Binder").InCount);
+            var outside = Assert.Single(PlannerScheduleRows.Extra(tree, schedule));
+            Assert.Equal("09_01_Elsewhere", outside.Name);
+            Assert.Equal(schedule.Activities.Count, tree.Concat(new[] { outside }).Sum(r => r.In.Count + r.Rm.Count));
+
+            // One root: the tree as it always was, its groups at the top and no Root row.
+            var one = PlannerScheduleRows.Tree(null, null, new PlannerSceneModel(Scene().Snapshot), null, null, PlannerNamingKind.New);
+            Assert.Equal("_01_Zone Group | .01_01_Strip_Out Layer | .01_02_Kerbs Layer | _02_Zone Group | .02_01_Reinstate Layer", Outline(one));
+        }
+
+        [Fact]
+        public void TheListsRootRowsStandForTheirRootsAndTheGanttDrawsEachAsAGroup()
+        {
+            var scene = TwoRoots();
+            var list = TwoRootsList();
+            Assert.Equal(2, list.RootRows);
+            var schedule = Fill(list, scene);
+            Assert.True(schedule.Usable, schedule.Message);
+            List<PlannerScheduleRow> rows;
+            var gantt = Gantt(list, scene, schedule, out rows);
+            Assert.Equal("Work_Phasing_North Root | ._01_North_Enabling Group | ..01_01_Drainage Layer | ._02_North_Roads Group | ..02_01_Binder Layer"
+                + " | Work_Phasing_South Root | ._07_South_Enabling Group | ..07_01_Hoarding Layer | ._08_South_Roads Group | ..08_01_Binder Layer",
+                Outline(rows.Where(r => r.Source == PlannerScheduleRowSource.List)));
+            var model = new PlannerSceneModel(scene.Snapshot);
+            foreach (var name in new[] { "Work_Phasing_North", "Work_Phasing_South" })
+            {
+                int i = rows.FindIndex(r => r.Name == name);
+                var row = rows[i];
+                // The row stands for the root of its name, by the root's Max layer.
+                Assert.Equal(name, row.LayerName);
+                Assert.Equal(name, row.Root.Name);
+                Assert.Equal(PlannerRowTbc.None, row.TbcMark);
+                Assert.False(row.Tbc);
+                // A grey span over everything under it, never TBC, and the hover says so.
+                var g = gantt.Rows[i];
+                Assert.True(g.IsGroup);
+                Assert.True(g.HasChildren);
+                Assert.False(g.OwnTbc);
+                Assert.Equal(PlannerGanttSpanKind.Group, g.SpanKind);
+                int end = rows.FindIndex(i + 1, r => r.Depth == 0);
+                var under = gantt.Rows.Skip(i + 1).Take((end < 0 ? rows.Count : end) - i - 1).ToList();
+                var runs = under.SelectMany(u => u.Install.Concat(u.Removal).Concat(u.SpanKind != PlannerGanttSpanKind.None ? new[] { u.Span } : new PlannerGanttRun[0])).ToList();
+                Assert.Equal(runs.Min(r => r.First), g.Span.First);
+                Assert.Equal(runs.Max(r => r.Last), g.Span.Last);
+                Assert.StartsWith(name + "\r\n", gantt.Describe(i, g.Span.First, CultureInfo.InvariantCulture));
+                Assert.Contains("Everything inside it runs", gantt.Describe(i, g.Span.First, CultureInfo.InvariantCulture));
+            }
+            // North spans its drainage (1 Sep) to its binder, where the hoarding South puts up comes down (11 Sep).
+            var north = gantt.Rows[rows.FindIndex(r => r.Name == "Work_Phasing_North")];
+            Assert.Equal(new DateTime(2026, 9, 1), gantt.DayAt(north.Span.First));
+            Assert.Equal(new DateTime(2026, 9, 11), gantt.DayAt(north.Span.Last));
+            Assert.Equal("07_01_Hoarding", Activity(schedule, "IN_Hoarding_RM_02_01", PlannerTaskType.Install).Home.Label);
+            Assert.Equal("02_01_Binder", Activity(schedule, "IN_Hoarding_RM_02_01", PlannerTaskType.Dismantle).Home.Label);
+            // A root carries no dates of its own in the preview, even when a list edited by hand gives it some (R17).
+            var dated = List("f1,,Work_Phasing_North,Root,,,,,Work_Phasing_North,2026-09-01,2026-09-30,,1,2026-08-31");
+            var folder = Assert.Single(PlannerScheduleRows.PlannerFolders(dated, PlannerLayerPlanner.Plan(dated, model)));
+            Assert.Null(folder.Start);
+            Assert.Null(folder.Finish);
+        }
+
+        [Fact]
+        public void ALayerAddedStraightUnderARootSitsUnderThatRootsRow()
+        {
+            // The record names the root's Max layer as its parent: under South's row, among its rows in name order.
+            var scene = TwoRoots();
+            scene.Unit("07_02_Fence", "Work_Phasing_South", scene.Find("Work_Phasing_South"));
+            var added = new List<PlannerAddedLayer> { new PlannerAddedLayer { Layer = "07_02_Fence", ParentLayer = "Work_Phasing_South", Kind = "Layer", Id = "07_02", Name = "Fence" } };
+            var model = new PlannerSceneModel(scene.Snapshot);
+            Action<List<PlannerScheduleRow>, int> underSouth = (rows, depth) =>
+            {
+                int i = rows.FindIndex(r => r.Name == "07_02_Fence");
+                Assert.Equal(PlannerScheduleRowSource.Added, rows[i].Source);
+                Assert.Equal(depth, rows[i].Depth);
+                Assert.Equal("Work_Phasing_South", rows.Take(i).Last(r => r.Depth == depth - 1).Name);
+                Assert.Equal(PlannerRowTbc.NotInList, rows[i].TbcMark);
+            };
+            underSouth(PlannerScheduleRows.Tree(null, null, model, added, null, PlannerNamingKind.New), 1);
+            // With the list's Root rows: under South's Root row.
+            var list = TwoRootsList();
+            underSouth(PlannerScheduleRows.Tree(list, PlannerLayerPlanner.Plan(list, model), model, added, null, PlannerNamingKind.New), 1);
+            // A list with no Root rows has no row for the root: among the top rows, as a layer under the one root always was.
+            var noRoots = List(
+                "g1,,_01_North_Enabling,Group,,,,,North_Enabling,,,,1,2026-08-31",
+                "g7,,_07_South_Enabling,Group,,,,,South_Enabling,,,,2,2026-08-31");
+            var rowsNoRoots = PlannerScheduleRows.Tree(noRoots, PlannerLayerPlanner.Plan(noRoots, model), model, added, null, PlannerNamingKind.New);
+            Assert.Equal(0, rowsNoRoots.Single(r => r.Name == "07_02_Fence").Depth);
+            var top = rowsNoRoots.Where(r => r.Depth == 0).Select(r => r.Name).ToList();
+            Assert.Equal(3, top.Count);
+            Assert.Equal(top.OrderBy(n => n, PlannerNaturalOrder.Comparer), top);
+
+            // One root: a layer added under it, its parent named or (an older record) empty, among the top rows as before.
+            var one = Scene();
+            one.Unit("03_01_Added", "Work_Phasing", one.Find("Work_Phasing"));
+            var oneModel = new PlannerSceneModel(one.Snapshot);
+            foreach (var parent in new[] { "Work_Phasing", string.Empty })
+            {
+                var record = new List<PlannerAddedLayer> { new PlannerAddedLayer { Layer = "03_01_Added", ParentLayer = parent, Kind = "Layer", Id = "03_01", Name = "Added" } };
+                var rows = PlannerScheduleRows.Tree(null, null, oneModel, record, null, PlannerNamingKind.New);
+                Assert.Equal("_01_Zone Group | .01_01_Strip_Out Layer | .01_02_Kerbs Layer | _02_Zone Group | .02_01_Reinstate Layer | 03_01_Added Layer", Outline(rows));
+            }
+        }
+
+        [Fact]
+        public void NotScheduledCoversEveryRootAndNoRootIsAnObject()
+        {
+            var scene = TwoRoots();
+            // On South's layer but linked under nothing, and untagged geometry under South's binder.
+            scene.Object("IN_Loose_Kerb", null, "08_01_Binder");
+            scene.Object("Plain_South", scene.Find("08_01_Binder"), "08_01_Binder");
+            // A third root whose name reads as an IN tag: a root all the same (a helper at the top, "phasing" in its name).
+            scene.Unit("IN_Phasing_Spare", null, null);
+            var schedule = FillWithNoList(scene);
+            Assert.True(schedule.Usable, schedule.Message);
+            Func<string, string> reason = name => schedule.NotScheduled.Single(n => n.Name == name).Reason;
+            Assert.Equal(PlannerSchedule.NoLayerReasonV2 + " (it sits on the layer 08_01_Binder: Link objects to their helpers puts it under the layer's helper)", reason("IN_Loose_Kerb"));
+            Assert.StartsWith(PlannerSchedule.NoTagReasonV2, reason("Plain_South"));
+            // The roots are never objects (R19): not untagged, not unfiled, not listed, in the preview nor in the export check's reading.
+            var roots = new[] { "IN_Phasing_Spare", "Work_Phasing_North", "Work_Phasing_South" };
+            Assert.Equal(roots, new PlannerSceneModel(scene.Snapshot).PhasingRoots.Select(r => r.Name).ToArray());
+            Assert.Empty(schedule.V2.Skipped.Intersect(roots));
+            Assert.Equal(new[] { "IN_Loose_Kerb" }, schedule.V2.Unfiled);
+            Assert.DoesNotContain(schedule.NotScheduled, n => roots.Contains(n.Name));
+            var read = PlannerSchedule.ReadNamesV2(new PlannerScheduleModel(scene.Snapshot), null);
+            Assert.Empty(read.Skipped.Intersect(roots));
+            Assert.DoesNotContain(read.Objects, o => roots.Contains(o.Name));
+            Assert.Equal(new[] { "IN_Loose_Kerb" }, read.Unfiled);
+            // Nor is the one root of a one-root scene.
+            Assert.DoesNotContain("Work_Phasing", FillWithNoList(Scene()).V2.Skipped);
+        }
+
+        [Fact]
+        public void ALayerRecordedWithNoParentSitsUnderTheRowOfTheRootItIsIn()
+        {
+            // A backup root beside Work_Phasing, and 03_01_Kerb added straight under Work_Phasing by a tool whose records leave
+            // the parent empty: under Work_Phasing's row, the root its own layer and helper are in, never above both roots.
+            var scene = Scene();
+            var copy = scene.Unit("Old_Phasing_copy", null, null);
+            scene.Unit("_05_Old_Zone", "Old_Phasing_copy", copy);
+            scene.Unit("03_01_Kerb", "Work_Phasing", scene.Find("Work_Phasing"));
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var added = new List<PlannerAddedLayer> { new PlannerAddedLayer { Layer = "03_01_Kerb", ParentLayer = string.Empty, Kind = "Layer", Id = "03_01", Name = "Kerb" } };
+            var rows = PlannerScheduleRows.Tree(null, null, model, added, null, PlannerNamingKind.New);
+            Assert.Equal("Old_Phasing_copy Root | ._05_Old_Zone Group | Work_Phasing Root | ._01_Zone Group | ..01_01_Strip_Out Layer | ..01_02_Kerbs Layer"
+                + " | ._02_Zone Group | ..02_01_Reinstate Layer | .03_01_Kerb Layer", Outline(rows));
+            // The Gantt's row for it has the root's row as its parent.
+            var gantt = PlannerGanttModel.Build(rows, null, new DateTime(2026, 10, 15));
+            Assert.Equal(rows.FindIndex(r => r.Name == "Work_Phasing"), gantt.Rows[rows.FindIndex(r => r.Name == "03_01_Kerb")].Parent);
+            // With the list's Root rows: under Work_Phasing's Root row.
+            var list = List(
+                "f0,,Old_Phasing_copy,Root,,,,,Old_Phasing_copy,,,,1,2026-08-31",
+                "g5,f0,_05_Old_Zone,Group,,,,,Old_Zone,,,,1,2026-08-31",
+                "f1,,Work_Phasing,Root,,,,,Work_Phasing,,,,2,2026-08-31",
+                "g1,f1,_01_Zone,Group,,,,,Zone,,,,1,2026-08-31");
+            rows = PlannerScheduleRows.Tree(list, PlannerLayerPlanner.Plan(list, model), model, added, null, PlannerNamingKind.New);
+            Assert.Equal("Old_Phasing_copy Root | ._05_Old_Zone Group | Work_Phasing Root | ._01_Zone Group | .03_01_Kerb Layer", Outline(rows));
+        }
+
+        [Fact]
+        public void ARootRowRenamedInThePlannerFindsItsRootByThePlannerIdOfTheRootsHelper()
+        {
+            // South renamed Work_Phasing_Southside in the Planner (R5), its helper given f8 by an earlier list: the row stands
+            // for South by that ID alone, by South's Max layer, so a layer added straight under South sits under it.
+            var scene = TwoRoots();
+            scene.Find("Work_Phasing_South").PlannerId = "f8";
+            scene.Unit("07_02_Fence", "Work_Phasing_South", scene.Find("Work_Phasing_South"));
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var list = List(
+                "f1,,Work_Phasing_North,Root,,,,,Work_Phasing_North,,,,1,2026-08-31",
+                "g1,f1,_01_North_Enabling,Group,,,,,North_Enabling,,,,1,2026-08-31",
+                "f8,,Work_Phasing_Southside,Root,,,,,Work_Phasing_Southside,,,,2,2026-08-31",
+                "g7,f8,_07_South_Enabling,Group,,,,,South_Enabling,,,,1,2026-08-31");
+            var plan = PlannerLayerPlanner.Plan(list, model);
+            // The record naming South's Max layer, and an older one with no parent.
+            foreach (var parent in new[] { "Work_Phasing_South", string.Empty })
+            {
+                var added = new List<PlannerAddedLayer> { new PlannerAddedLayer { Layer = "07_02_Fence", ParentLayer = parent, Kind = "Layer", Id = "07_02", Name = "Fence" } };
+                var rows = PlannerScheduleRows.Tree(list, plan, model, added, null, PlannerNamingKind.New);
+                var southside = rows.Single(r => r.Name == "Work_Phasing_Southside");
+                Assert.Same(model.PhasingRoots.Single(r => r.Name == "Work_Phasing_South"), southside.Root);
+                Assert.Equal("Work_Phasing_South", southside.LayerName);
+                Assert.Equal("Work_Phasing_North Root | ._01_North_Enabling Group | Work_Phasing_Southside Root | ._07_South_Enabling Group | .07_02_Fence Layer",
+                    Outline(rows));
+            }
+        }
+
+        [Fact]
+        public void AOneRootListsTopRowNamedLikeTheRootStandsForTheRoot()
+        {
+            // A list from a Planner without Root rows whose top folder is named like the one root: the row stands for the root,
+            // as Clean up reads it, by the root's Max layer, and a layer added straight under the root goes under that row.
+            var scene = Scene();
+            scene.Unit("03_01_Added", "Work_Phasing", scene.Find("Work_Phasing"));
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var list = List(
+                "r0,,Work_Phasing,Group,,,,,Work_Phasing,,,,1,2026-08-31",
+                "g1,r0,_01_Zone,Group,,,,,Zone,,,,1,2026-08-31",
+                "l1,g1,01_01_Strip_Out,Layer,01_01,1,1,,Strip_Out,2026-09-01,2026-09-02,,1,2026-08-31");
+            var plan = PlannerLayerPlanner.Plan(list, model);
+            Assert.True(plan.Rows.Single(r => r.Row.PlannerId == "r0").IsRoot);
+            Func<string, List<PlannerAddedLayer>> record = parent => new List<PlannerAddedLayer>
+            {
+                new PlannerAddedLayer { Layer = "03_01_Added", ParentLayer = parent, Kind = "Layer", Id = "03_01", Name = "Added" }
+            };
+            foreach (var parent in new[] { "Work_Phasing", string.Empty })
+            {
+                var rows = PlannerScheduleRows.Tree(list, plan, model, record(parent), null, PlannerNamingKind.New);
+                Assert.Same(model.PhasingRoots[0], rows[0].Root);
+                Assert.Equal("Work_Phasing", rows[0].LayerName);
+                Assert.Equal("Work_Phasing Group | ._01_Zone Group | ..01_01_Strip_Out Layer | .03_01_Added Layer", Outline(rows));
+            }
+            // A one-root list without such a row: among the top rows, as before.
+            var plain = SceneList();
+            var plainRows = PlannerScheduleRows.Tree(plain, PlannerLayerPlanner.Plan(plain, model), model, record(string.Empty), null, PlannerNamingKind.New);
+            Assert.Equal("_01_Zone Group | .01_01_Strip_Out Layer | .01_02_Kerbs Layer | _02_Zone Group | .02_01_Reinstate Layer | .02_02_Planned Layer | 03_01_Added Layer",
+                Outline(plainRows));
+            Assert.DoesNotContain(plainRows, r => r.Root != null);
+        }
+
+        [Fact]
+        public void ARootTheListDoesNotNameIsListedAsARootByTheScene()
+        {
+            // A phasing root no Root row names is listed as not in the list (R12). The scene says it is a root, whatever the
+            // item holds: no unit, or a unit of the root's helper and Max layer.
+            var scene = TwoRoots();
+            scene.Unit("Old_Phasing_copy", null, null);
+            var model = new PlannerSceneModel(scene.Snapshot);
+            var plan = new PlannerLayerPlan();
+            plan.NotInList.Add(new PlannerUnlistedItem { Name = "Old_Phasing_copy", What = "layer and helper", Note = string.Empty });
+            plan.NotInList.Add(new PlannerUnlistedItem
+            {
+                Name = "Work_Phasing_South",
+                What = "layer and helper",
+                Note = string.Empty,
+                Unit = new PlannerSceneUnit { Helper = scene.Find("Work_Phasing_South"), Layer = model.LayerByName["Work_Phasing_South"] }
+            });
+            // Items with no unit that are no root: a group or a layer by the name, as any other.
+            plan.NotInList.Add(new PlannerUnlistedItem { Name = "Spare_Phasing_Notes", What = "layer only (no helper)", Note = string.Empty });
+            plan.NotInList.Add(new PlannerUnlistedItem { Name = "09_01_Spare", What = "layer only (no helper)", Note = string.Empty });
+            var rows = PlannerScheduleRows.Unlisted(plan, null, null, PlannerNamingKind.New, model);
+            Assert.Equal("09_01_Spare Layer | Old_Phasing_copy Root | Spare_Phasing_Notes Group | Work_Phasing_South Root", Outline(rows));
+            var copy = rows.Single(r => r.Name == "Old_Phasing_copy");
+            Assert.Same(model.PhasingRoots.Single(r => r.Name == "Old_Phasing_copy"), copy.Root);
+            Assert.Equal("Old_Phasing_copy", copy.LayerName);
+            Assert.True(copy.IsGroup);
+            Assert.Equal(PlannerRowTbc.None, copy.TbcMark);
+            Assert.Same(model.PhasingRoots.Single(r => r.Name == "Work_Phasing_South"), rows.Single(r => r.Name == "Work_Phasing_South").Root);
+            Assert.Null(rows.Single(r => r.Name == "Spare_Phasing_Notes").Root);
+            Assert.Equal(PlannerRowTbc.NotInList, rows.Single(r => r.Name == "09_01_Spare").TbcMark);
+            // With no scene to compare, nothing reads as a root.
+            Assert.DoesNotContain(PlannerScheduleRows.Unlisted(plan, null, null, PlannerNamingKind.New), r => r.Kind == "Root" || r.Root != null);
         }
 
         [Fact]
