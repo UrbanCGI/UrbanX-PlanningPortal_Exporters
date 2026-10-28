@@ -241,6 +241,41 @@ namespace Utilities.Planner
         /// <summary>The Project start cell as written (empty in a list made before the Planner wrote that column).</summary>
         public string ProjectStartText = string.Empty;
         /// <summary>
+        /// The folder's ID, TBC notes and Notes as the Planner's folder editor keeps them (its source activity IDs, comma
+        /// separated; why its dates are TBC; free notes), for the modellers to read. Empty when the list has none.
+        /// </summary>
+        public string ActivityIds = string.Empty;
+        public string TbcNotes = string.Empty;
+        public string LayerNotes = string.Empty;
+
+        /// <summary>The row has an ID, TBC notes or Notes from the Planner.</summary>
+        public bool HasPlannerInfo
+        {
+            get { return ActivityIds.Length > 0 || TbcNotes.Length > 0 || LayerNotes.Length > 0; }
+        }
+
+        /// <summary>
+        /// The row's ID, TBC notes and Notes as lines to show ("IDs: ...", "TBC: ...", "Notes: ..."), the ones it has; empty
+        /// when it has none.
+        /// </summary>
+        public string PlannerInfoText()
+        {
+            var lines = new List<string>();
+            if (ActivityIds.Length > 0)
+            {
+                lines.Add("IDs: " + ActivityIds);
+            }
+            if (TbcNotes.Length > 0)
+            {
+                lines.Add("TBC: " + TbcNotes);
+            }
+            if (LayerNotes.Length > 0)
+            {
+                lines.Add("Notes: " + LayerNotes);
+            }
+            return string.Join("\r\n", lines.ToArray());
+        }
+        /// <summary>
         /// The Start and Finish cells as the list's one date reader reads them (<see cref="PlannerListDates"/>): the days the
         /// new names' preview and the Gantt give the layer; null when empty or not read.
         /// </summary>
@@ -307,6 +342,15 @@ namespace Utilities.Planner
             PlannerIdColumn, ParentIdColumn, LayerColumn, KindColumn, IdColumn, PhaseColumn, StageColumn, SubStageColumn,
             NameColumn, StartColumn, FinishColumn, TbcColumn, OrderColumn, ProjectStartColumn
         };
+
+        /// <summary>
+        /// The folder editor's ID, TBC notes and Notes, which the Planner writes after Project start only when a folder of
+        /// the list has one: shown to the modellers, never used to build anything.
+        /// </summary>
+        public const string ActivityIdsColumn = "Activity IDs";
+        public const string TbcNotesColumn = "TBC notes";
+        public const string NotesColumn = "Notes";
+        public static readonly string[] InfoColumns = { ActivityIdsColumn, TbcNotesColumn, NotesColumn };
 
         private static readonly string[] RequiredColumns = { PlannerIdColumn, ParentIdColumn, LayerColumn, KindColumn };
 
@@ -382,6 +426,9 @@ namespace Utilities.Planner
                     OrderText = row.OrderText,
                     Order = row.Order,
                     ProjectStartText = row.ProjectStartText,
+                    ActivityIds = row.ActivityIds,
+                    TbcNotes = row.TbcNotes,
+                    LayerNotes = row.LayerNotes,
                     StartDate = row.StartDate,
                     FinishDate = row.FinishDate,
                     IdKey = row.IdKey
@@ -572,7 +619,7 @@ namespace Utilities.Planner
             for (int i = 0; i < header.Count; i++)
             {
                 var name = header[i].Trim();
-                var known = Columns.FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase));
+                var known = Columns.Concat(InfoColumns).FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase));
                 if (known != null)
                 {
                     if (!columns.ContainsKey(known))
@@ -628,7 +675,10 @@ namespace Utilities.Planner
                     Finish = cell(FinishColumn).Trim(),
                     TbcText = cell(TbcColumn).Trim(),
                     OrderText = cell(OrderColumn).Trim(),
-                    ProjectStartText = cell(ProjectStartColumn).Trim()
+                    ProjectStartText = cell(ProjectStartColumn).Trim(),
+                    ActivityIds = cell(ActivityIdsColumn).Trim(),
+                    TbcNotes = cell(TbcNotesColumn).Trim(),
+                    LayerNotes = cell(NotesColumn).Trim()
                 };
                 row.Kind = string.Equals(row.KindText, "Group", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Group
                     : string.Equals(row.KindText, "Layer", StringComparison.OrdinalIgnoreCase) ? PlannerLayerKind.Layer

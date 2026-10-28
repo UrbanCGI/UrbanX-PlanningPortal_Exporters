@@ -91,6 +91,8 @@ namespace Max2Babylon
         private readonly TabPage notScheduledPage = new TabPage();
         private readonly Label unlistedLabel = new Label();
         private readonly Label sideLabel = new Label();
+        // The chosen row's ID, TBC notes and Notes from the Planner's list, under its heading (ShowInfo).
+        private readonly TextBox sideInfo = new TextBox();
         private readonly DataGridView sideGrid = new DataGridView();
         private readonly Button addInButton = new Button();
         private readonly Button addRmButton = new Button();
@@ -459,6 +461,16 @@ namespace Max2Babylon
             sideLabel.AutoSize = true;
             sideLabel.Padding = new Padding(4, 3, 4, 2);
             sideLabel.Font = boldFont;
+            // Under the heading, what the Planner's folder editor holds for the row: read-only text, so an ID or a note can be
+            // selected and copied; as tall as its lines up to six, then it scrolls; hidden for a row with none (FitSideInfo).
+            sideInfo.Dock = DockStyle.Top;
+            sideInfo.Multiline = true;
+            sideInfo.ReadOnly = true;
+            sideInfo.WordWrap = true;
+            sideInfo.ScrollBars = ScrollBars.Vertical;
+            sideInfo.BorderStyle = BorderStyle.None;
+            sideInfo.Margin = new Padding(4, 0, 4, 3);
+            sideInfo.Visible = false;
             SetUpGrid(sideGrid);
             sideGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             AddColumn(sideGrid, "", 8);
@@ -491,11 +503,18 @@ namespace Max2Babylon
             sideSplit.Orientation = Orientation.Vertical;
             sideSplit.FixedPanel = FixedPanel.Panel2;
             sideSplit.Panel1.Controls.Add(split);
+            // Docked last to first: the heading at the top, the Planner's ID and notes under it, the buttons at the bottom,
+            // the list in what is left.
             sideSplit.Panel2.Controls.Add(sideGrid);
             sideSplit.Panel2.Controls.Add(sideButtons);
+            sideSplit.Panel2.Controls.Add(sideInfo);
             sideSplit.Panel2.Controls.Add(sideLabel);
             sideSplit.SizeChanged += (s, e) => PlaceSplitter();
-            sideSplit.Panel2.ClientSizeChanged += (s, e) => FitSideLabel();
+            sideSplit.Panel2.ClientSizeChanged += (s, e) =>
+            {
+                FitSideLabel();
+                FitSideInfo();
+            };
 
             // The date scrubber. Nothing in its row changes size as it moves (the date and the count have room for their
             // longest text, the layers at work get two lines and the rest in the tooltip), so the slider stays put under the
@@ -711,6 +730,28 @@ namespace Max2Babylon
             {
                 sideLabel.MaximumSize = new Size(width, 0);
             }
+        }
+
+        // The chosen row's ID, TBC notes and Notes from the Planner's list (PlannerLayerRow.PlannerInfoText), under the
+        // heading; hidden when it has none.
+        private void ShowInfo(PlannerScheduleRow row)
+        {
+            var text = row != null && row.ListRow != null ? row.ListRow.PlannerInfoText() : string.Empty;
+            sideInfo.Text = text;
+            sideInfo.Visible = text.Length > 0;
+            FitSideInfo();
+        }
+
+        // The ID and notes box as tall as its text wraps to at the side list's width, up to six lines (then it scrolls).
+        private void FitSideInfo()
+        {
+            if (!sideInfo.Visible)
+            {
+                return;
+            }
+            int width = Math.Max(40, sideSplit.Panel2.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 8);
+            int text = TextRenderer.MeasureText(sideInfo.Text, sideInfo.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl).Height;
+            sideInfo.Height = Math.Min(text, sideInfo.Font.Height * 6) + 6;
         }
 
         // The lists' tab strip: its tabs and the page's border. TabControl.ItemSize reads 0 until the strip has a handle, so
@@ -1539,11 +1580,12 @@ namespace Max2Babylon
                 }
                 line.DefaultCellStyle.BackColor = BackOf(row);
                 line.Cells[7].ToolTipText = PlannerTipText.Wrap(Details(row));
-                // The whole name, its IDs, and why it is TBC.
+                // The whole name, its IDs, why it is TBC, and the Planner's ID, TBC notes and Notes for it.
                 line.Cells[0].ToolTipText = PlannerTipText.Wrap(row.Name + (row.ListRow != null
                     ? "\r\nPlanner ID " + row.ListRow.PlannerId + (row.ListRow.IdKey != null ? "; layer ID " + row.ListRow.IdKey : string.Empty)
                     : row.LayerName != null && row.LayerName != row.Name ? "\r\n" + row.LayerName : string.Empty)
-                    + (tbc != null ? "\r\n" + tbc : string.Empty));
+                    + (tbc != null ? "\r\n" + tbc : string.Empty)
+                    + (row.ListRow != null && row.ListRow.HasPlannerInfo ? "\r\n" + row.ListRow.PlannerInfoText() : string.Empty));
                 if (tbc != null)
                 {
                     line.Cells[0].Style.BackColor = TbcRowBack;
@@ -2342,6 +2384,7 @@ namespace Max2Babylon
             {
                 sideGrid.Rows.Clear();
                 var row = currentRow;
+                ShowInfo(row);
                 if (row == null)
                 {
                     sideLabel.Text = OldNames ? "IN and RM wait for Clean up scene graph." : "Choose a row to see its IN and RM.";

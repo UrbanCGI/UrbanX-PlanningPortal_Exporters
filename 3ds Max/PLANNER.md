@@ -737,7 +737,9 @@ to the Exporter page's Log tab.
   tooltip);
 - the tree of layers, with the Gantt beside it (section 7), and the side list of the chosen row's IN and RM with **Add
   to IN…**, **Add to RM…** and **Remove from list…** (its heading, the row's name and then its counts or what to do
-  first, wraps to the side list's width);
+  first, wraps to the side list's width). Under the heading, the row's **IDs**, **TBC** notes and **Notes** from the
+  Planner, when the list has any for it: read-only text that can be selected and copied, up to six lines before it
+  scrolls. The same lines end the tooltip of the row's name in the tree;
 - two lists below the tree: **Not in the Planner's list** and **Not scheduled**;
 - the date scrubber, with **Planner project start** at its right (section 6.3).
 
@@ -771,6 +773,7 @@ know are ignored, with a note.
 | TBC | `Yes` when the Planner has not settled the layer's dates: a layer it has not dated yet (still on its placeholder day at the start of the schedule), or one dated but not confirmed |
 | Order | the row's place among its siblings in the Planner; read but not used, as the tool sorts the rows itself (D24) |
 | Project start | the Planner workspace's project start, the same on every row |
+| Activity IDs, TBC notes, Notes | the Planner folder editor's ID (the source activities behind the folder, such as P6 activity IDs, comma separated), TBC notes (why its dates are to be confirmed) and Notes. Written after Project start only when some folder of the list has one; shown to the modellers (section 5.1), never used to build anything. An older tool lists them as columns not read |
 
 **Dates.** One reader serves the preview, the Gantt and the project start. ISO dates (`2026-09-01`, as the Planner
 writes them) are read first. Otherwise the whole Start, Finish and Project start columns are read day first (as Excel
