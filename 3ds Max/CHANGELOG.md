@@ -313,7 +313,7 @@ not exported correctly using glTF
 - With the scrubber off, "Select changing this day" kept the last day's count. It now shows no count.
 - Clean up's report broke the saved copy's path in the middle of a word. The copy's file name and folder now have lines of their own, after the rest of the report, and a long folder breaks after a backslash. The message when the copy cannot be saved is laid out the same way, with the reason after it.
 
-## Several phasing roots (UrbanCGI fork, next release)
+## v20261022.12: Several phasing roots (UrbanCGI fork)
 **Changes**
 - A scene may hold several phasing roots, one per area of the site, all in one schedule. Every top-level helper with "phasing" in its name that reads as neither a phase group nor a layer is a root, taken in name order, each with the Max layer of exactly its name: no other layer stands in for a root any more. A top-level mesh with "phasing" in its name is no root.
 - Clean up scene graph works on every root, in one review and one undo record. A layer straight under a root moves only into a phase group of its own root. A root whose Max layer has another name is paired with one: the layer its groups sit in is renamed to the root's name when it holds nothing else; otherwise a new one is made at the top, the helper put on it and the groups' Max layers moved into it.

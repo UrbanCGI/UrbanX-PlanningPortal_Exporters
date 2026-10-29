@@ -738,8 +738,9 @@ to the Exporter page's Log tab.
 - the tree of layers, with the Gantt beside it (section 7), and the side list of the chosen row's IN and RM with **Add
   to IN…**, **Add to RM…** and **Remove from list…** (its heading, the row's name and then its counts or what to do
   first, wraps to the side list's width). Under the heading, the row's **IDs**, **TBC** notes and **Notes** from the
-  Planner, when the list has any for it: read-only text that can be selected and copied, up to six lines before it
-  scrolls. The same lines end the tooltip of the row's name in the tree;
+  Planner, when the list has any for it: read-only text that can be selected and copied, up to six lines (fewer in a
+  short window, so the list keeps its header and two rows) before it scrolls. The same lines end the tooltip of the
+  row's name in the tree;
 - two lists below the tree: **Not in the Planner's list** and **Not scheduled**;
 - the date scrubber, with **Planner project start** at its right (section 6.3).
 

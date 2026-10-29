@@ -284,11 +284,11 @@ namespace Utilities.Tests
         public void ReadsThePlannersIdsTbcNotesAndNotesForTheModellers()
         {
             // As the Planner writes them after Project start when a folder has any: the IDs comma separated (so quoted),
-            // a note over two lines, and rows with none.
+            // a note over two lines (its folder editor keeps a line break as LF), and rows with none.
             var text = "\uFEFF" + Header + ",Project start,Activity IDs,TBC notes,Notes\r\n"
                 + "g1,,_08_Cavern_Drifts,Group,,,,,Cavern_Drifts,,,,1,2027-04-01,,,The drifts either side of the cavern\r\n"
                 + "l1,g1,08_03_1_Stage_3_Drift_1L,Layer,08_03_1,8,3,1,Stage_3_Drift_1L,2029-04-13,2029-07-05,Yes,1,2027-04-01,"
-                + "\"23-EA-CVN-CON-1060, 01-EA-CVN-CON-1650\",Storyboard is 39 days later,\"Drift 1L, SCL drive\r\nthen backfill\"\r\n"
+                + "\"23-EA-CVN-CON-1060, 01-EA-CVN-CON-1650\",Storyboard is 39 days later,\"Drift 1L, SCL drive\nthen backfill\"\r\n"
                 + "l2,g1,08_04_Stage_4_Crosscut_Top,Layer,08_04,8,4,,Stage_4_Crosscut_Top,2029-08-16,2029-10-01,,2,2027-04-01,,,\r\n";
             var list = PlannerLayerList.Parse(text);
 
@@ -297,8 +297,9 @@ namespace Utilities.Tests
             var drift = list.Find("l1");
             Assert.Equal("23-EA-CVN-CON-1060, 01-EA-CVN-CON-1650", drift.ActivityIds);
             Assert.Equal("Storyboard is 39 days later", drift.TbcNotes);
-            Assert.Equal("Drift 1L, SCL drive\r\nthen backfill", drift.LayerNotes);
+            Assert.Equal("Drift 1L, SCL drive\nthen backfill", drift.LayerNotes);
             Assert.True(drift.HasPlannerInfo);
+            // Shown with every break as CRLF, the only one a text box breaks at.
             Assert.Equal("IDs: 23-EA-CVN-CON-1060, 01-EA-CVN-CON-1650\r\nTBC: Storyboard is 39 days later\r\nNotes: Drift 1L, SCL drive\r\nthen backfill", drift.PlannerInfoText());
             Assert.Equal("Notes: The drifts either side of the cavern", list.Find("g1").PlannerInfoText());
             Assert.False(list.Find("l2").HasPlannerInfo);
@@ -308,6 +309,14 @@ namespace Utilities.Tests
             Assert.Equal(drift.ActivityIds, renamed.Find("l1").ActivityIds);
             Assert.Equal(drift.TbcNotes, renamed.Find("l1").TbcNotes);
             Assert.Equal(drift.LayerNotes, renamed.Find("l1").LayerNotes);
+        }
+
+        [Fact]
+        public void ShowsANotesLineBreaksAsCrlfHoweverTheListWroteThem()
+        {
+            // A spreadsheet may save a break inside a cell as CRLF or a lone CR; none is doubled.
+            var row = new PlannerLayerRow { TbcNotes = "Possession\r\nnot booked", LayerNotes = "First\rsecond\nthird" };
+            Assert.Equal("TBC: Possession\r\nnot booked\r\nNotes: First\r\nsecond\r\nthird", row.PlannerInfoText());
         }
 
         [Fact]

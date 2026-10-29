@@ -256,7 +256,8 @@ namespace Utilities.Planner
 
         /// <summary>
         /// The row's ID, TBC notes and Notes as lines to show ("IDs: ...", "TBC: ...", "Notes: ..."), the ones it has; empty
-        /// when it has none.
+        /// when it has none. Every line break is CRLF, the only one a text box breaks at: a note's own breaks come as the
+        /// Planner's folder editor keeps them (LF), or as a spreadsheet saved them.
         /// </summary>
         public string PlannerInfoText()
         {
@@ -273,7 +274,7 @@ namespace Utilities.Planner
             {
                 lines.Add("Notes: " + LayerNotes);
             }
-            return string.Join("\r\n", lines.ToArray());
+            return string.Join("\r\n", lines.ToArray()).Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
         }
         /// <summary>
         /// The Start and Finish cells as the list's one date reader reads them (<see cref="PlannerListDates"/>): the days the
